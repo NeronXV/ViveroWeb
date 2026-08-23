@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Vivero Dulcinea - Tu vivero premium online. Encuentra las mejores plantas de interior, exterior y suculentas con envíos a domicilio y asesoramiento de expertos.">
+  <title>Vivero Dulcinea | Plantas Premium y Cuidado Botánico</title>
+  
+  <!-- CSS Stylesheets -->
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/store.css">
+  <link rel="stylesheet" href="css/interactive.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+  <!-- --- HEADER & NAVIGATION --- -->
+  <header>
+    <div class="nav-container">
+      <a href="#" class="logo" id="nav-logo">
+        <img src="assets/isotipo-flor.svg" alt="Vivero Dulcinea" class="logo-icon">
+        Vivero<span>Dulcinea</span>
+      </a>
+      <nav aria-label="Navegación principal">
+        <ul>
+          <li><a href="#catalogo" id="lnk-catalogo">Catálogo</a></li>
+          <li><a href="#care-quiz" id="lnk-care-quiz">Guía de Cuidado</a></li>
+          <li><a href="#care-chat" id="lnk-care-chat">Asistente Copilot</a></li>
+        </ul>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Cambiar tema claro/oscuro">
+          <!-- Moon Icon -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="theme-icon-dark">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <!-- Sun Icon (hidden by default) -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="theme-icon-light" style="display:none;">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </button>
+        <button class="cart-toggle-btn" id="cart-toggle-btn" aria-label="Ver carrito">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="9" cy="21" r="1"></circle>
+            <circle cx="20" cy="21" r="1"></circle>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+          </svg>
+          <span class="cart-count" id="cart-badge-count">0</span>
+        </button>
+        <button class="admin-toggle-btn" id="admin-toggle-btn" aria-label="Acceso Interno">
+          <!-- Key Icon -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- --- MAIN CONTENT --- -->
+  <main>
+
+    <!-- --- HERO SECTION --- -->
+    <section class="hero" id="home">
+      <div class="hero-container">
+        <div class="hero-text">
+          <div class="hero-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/>
+            </svg>
+            Envíos premium a todo el país
+          </div>
+          <h1>Trae la armonía de la naturaleza a tu hogar</h1>
+          <p>Descubre nuestra selecta colección de plantas de interior, exterior y variedades exóticas cultivadas con el mayor cuidado por expertos botánicos.</p>
+          <div class="search-bar">
+            <input type="text" id="catalog-search" placeholder="Busca tu planta favorita (ej. Monstera, Suculenta)..." aria-label="Buscar plantas">
+            <button id="search-btn" aria-label="Realizar búsqueda">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="hero-image-wrapper">
+          <img src="assets/hero_greenhouse.png" alt="Invernadero moderno de ViveroWeb con abundantes plantas verdes" class="hero-img">
+        </div>
+      </div>
+    </section>
+
+    <!-- --- STORE CATALOG SECTION --- -->
+    <section class="store" id="catalogo">
+      <div class="section-header">
+        <h2>Nuestra Colección</h2>
+        <p>Filtrado por las categorías más deseadas de la temporada</p>
+      </div>
+
+      <div class="filter-container">
+        <button class="filter-btn active" data-category="all" id="btn-filter-all">Todas</button>
+        <button class="filter-btn" data-category="interior" id="btn-filter-interior">Interior</button>
+        <button class="filter-btn" data-category="exterior" id="btn-filter-exterior">Exterior</button>
+        <button class="filter-btn" data-category="suculentas" id="btn-filter-suculentas">Suculentas</button>
+      </div>
+
+      <div class="catalog-grid" id="catalog-grid-container">
+        <!-- Rendered dynamically by JavaScript -->
+      </div>
+    </section>
+
+    <!-- --- PLANT CARE QUIZ SECTION --- -->
+    <section class="quiz-section" id="care-quiz">
+      <div class="quiz-container">
+        <div class="section-header">
+          <h2>Asistente de Recomendación</h2>
+          <p>Responde 3 sencillas preguntas para encontrar tu planta ideal</p>
+        </div>
+
+        <div class="quiz-card">
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="quiz-progress-bar"></div>
+          </div>
+
+          <!-- Step 1: Light Level -->
+          <div class="quiz-step active" data-step="1">
+            <div class="quiz-question">¿Cuál es el nivel de luz en el espacio donde colocarás la planta?</div>
+            <div class="quiz-options">
+              <div class="quiz-option" data-value="alta" data-option="light">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12,18A6,6 0 1,1 18,12A6,6 0 0,1 12,18M12,8A4,4 0 1,0 16,12A4,4 0 0,0 12,8M12,2V4M12,20V22M3.5,12H5.5M18.5,12H20.5M5.64,5.64L7.05,7.05M16.95,16.95L18.36,18.36M18.36,5.64L16.95,7.05M7.05,16.95L5.64,18.36" />
+                </svg>
+                <div class="quiz-option-text">Luz Directa / Alta</div>
+              </div>
+              <div class="quiz-option" data-value="media" data-option="light">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 2A10 10 0 0 0 2 12A10 10 0 0 0 12 22A10 10 0 0 0 22 12A10 10 0 0 0 12 2M12 4A8 8 0 0 1 20 12A8 8 0 0 1 12 20V4Z" />
+                </svg>
+                <div class="quiz-option-text">Luz Indirecta / Media</div>
+              </div>
+              <div class="quiz-option" data-value="baja" data-option="light">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 2C6.47 2 2 6.47 2 12C2 17.53 6.47 22 12 22C17.53 22 22 17.53 22 12C22 6.47 17.53 2 12 2M12 20V4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" style="display:none;"/>
+                  <!-- Moon -->
+                  <path d="M12.3 2A10 10 0 0 0 21.8 14.3A9 9 0 1 1 12.3 2Z"/>
+                </svg>
+                <div class="quiz-option-text">Poca Luz / Sombra</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Watering frequency -->
+          <div class="quiz-step" data-step="2">
+            <div class="quiz-question">¿Con qué frecuencia planeas o puedes regar la planta?</div>
+            <div class="quiz-options">
+              <div class="quiz-option" data-value="alta" data-option="water">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20M12,5.5C11.58,6.23 7.8,12.21 7.8,14A4.2,4.2 0 0,0 12,18.2A4.2,4.2 0 0,0 16.2,14C16.2,12.21 12.42,6.23 12,5.5Z" />
+                </svg>
+                <div class="quiz-option-text">Frecuente (Tierra húmeda)</div>
+              </div>
+              <div class="quiz-option" data-value="baja" data-option="water">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12.09,2.91C11.45,2.91 10.95,3.31 10.74,3.9L8.35,10.66C7.5,10.97 6.85,11.66 6.5,12.5C5.46,12.5 4.54,13 4.07,13.9C3.65,13.72 3.19,13.62 2.72,13.62A5.45,5.45 0 0,0 1,18.82C1.29,19.8 1.94,20.61 2.82,21.05C2.75,21.36 2.72,21.68 2.72,22H4.54C4.54,21.41 4.79,20.89 5.21,20.5C5.7,20.94 6.33,21.18 7,21.18A5.45,5.45 0 0,0 10.63,14C10.91,13.8 11.23,13.62 11.58,13.5C12,14.6 13,15.36 14.27,15.36C15,15.36 15.68,15.05 16.18,14.5C17.03,14.73 17.65,15.42 18,16.27C17.18,16.71 16.63,17.5 16.63,18.45A5.45,5.45 0 0,0 18.45,23.63C19.43,23.34 20.24,22.69 20.68,21.82C21,21.89 21.31,21.91 21.63,21.91H23V20.09C22.41,20.09 21.89,19.84 21.5,19.42C21.94,18.93 22.18,18.3 22.18,17.63A5.45,5.45 0 0,0 17.63,12.55C17.43,12.27 17.25,11.95 17.13,11.6L14.74,4.82C14.53,4.23 14.03,3.82 13.39,3.82H12.09V2.91M13.39,5.63L15.32,11.09C15.37,11.23 15.44,11.36 15.53,11.47C14.93,12 14.54,12.78 14.54,13.63V13.64C13.29,13.64 12.27,12.83 12.09,11.72C12.07,11.61 12,11.5 11.91,11.41C11.12,10.63 10.09,10.18 9,10.18L10.91,4.72V4.73C11.09,5.27 11.6,5.63 12.18,5.63H13.39Z" style="display:none;"/>
+                  <!-- Cactus outline -->
+                  <path d="M12,2A1,1 0 0,0 11,3V5.07C8.25,5.5 6,7.5 6,10V12H4A1,1 0 0,0 3,13V15A1,1 0 0,0 4,16H6V18.37C6,19.34 6.35,20.25 7,21H17C17.65,20.25 18,19.34 18,18.37V14H20A1,1 0 0,0 21,13V10A1,1 0 0,0 20,9H18V8A1,1 0 0,0 17,7H15V3A1,1 0 0,0 14,2H12M12,4H13V7H11V5.07C11.32,5.03 11.65,5 12,5V4M8,10V12H9V10A3,3 0 0,1 12,7H13V9H12A1,1 0 0,0 11,10V12H13V10A1,1 0 0,1 14,9H15V12H16V9A1,1 0 0,1 17,8H18V9H19V11H17V12H18V18.37C18,18.8 17.85,19.23 17.56,19.56C17.27,19.89 16.89,20 16.5,20H7.5C7.11,20 6.73,19.89 6.44,19.56C6.15,19.23 6,18.8 6,18.37V13H5V14H4V13H6V11H7V13H8V10Z" style="display:none;"/>
+                  <path d="M12,2A2,2 0 0,0 10,4V5C7.79,5 6,6.79 6,9V11H4A2,2 0 0,0 2,13V15A2,2 0 0,0 4,17H6V19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V15H20A2,2 0 0,0 22,13V10A2,2 0 0,0 20,8H18V4A2,2 0 0,0 16,2H12M12,4H16V8H14V11H12V4M8,7H10V12H8V7M18,10H20V13H18V10M8,19V14H16V19H8Z" />
+                </svg>
+                <div class="quiz-option-text">Moderado / Bajo (Dejar secar)</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Pet friendliness -->
+          <div class="quiz-step" data-step="3">
+            <div class="quiz-question">¿Tienes mascotas en casa? (Perros o gatos)</div>
+            <div class="quiz-options">
+              <div class="quiz-option" data-value="si" data-option="pets">
+                <svg viewBox="0 0 24 24">
+                  <!-- Paw print -->
+                  <path d="M12,14A3,3 0 0,1 15,17A3,3 0 0,1 12,20A3,3 0 0,1 9,17A3,3 0 0,1 12,14M7,11A2,2 0 0,1 9,13A2,2 0 0,1 7,15A2,2 0 0,1 5,13A2,2 0 0,1 7,11M17,11A2,2 0 0,1 19,13A2,2 0 0,1 17,15A2,2 0 0,1 15,13A2,2 0 0,1 17,11M12,8A2.5,2.5 0 0,1 14.5,10.5A2.5,2.5 0 0,1 12,13A2.5,2.5 0 0,1 9.5,10.5A2.5,2.5 0 0,1 12,8Z" />
+                </svg>
+                <div class="quiz-option-text">Sí, necesito plantas seguras (Pet-Friendly)</div>
+              </div>
+              <div class="quiz-option" data-value="no" data-option="pets">
+                <svg viewBox="0 0 24 24">
+                  <!-- Plant/Leaves -->
+                  <path d="M17,6C13.81,6.07 11.23,8.32 10.37,11.23C9.5,8.32 6.92,6.07 3.73,6C3.33,6.33 3,6.8 3,7.31C3,9.58 4.22,11.69 6.22,12.78C5,13.78 4.22,15.28 4.22,17C4.22,20.31 6.92,23 10.22,23C13.53,23 16.22,20.31 16.22,17C16.22,15.28 15.44,13.78 14.22,12.78C16.22,11.69 17.44,9.58 17.44,7.31C17.44,6.8 17.11,6.33 16.71,6H17M10.22,21C8,21 6.22,19.22 6.22,17C6.22,15.82 6.72,14.78 7.5,14.06C8.28,14.66 9.22,15 10.22,15C11.22,15 12.16,14.66 12.94,14.06C13.72,14.78 14.22,15.82 14.22,17C14.22,19.22 12.44,21 10.22,21M10.22,13C8.61,13 7.22,11.83 6.78,10.29C8,9.75 8.94,8.74 9.37,7.5C9.8,8.74 10.74,9.75 11.96,10.29C11.53,11.83 10.14,13 8.53,13H10.22Z" style="display:none;"/>
+                  <path d="M12,2C11.38,2 10.74,2.35 10.15,3C7.94,5.4 6.78,8.28 6.78,11.23C6.78,14.67 8.5,17.43 11,18.81V22H13V18.81C15.5,17.43 17.22,14.67 17.22,11.23C17.22,8.28 16.06,5.4 13.85,3C13.26,2.35 12.62,2 12,2Z" />
+                </svg>
+                <div class="quiz-option-text">No tengo mascotas / No me preocupa</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="quiz-nav">
+            <button class="quiz-btn quiz-btn-secondary" id="quiz-prev-btn" disabled>Atrás</button>
+            <button class="quiz-btn quiz-btn-primary" id="quiz-next-btn">Siguiente</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- --- COPILOT BOT / INTERACTIVE CHAT SECTION --- -->
+    <section class="chatbot-section" id="care-chat">
+      <div class="chat-container">
+        <div class="chat-info">
+          <h3>Copilot Bot</h3>
+          <p>Tu asistente botánico virtual las 24 horas. Pregúntame sobre riego, luz, abono o plagas de tus plantas.</p>
+          <ul class="chat-topics" id="chat-topics-list">
+            <li data-question="¿Cómo sé si mi Monstera necesita agua?">🔍 ¿Monstera necesita agua?</li>
+            <li data-question="¿Qué plantas son mejores para poca luz?">☁️ Plantas para poca luz</li>
+            <li data-question="¿Por qué se ponen amarillas las hojas?">🍂 Hojas amarillentas</li>
+          </ul>
+        </div>
+        <div class="chat-box">
+          <div class="chat-messages" id="chat-messages-container">
+            <div class="message bot">
+              ¡Hola! Soy tu Copilot de Vivero Dulcinea. ¿En qué puedo ayudarte con el cuidado de tus plantas hoy?
+            </div>
+          </div>
+          <div class="typing-indicator" id="chat-typing-indicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+          </div>
+          <div class="chat-input-area">
+            <input type="text" id="chat-user-input" placeholder="Pregunta sobre el cuidado de tus plantas..." aria-label="Mensaje para el Copilot">
+            <button class="send-chat-btn" id="chat-send-btn" aria-label="Enviar mensaje">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- --- SIDE SLIDE-OUT CART PANEL --- -->
+  <div class="cart-overlay" id="cart-panel-overlay"></div>
+  <div class="cart-panel" id="cart-side-panel">
+    <div class="cart-header">
+      <h3>Tu Carrito</h3>
+      <button class="close-cart-btn" id="cart-close-btn" aria-label="Cerrar carrito">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    
+    <div class="cart-items" id="cart-items-container">
+      <!-- Added items will be rendered dynamically -->
+      <div class="cart-empty-msg">Tu carrito está vacío. ¡Explora nuestro catálogo!</div>
+    </div>
+
+    <div class="cart-footer">
+      <div class="cart-total-row">
+        <span>Total:</span>
+        <span id="cart-total-price">$0.00</span>
+      </div>
+      <button class="checkout-btn" id="checkout-btn">Finalizar Pedido</button>
+    </div>
+  </div>
+
+  <!-- --- FOOTER --- -->
+  <footer>
+    <div class="footer-container">
+      <div class="footer-brand">
+        <a href="#" class="logo" style="margin-bottom: 1rem;">
+          <img src="assets/isotipo-flor.svg" alt="Vivero Dulcinea" class="logo-icon">
+          Vivero<span>Dulcinea</span>
+        </a>
+        <p>Expertos cultivadores dedicados a esparcir el amor por la naturaleza en hogares y oficinas con estilo.</p>
+        <div class="footer-socials">
+          <a href="#" class="social-icon" aria-label="Facebook">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2.04c-5.5 0-10 4.49-10 10.02 0 5 3.66 9.15 8.44 9.9v-7H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.89 3.78-3.89 1.09 0 2.23.19 2.23.19v2.47h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.45 2.9h-2.33v7C18.34 21.19 22 17.04 22 12.06c0-5.53-4.5-10.02-10-10.02z"/>
+            </svg>
+          </a>
+          <a href="#" class="social-icon" aria-label="Instagram">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2m-.2 2A3.6 3.6 0 0 0 4 7.6v8.8A3.6 3.6 0 0 0 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6A3.6 3.6 0 0 0 16.4 4H7.6m8.4 2.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10m0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+            </svg>
+          </a>
+          <a href="#" class="social-icon" aria-label="Pinterest">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.24 2C6.5 2 2 6.53 2 12.24c0 4.14 2.45 7.7 6.03 9.26-.09-.78-.17-1.98.03-2.83.19-.8 1.24-5.26 1.24-5.26s-.31-.63-.31-1.57c0-1.47.85-2.57 1.91-2.57.9 0 1.34.68 1.34 1.49 0 .9-.58 2.26-.88 3.51-.25 1.05.52 1.91 1.56 1.91 1.88 0 3.32-1.98 3.32-4.84 0-2.53-1.82-4.3-4.41-4.3-3 0-4.76 2.26-4.76 4.58 0 .91.35 1.88.79 2.41.09.1.1.19.07.31-.08.31-.25.99-.28 1.13-.04.18-.15.22-.34.13-1.28-.59-2.07-2.45-2.07-3.95 0-3.21 2.33-6.16 6.72-6.16 3.53 0 6.27 2.51 6.27 5.88 0 3.5-2.2 6.32-5.26 6.32-1.03 0-2-.53-2.33-1.16l-.63 2.42c-.23.88-.85 1.98-1.27 2.66 1 .3 2.03.46 3.12.46 5.74 0 10.24-4.5 10.24-10.24C22.48 6.53 17.98 2 12.24 2z"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+      
+      <div class="footer-links">
+        <h5>Explorar</h5>
+        <ul>
+          <li><a href="#catalogo">Colecciones</a></li>
+          <li><a href="#care-quiz">Guía Interactiva</a></li>
+          <li><a href="#care-chat">Asistente Virtual</a></li>
+          <li><a href="#">Sobre Nosotros</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-links">
+        <h5>Soporte</h5>
+        <ul>
+          <li><a href="#">Envíos y Retiros</a></li>
+          <li><a href="#">Políticas de Devolución</a></li>
+          <li><a href="#">Preguntas Frecuentes</a></li>
+          <li><a href="#">Contacto</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-newsletter">
+        <h5>Boletín Verde</h5>
+        <p>Regístrate para recibir consejos semanales de cuidado botánico y ofertas exclusivas.</p>
+        <form class="newsletter-form" id="newsletter-form" onsubmit="event.preventDefault(); alert('¡Gracias por suscribirte al Boletín Verde de Vivero Dulcinea!');">
+          <input type="email" placeholder="Tu correo electrónico" required aria-label="Correo para boletín">
+          <button type="submit">Unirse</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>&copy; 2026 Vivero Dulcinea. Todos los derechos reservados. Diseñado para los amantes de las plantas.</p>
+    </div>
+  </footer>
+
+  <!-- --- DASHBOARD OVERLAY --- -->
+  <div class="db-overlay" id="db-panel-overlay"></div>
+
+  <!-- --- LOGIN MODAL --- -->
+  <div class="login-modal" id="login-modal">
+    <div class="login-header">
+      <h3>Acceso Panel Interno</h3>
+      <button class="close-login-btn" id="close-login-btn" aria-label="Cerrar login">&times;</button>
+    </div>
+    <div class="login-body">
+      <p>Selecciona tu rol o inicia sesión de demostración:</p>
+      <div class="demo-access-buttons">
+        <button class="demo-btn admin-role-btn" id="demo-admin-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          Entrar como Admin
+        </button>
+        <button class="demo-btn manager-role-btn" id="demo-manager-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          Entrar como Gerente
+        </button>
+      </div>
+      <div class="login-divider"><span>o ingresa credenciales</span></div>
+      <form id="login-form">
+        <div class="form-group-db">
+          <label for="login-username">Usuario</label>
+          <input type="text" id="login-username" placeholder="admin / gerente" required>
+        </div>
+        <div class="form-group-db">
+          <label for="login-password">Contraseña</label>
+          <input type="password" id="login-password" placeholder="••••" required>
+        </div>
+        <div class="login-error-msg" id="login-error-msg" style="display:none; color: #e05e5e; font-size: 0.85rem; margin-top: -0.5rem; margin-bottom: 1rem;"></div>
+        <button type="submit" class="submit-login-btn">Iniciar Sesión</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- --- DASHBOARD PORTAL --- -->
+  <div class="dashboard-panel" id="dashboard-panel">
+    <div class="dashboard-header">
+      <div class="dashboard-title-area">
+        <span class="role-badge-db" id="dashboard-role-badge">Admin</span>
+        <h2>Panel de Control</h2>
+      </div>
+      <div class="dashboard-header-actions">
+        <button class="logout-btn" id="dashboard-logout-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>
+          </svg>
+          Salir
+        </button>
+        <button class="close-db-btn" id="close-dashboard-btn" aria-label="Cerrar dashboard">&times;</button>
+      </div>
+    </div>
+    
+    <div class="dashboard-body">
+      <!-- Sidebar Navigation -->
+      <aside class="dashboard-sidebar">
+        <ul id="dashboard-nav-list">
+          <li class="db-nav-item active" data-tab="editorial" id="tab-editorial-nav">📝 Editorial</li>
+          <li class="db-nav-item" data-tab="inventario" id="tab-inventario-nav">📦 Inventario</li>
+          <li class="db-nav-item" data-tab="stock" id="tab-stock-nav">📈 Control de Stock</li>
+          <li class="db-nav-item" data-tab="promociones" id="tab-promociones-nav">🏷️ Promociones</li>
+          <li class="db-nav-item" data-tab="ventas" id="tab-ventas-nav" style="display:none;">📊 Ventas</li>
+          <li class="db-nav-item" data-tab="pedidos" id="tab-pedidos-nav" style="display:none;">🧾 Pedidos</li>
+          <li class="db-nav-item" data-tab="personal" id="tab-personal-nav" style="display:none;">👥 Personal</li>
+        </ul>
+      </aside>
+      
+      <!-- Content Area -->
+      <main class="dashboard-content">
+        <!-- TAB 1: Editorial (Admin) -->
+        <section class="db-tab-content active" id="db-content-editorial">
+          <h3>Gestión Editorial</h3>
+          <p class="tab-desc">Modifica los contenidos promocionales y anuncios principales de la tienda en tiempo real.</p>
+          <form id="editorial-form">
+            <div class="form-group-db">
+              <label for="hero-title-input">Título del Banner Principal (Hero)</label>
+              <input type="text" id="hero-title-input" required>
+            </div>
+            <div class="form-group-db">
+              <label for="hero-desc-input">Descripción del Banner Principal</label>
+              <textarea id="hero-desc-input" rows="3" required></textarea>
+            </div>
+            <div class="form-group-db">
+              <label for="announcement-input">Anuncio de Envío (Badge)</label>
+              <input type="text" id="announcement-input" required>
+            </div>
+            <button type="submit" class="db-submit-btn">Actualizar Contenido</button>
+          </form>
+        </section>
+        
+        <!-- TAB 2: Inventario (Admin) -->
+        <section class="db-tab-content" id="db-content-inventario">
+          <h3>Ingresar Nuevo Producto</h3>
+          <p class="tab-desc">Agrega nuevas plantas al catálogo digital. Aparecerán de inmediato para los clientes.</p>
+          <form id="inventory-form">
+            <div class="form-row-db">
+              <div class="form-group-db">
+                <label for="plant-name-input">Nombre de la Planta</label>
+                <input type="text" id="plant-name-input" placeholder="Ej. Poto Limón" required>
+              </div>
+              <div class="form-group-db">
+                <label for="plant-category-select">Categoría</label>
+                <select id="plant-category-select" required>
+                  <option value="interior">Interior</option>
+                  <option value="exterior">Exterior</option>
+                  <option value="suculentas">Suculentas</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row-db">
+              <div class="form-group-db">
+                <label for="plant-price-input">Precio ($)</label>
+                <input type="number" id="plant-price-input" step="0.01" min="0.1" placeholder="24.99" required>
+              </div>
+              <div class="form-group-db">
+                <label for="plant-image-select">Imagen de Referencia</label>
+                <select id="plant-image-select" required>
+                  <option value="assets/monstera.png">Monstera Deliciosa</option>
+                  <option value="assets/snake_plant.png">Sansevieria</option>
+                  <option value="assets/succulent_garden.png">Jardín Suculentas</option>
+                  <option value="assets/hero_greenhouse.png">Invernadero</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row-db">
+              <div class="form-group-db">
+                <label for="plant-light-select">Nivel de Luz</label>
+                <select id="plant-light-select" required>
+                  <option value="baja">Poca Luz / Sombra</option>
+                  <option value="media">Luz Indirecta / Media</option>
+                  <option value="alta">Luz Directa / Alta</option>
+                </select>
+              </div>
+              <div class="form-group-db">
+                <label for="plant-water-select">Frecuencia de Riego</label>
+                <select id="plant-water-select" required>
+                  <option value="baja">Moderado / Bajo (Dejar secar)</option>
+                  <option value="alta">Frecuente (Tierra húmeda)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row-db">
+              <div class="form-group-db">
+                <label for="plant-pets-select">Mascotas (Pet-Friendly)</label>
+                <select id="plant-pets-select" required>
+                  <option value="si">Sí, segura para mascotas</option>
+                  <option value="no">No, tóxica para mascotas</option>
+                </select>
+              </div>
+              <div class="form-group-db">
+                <label for="plant-stock-input">Stock Inicial</label>
+                <input type="number" id="plant-stock-input" min="1" value="10" required>
+              </div>
+            </div>
+            <div class="form-group-db">
+              <label for="plant-desc-input">Descripción Corta</label>
+              <textarea id="plant-desc-input" rows="2" placeholder="Describe brevemente las características de la planta..." required></textarea>
+            </div>
+            <button type="submit" class="db-submit-btn">Guardar Planta en Inventario</button>
+          </form>
+        </section>
+        
+        <!-- TAB 3: Promociones (Admin) -->
+        <section class="db-tab-content" id="db-content-promociones">
+          <h3>Aplicar Descuentos y Promociones</h3>
+          <p class="tab-desc">Aplica descuentos porcentuales a los productos activos. Se reflejarán con precio tachado y badge de descuento.</p>
+          <form id="promotions-form">
+            <div class="form-group-db">
+              <label for="promo-plant-select">Seleccionar Planta</label>
+              <select id="promo-plant-select" required>
+                <!-- Filled dynamically with active plants -->
+              </select>
+            </div>
+            <div class="form-group-db">
+              <label for="promo-discount-input">Porcentaje de Descuento (%)</label>
+              <input type="number" id="promo-discount-input" min="0" max="90" placeholder="Ej. 20" required>
+            </div>
+            <button type="submit" class="db-submit-btn">Aplicar Promoción</button>
+          </form>
+          
+          <div class="active-promos-section" style="margin-top: 2rem;">
+            <h4>Promociones Activas</h4>
+            <div class="table-responsive-db">
+              <table class="db-table">
+                <thead>
+                  <tr>
+                    <th>Planta</th>
+                    <th>Precio Original</th>
+                    <th>Descuento</th>
+                    <th>Precio Final</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="active-promos-list">
+                  <!-- Filled dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 3.5: Gestión de Stock (Admin) -->
+        <section class="db-tab-content" id="db-content-stock">
+          <h3>Gestión de Stock de Planta</h3>
+          <p class="tab-desc">Supervisa los niveles de stock en tiempo real con sistema de semáforo. Reabastece existencias al instante.</p>
+          
+          <div class="filter-container" style="justify-content: flex-start; margin-bottom: 2rem;">
+            <button class="filter-btn active" data-category="all" id="btn-stock-filter-all" style="padding: 0.4rem 1.2rem; font-size: 0.85rem;">Todas</button>
+            <button class="filter-btn" data-category="interior" id="btn-stock-filter-interior" style="padding: 0.4rem 1.2rem; font-size: 0.85rem;">Interior</button>
+            <button class="filter-btn" data-category="exterior" id="btn-stock-filter-exterior" style="padding: 0.4rem 1.2rem; font-size: 0.85rem;">Exterior</button>
+            <button class="filter-btn" data-category="suculentas" id="btn-stock-filter-suculentas" style="padding: 0.4rem 1.2rem; font-size: 0.85rem;">Suculentas</button>
+          </div>
+
+          <div class="db-stock-grid" id="db-stock-grid">
+            <!-- Rendered dynamically by JavaScript -->
+          </div>
+        </section>
+
+        <!-- TAB 4: Ventas (Gerente) -->
+        <section class="db-tab-content" id="db-content-ventas">
+          <h3>Reporte de Ventas y Analíticas</h3>
+          <p class="tab-desc">Resumen analítico de facturación y desempeño comercial basado en las compras de hoy.</p>
+          
+          <div class="analytics-grid">
+            <div class="analytics-card">
+              <div class="card-icon" style="background: hsla(143, 60%, 35%, 0.1); color: var(--success-color);">💵</div>
+              <div class="card-details">
+                <h4>Ingresos Totales</h4>
+                <p id="stat-revenue">$0.00</p>
+              </div>
+            </div>
+            <div class="analytics-card">
+              <div class="card-icon" style="background: hsla(38, 70%, 50%, 0.1); color: var(--accent-color);">🧾</div>
+              <div class="card-details">
+                <h4>Pedidos Completados</h4>
+                <p id="stat-orders">0</p>
+              </div>
+            </div>
+            <div class="analytics-card">
+              <div class="card-icon" style="background: hsla(200, 70%, 50%, 0.1); color: #2d8cf0;">📈</div>
+              <div class="card-details">
+                <h4>Ticket Promedio</h4>
+                <p id="stat-ticket">$0.00</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="sales-performance" style="margin-top: 2rem;">
+            <h4>Popularidad de Categorías</h4>
+            <div class="category-bars">
+              <div class="cat-bar-item">
+                <span class="cat-name">Interior</span>
+                <div class="bar-outer"><div class="bar-inner" id="bar-interior" style="width: 0%;"></div></div>
+                <span class="cat-value" id="val-interior">0%</span>
+              </div>
+              <div class="cat-bar-item">
+                <span class="cat-name">Exterior</span>
+                <div class="bar-outer"><div class="bar-inner" id="bar-exterior" style="width: 0%;"></div></div>
+                <span class="cat-value" id="val-exterior">0%</span>
+              </div>
+              <div class="cat-bar-item">
+                <span class="cat-name">Suculentas</span>
+                <div class="bar-outer"><div class="bar-inner" id="bar-suculentas" style="width: 0%;"></div></div>
+                <span class="cat-value" id="val-suculentas">0%</span>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <!-- TAB 5: Pedidos (Gerente) -->
+        <section class="db-tab-content" id="db-content-pedidos">
+          <h3>Registro Histórico de Pedidos</h3>
+          <p class="tab-desc">Pedidos de clientes procesados en tiempo real. Utiliza el botón de finalizar compra en el carrito para crear nuevos pedidos.</p>
+          
+          <div class="table-responsive-db">
+            <table class="db-table">
+              <thead>
+                <tr>
+                  <th>ID Pedido</th>
+                  <th>Fecha y Hora</th>
+                  <th>Items / Cantidades</th>
+                  <th>Total</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="orders-log-list">
+                <!-- Filled dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+        
+        <!-- TAB 6: Personal (Gerente) -->
+        <section class="db-tab-content" id="db-content-personal">
+          <h3>Control del Personal de Guardia</h3>
+          <p class="tab-desc">Gestiona la disponibilidad del equipo botánico que atiende a los clientes y asiste en el vivero.</p>
+          
+          <div class="table-responsive-db">
+            <table class="db-table">
+              <thead>
+                <tr>
+                  <th>Nombre del Asesor</th>
+                  <th>Especialidad</th>
+                  <th>Turno</th>
+                  <th>Estado</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="staff-list">
+                <!-- Filled dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- JS Logic Script -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
