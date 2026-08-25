@@ -1,13 +1,16 @@
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 
+import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import { hasCapability } from './access-helpers'
 import { ADMIN_ENTRY_CAPABILITIES, getLoginPath, hasAnyCapability, type ProtectedDestination } from './access-rules'
 import { AccessDenied } from './AccessDenied'
 import { useAuth } from '../auth/useAuth'
 
 function StableAccessLoading() {
-  return <main className="internal-page access-boundary-page"><section className="login-card" aria-labelledby="access-loading-title" aria-busy="true"><p className="eyebrow">Acceso interno</p><h1 id="access-loading-title">Verificando acceso</h1><p role="status">Espera mientras confirmamos tu sesión y permisos.</p></section></main>
+  const headingRef = useHeadingFocus<HTMLHeadingElement>('loading')
+  useDocumentTitle('Verificando acceso')
+  return <main className="internal-page access-boundary-page"><section className="login-card" aria-labelledby="access-loading-title" aria-busy="true"><p className="eyebrow">Acceso interno</p><h1 id="access-loading-title" ref={headingRef} tabIndex={-1}>Verificando acceso</h1><p role="status" aria-live="polite">Espera mientras confirmamos tu sesión y permisos.</p></section></main>
 }
 
 export function RequireSession({ returnTo, children }: { returnTo: ProtectedDestination; children: ReactNode }) {

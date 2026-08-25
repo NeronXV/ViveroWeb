@@ -1,21 +1,31 @@
+import { lazy, Suspense, type ReactNode } from 'react'
 import { createBrowserRouter } from 'react-router-dom'
 import { App } from './App'
 import { PublicLayout } from '../components/layout/PublicLayout'
-import { AdminPage } from '../features/admin/AdminPage'
-import { LoginPage } from '../features/auth/LoginPage'
-import { CashierPage } from '../features/cashier/CashierPage'
-import { CatalogPage } from '../features/public-catalog/CatalogPage'
-import { HomePage } from '../features/public-catalog/HomePage'
 import { RequireAccessContext, RequireAdminAccess, RequireCashierAccess, RequireSession } from '../features/access/AccessGuards'
+
+const AdminPage = lazy(() => import('../features/admin/AdminPage').then((module) => ({ default: module.AdminPage })))
+const LoginPage = lazy(() => import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })))
+const CashierPage = lazy(() => import('../features/cashier/CashierPage').then((module) => ({ default: module.CashierPage })))
+const CatalogPage = lazy(() => import('../features/public-catalog/CatalogPage').then((module) => ({ default: module.CatalogPage })))
+const HomePage = lazy(() => import('../features/public-catalog/HomePage').then((module) => ({ default: module.HomePage })))
+
+function RouteLoading() {
+  return <main className="internal-page access-boundary-page"><section className="login-card" aria-busy="true"><p role="status" aria-live="polite">Cargando página…</p></section></main>
+}
+
+function LazyRoute({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteLoading />}>{children}</Suspense>
+}
 
 function NotFound() { return <main className="internal-page"><section className="login-card"><h1>Página no encontrada</h1><a className="back-link" href="/">Volver al inicio</a></section></main> }
 
 function ProtectedCashierRoute() {
-  return <RequireSession returnTo="/caja"><RequireAccessContext><RequireCashierAccess><CashierPage /></RequireCashierAccess></RequireAccessContext></RequireSession>
+  return <RequireSession returnTo="/caja"><RequireAccessContext><RequireCashierAccess><LazyRoute><CashierPage /></LazyRoute></RequireCashierAccess></RequireAccessContext></RequireSession>
 }
 
 function ProtectedAdminRoute() {
-  return <RequireSession returnTo="/admin"><RequireAccessContext><RequireAdminAccess><AdminPage /></RequireAdminAccess></RequireAccessContext></RequireSession>
+  return <RequireSession returnTo="/admin"><RequireAccessContext><RequireAdminAccess><LazyRoute><AdminPage /></LazyRoute></RequireAdminAccess></RequireAccessContext></RequireSession>
 }
 
-export const router = createBrowserRouter([{ element: <App />, children: [{ element: <PublicLayout />, children: [{ index: true, element: <HomePage /> }, { path: 'catalogo', element: <CatalogPage /> }] }, { path: 'login', element: <LoginPage /> }, { path: 'caja', element: <ProtectedCashierRoute /> }, { path: 'admin', element: <ProtectedAdminRoute /> }, { path: '*', element: <NotFound /> }] }])
+export const router = createBrowserRouter([{ element: <App />, children: [{ element: <PublicLayout />, children: [{ index: true, element: <LazyRoute><HomePage /></LazyRoute> }, { path: 'catalogo', element: <LazyRoute><CatalogPage /></LazyRoute> }] }, { path: 'login', element: <LazyRoute><LoginPage /></LazyRoute> }, { path: 'caja', element: <ProtectedCashierRoute /> }, { path: 'admin', element: <ProtectedAdminRoute /> }, { path: '*', element: <NotFound /> }] }])

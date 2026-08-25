@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true
-    let authEventRevision = 0
+    let restorationComplete = false
     mountedRef.current = true
 
     let client
@@ -64,17 +64,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
-      authEventRevision += 1
-      if (active) applySession(session)
+      if (active && restorationComplete) applySession(session)
     })
 
-    const restoreRevision = authEventRevision
-
     void client.auth.getSession()
-      .then(({ data, error: restoreError }) => {
-        if (!active || authEventRevision !== restoreRevision) return
+      .then(async ({ data, error: restoreError }) => {
+        if (!active) return
 
         if (restoreError) {
+          restorationComplete = true
           identityUserIdRef.current = null
           clearAccess()
           setUser(null)
@@ -83,10 +81,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
+        if (data.session) {
+          const { data: refreshedSession, error: verificationError } = await client.auth.refreshSession(data.session)
+          if (!active) return
+
+          if (verificationError || !refreshedSession.session || refreshedSession.session.user.id !== data.session.user.id) {
+            restorationComplete = true
+            identityUserIdRef.current = null
+            clearAccess()
+            setUser(null)
+            setStatus('anonymous')
+            setError('La sesión venció o dejó de ser válida. Inicia sesión nuevamente.')
+            void client.auth.signOut({ scope: 'local' })
+            return
+          }
+
+          restorationComplete = true
+          applySession(refreshedSession.session)
+          return
+        }
+
+        restorationComplete = true
         applySession(data.session)
       })
       .catch((restoreError: unknown) => {
-        if (!active || authEventRevision !== restoreRevision) return
+        if (!active) return
+        restorationComplete = true
         identityUserIdRef.current = null
         clearAccess()
         setUser(null)
@@ -193,26 +213,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAccess()
     }
 
+    const finishLocalSignOut = () => {
+      identityUserIdRef.current = null
+      setUser(null)
+      setStatus('anonymous')
+      setError(null)
+    }
+
+    const clearLocalSession = async () => {
+      const { error: localSignOutError } = await getSupabaseClient().auth.signOut({ scope: 'local' })
+      if (localSignOutError) throw localSignOutError
+      finishLocalSignOut()
+      return true
+    }
+
     try {
       const { error: signOutError } = await getSupabaseClient().auth.signOut()
 
       if (!mountedRef.current) return false
 
       if (signOutError) {
-        setError(getSafeAuthError(signOutError, 'No fue posible cerrar la sesión.'))
-        setAccessRefreshRevision((current) => current + 1)
-        return false
+        return await clearLocalSession()
       }
 
-      identityUserIdRef.current = null
-      setUser(null)
-      setStatus('anonymous')
-      setError(null)
+      finishLocalSignOut()
       return true
     } catch (signOutError) {
       if (mountedRef.current) {
-        setError(getSafeAuthError(signOutError, 'No fue posible cerrar la sesión.'))
-        setAccessRefreshRevision((current) => current + 1)
+        try {
+          return await clearLocalSession()
+        } catch {
+          setError(getSafeAuthError(signOutError, 'No fue posible cerrar la sesión.'))
+          setAccessRefreshRevision((current) => current + 1)
+        }
       }
       return false
     } finally {
