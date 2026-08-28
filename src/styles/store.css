@@ -223,6 +223,18 @@
   transform: scale(1.08);
 }
 
+.plant-image-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--accent-light);
+}
+
+.plant-image-fallback img {
+  width: 38%;
+  height: 38%;
+  object-fit: contain;
+}
+
 .plant-tag {
   position: absolute;
   top: 1rem;
@@ -251,12 +263,32 @@
   color: var(--text-primary);
 }
 
+.plant-scientific-name,
+.plant-description {
+  color: var(--text-secondary);
+}
+
+.plant-scientific-name {
+  margin-bottom: 0.5rem;
+}
+
+.plant-description {
+  margin-bottom: 1rem;
+}
+
 .plant-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   font-size: 0.85rem;
   color: var(--text-secondary);
   margin-bottom: 1.25rem;
+}
+
+.plant-price small {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .plant-meta span {

@@ -1,6 +1,6 @@
 # Vivero Dulcinea Web
 
-Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El catálogo, Caja y Administración todavía trabajan con datos demostrativos locales; la autenticación y el contexto de acceso usan Supabase.
+Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El catálogo público, la autenticación y el contexto de acceso usan Supabase; Caja y Administración conservan datos demostrativos locales.
 
 ## Requisitos
 
@@ -39,15 +39,15 @@ Inicia el proyecto local desde el repositorio backend correspondiente y usa su U
 
 ## Rutas
 
-- `/`: inicio y catálogo resumido de demostración.
-- `/catalogo`: catálogo completo de demostración.
+- `/`: inicio y catálogo público.
+- `/catalogo`: catálogo público con búsqueda, categorías y paginación.
 - `/login`: inicio de sesión y consulta del contexto de acceso real.
 - `/caja`: Caja demostrativa protegida por sesión, capacidad y sucursal activa.
 - `/admin`: Administración demostrativa protegida por capacidades.
 
 ## Estado y autoridad de acceso
 
-- El catálogo utiliza datos locales de demostración.
+- El catálogo público consulta `get_public_catalog` V2 sin requerir sesión, valida estrictamente su respuesta y resuelve sus imágenes desde el bucket público `catalog-images` mediante el cliente Supabase.
 - Caja utiliza datos locales de demostración y exige autorización real antes de renderizarse.
 - Administración utiliza datos locales de demostración y protege cada módulo por capacidad.
 - La sesión y el contexto de acceso provienen de Supabase mediante `get_my_access_context()`.

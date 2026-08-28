@@ -450,3 +450,23 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 480px) {
+  .nav-container {
+    padding: 0.75rem 1rem;
+  }
+
+  .logo {
+    gap: 0.25rem;
+    font-size: 1.1rem;
+  }
+
+  .logo-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .nav-actions {
+    gap: 0.4rem;
+  }
+}
