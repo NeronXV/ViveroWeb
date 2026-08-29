@@ -2,6 +2,15 @@
 
 Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El catálogo público, la autenticación, el contexto de acceso y Caja usan contratos reales de Supabase; Administración conserva datos demostrativos locales.
 
+## Checkpoint del MVP
+
+- Caja Web está congelada funcionalmente en `c99fd10882f42639904c8d1d67a9722274f543c1` y consume el contrato backend local `79681695ad493718b4f11195d421de3719343555`.
+- Pasan 93 pruebas unitarias, lint, build y las 58 comprobaciones estáticas de migraciones.
+- Permanecen pendientes la aplicación actual de las once migraciones desde cero, la suite pgTAP actual y los veinte escenarios integrales de Caja contra Supabase local.
+- Caja no se considera desplegable mientras esas validaciones permanezcan pendientes. No se ha realizado push, despliegue ni validación sobre staging o producción.
+
+El orden restante, los gates y la propuesta para el siguiente módulo se mantienen en [MVP_ROADMAP.md](MVP_ROADMAP.md).
+
 ## Requisitos
 
 - Node.js 24 o una versión compatible con las dependencias del proyecto.
