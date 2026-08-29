@@ -1,7 +1,12 @@
 import type {
+  CashierClaimResponse,
   CashierClaimState,
+  CashierConfirmResponse,
   CashierCursor,
   CashierPageInfo,
+  CashierPaymentMethod,
+  CashierPaymentResultResponse,
+  CashierReleaseClaimResponse,
   CashierSale,
   CashierSaleDetailItem,
   CashierSaleDetailResponse,
@@ -10,6 +15,7 @@ import type {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const CLAIM_STATES: CashierClaimState[] = ['AVAILABLE', 'CLAIMED_BY_ME', 'CLAIMED_BY_OTHER']
+const PAYMENT_METHODS: CashierPaymentMethod[] = ['CASH', 'CARD', 'TRANSFER']
 
 export class CashierValidationError extends Error {
   constructor(message: string) {
@@ -59,6 +65,13 @@ function readClaimState(value: unknown, field: string): CashierClaimState {
     throw new CashierValidationError(`El campo ${field} tiene un estado de reclamación no válido.`)
   }
   return value as CashierClaimState
+}
+
+function readPaymentMethod(value: unknown, field: string): CashierPaymentMethod {
+  if (typeof value !== 'string' || !PAYMENT_METHODS.includes(value as CashierPaymentMethod)) {
+    throw new CashierValidationError(`El campo ${field} tiene un método de pago no válido.`)
+  }
+  return value as CashierPaymentMethod
 }
 
 function readSale(value: unknown, indexOrLabel: number | string): CashierSale {
@@ -200,5 +213,226 @@ export function parseCashierSaleDetailResponse(value: unknown): CashierSaleDetai
     schemaVersion: 1,
     sale,
     items,
+  }
+}
+
+// Nuevos parsers para la fase de cobro real e idempotencia
+export function parseCashierClaimResponse(value: unknown): CashierClaimResponse {
+  const expectedKeys = [
+    'sale_id',
+    'branch_id',
+    'cashier_id',
+    'claim_token',
+    'created_at',
+    'expires_at',
+    'server_time',
+    'renewed',
+  ]
+
+  if (!isRecord(value) || !hasExactKeys(value, expectedKeys)) {
+    throw new CashierValidationError('La respuesta de reclamación de venta no tiene el formato esperado.')
+  }
+
+  if (typeof value.renewed !== 'boolean') {
+    throw new CashierValidationError('El campo renewed de la reclamación debe ser booleano.')
+  }
+
+  return {
+    sale_id: readUuid(value.sale_id, 'sale_id'),
+    branch_id: readUuid(value.branch_id, 'branch_id'),
+    cashier_id: readUuid(value.cashier_id, 'cashier_id'),
+    claim_token: readUuid(value.claim_token, 'claim_token'),
+    created_at: readString(value.created_at, 'created_at'),
+    expires_at: readString(value.expires_at, 'expires_at'),
+    server_time: readString(value.server_time, 'server_time'),
+    renewed: value.renewed,
+  }
+}
+
+export function parseCashierReleaseClaimResponse(value: unknown): CashierReleaseClaimResponse {
+  const expectedKeys = ['sale_id', 'claim_token', 'released_at', 'closed_reason']
+
+  if (!isRecord(value) || !hasExactKeys(value, expectedKeys)) {
+    throw new CashierValidationError('La respuesta de liberación de reclamación no tiene el formato esperado.')
+  }
+
+  const closedReason = value.closed_reason
+  if (closedReason !== 'EXPIRED' && closedReason !== 'RELEASED') {
+    throw new CashierValidationError('El motivo de cierre (closed_reason) no es válido.')
+  }
+
+  return {
+    sale_id: readUuid(value.sale_id, 'sale_id'),
+    claim_token: readUuid(value.claim_token, 'claim_token'),
+    released_at: readString(value.released_at, 'released_at'),
+    closed_reason: closedReason,
+  }
+}
+
+export function parseCashierConfirmResponse(value: unknown): CashierConfirmResponse {
+  const expectedKeys = ['idempotent_replay', 'sale', 'payment']
+
+  if (!isRecord(value) || !hasExactKeys(value, expectedKeys)) {
+    throw new CashierValidationError('La respuesta de confirmación de pago no tiene el formato esperado.')
+  }
+
+  if (typeof value.idempotent_replay !== 'boolean') {
+    throw new CashierValidationError('El campo idempotent_replay debe ser booleano.')
+  }
+
+  const sale = value.sale
+  const expectedSaleKeys = ['id', 'folio', 'branch_id', 'status', 'total_cents']
+  if (!isRecord(sale) || !hasExactKeys(sale, expectedSaleKeys)) {
+    throw new CashierValidationError('La sección de venta en confirmación no es válida.')
+  }
+
+  const parsedSale = {
+    id: readUuid(sale.id, 'sale.id'),
+    folio: readString(sale.folio, 'sale.folio'),
+    branch_id: readUuid(sale.branch_id, 'sale.branch_id'),
+    status: readString(sale.status, 'sale.status'),
+    total_cents: readSafeInteger(sale.total_cents, 'sale.total_cents'),
+  }
+
+  const payment = value.payment
+  const expectedPaymentKeys = [
+    'id',
+    'sale_id',
+    'cashier_id',
+    'idempotency_key',
+    'method',
+    'amount_due_cents',
+    'amount_received_cents',
+    'change_cents',
+    'reference',
+    'created_at',
+  ]
+  if (!isRecord(payment) || !hasExactKeys(payment, expectedPaymentKeys)) {
+    throw new CashierValidationError('La sección de pago en confirmación no es válida.')
+  }
+
+  const parsedPayment = {
+    id: readUuid(payment.id, 'payment.id'),
+    sale_id: readUuid(payment.sale_id, 'payment.sale_id'),
+    cashier_id: readUuid(payment.cashier_id, 'payment.cashier_id'),
+    idempotency_key: readUuid(payment.idempotency_key, 'payment.idempotency_key'),
+    method: readPaymentMethod(payment.method, 'payment.method'),
+    amount_due_cents: readSafeInteger(payment.amount_due_cents, 'payment.amount_due_cents'),
+    amount_received_cents: readSafeInteger(payment.amount_received_cents, 'payment.amount_received_cents'),
+    change_cents: readSafeInteger(payment.change_cents, 'payment.change_cents'),
+    reference: readNullableString(payment.reference, 'payment.reference'),
+    created_at: readString(payment.created_at, 'payment.created_at'),
+  }
+
+  return {
+    idempotent_replay: value.idempotent_replay,
+    sale: parsedSale,
+    payment: parsedPayment,
+  }
+}
+
+export function parseCashierPaymentResultResponse(value: unknown): CashierPaymentResultResponse {
+  const expectedKeys = ['schemaVersion', 'status', 'serverTime']
+  const optionalKeys = ['sale', 'items', 'branch', 'payment']
+
+  if (!isRecord(value)) {
+    throw new CashierValidationError('La respuesta de recuperación no es un objeto válido.')
+  }
+
+  // Verificar que contenga al menos las llaves obligatorias
+  expectedKeys.forEach((key) => {
+    if (!(key in value)) {
+      throw new CashierValidationError(`La respuesta de recuperación no contiene el campo obligatorio ${key}.`)
+    }
+  })
+
+  // Validar que no contenga llaves desconocidas
+  const actualKeys = Object.keys(value)
+  const allowedKeys = [...expectedKeys, ...optionalKeys]
+  actualKeys.forEach((key) => {
+    if (!allowedKeys.includes(key)) {
+      throw new CashierValidationError(`La respuesta de recuperación contiene una llave desconocida: ${key}.`)
+    }
+  })
+
+  if (value.schemaVersion !== 1) {
+    throw new CashierValidationError('La versión del esquema de recuperación no es compatible.')
+  }
+
+  const status = value.status
+  if (status !== 'SUCCEEDED' && status !== 'NOT_FOUND') {
+    throw new CashierValidationError('El estado de la recuperación debe ser SUCCEEDED o NOT_FOUND.')
+  }
+
+  const serverTime = readString(value.serverTime, 'serverTime')
+
+  if (status === 'NOT_FOUND') {
+    // Si no se encuentra, no debe tener las propiedades opcionales pobladas
+    optionalKeys.forEach((key) => {
+      if (key in value && value[key] !== undefined) {
+        throw new CashierValidationError(`Una respuesta NOT_FOUND no debe incluir la sección: ${key}.`)
+      }
+    })
+
+    return {
+      schemaVersion: 1,
+      status: 'NOT_FOUND',
+      serverTime,
+    }
+  }
+
+  // Parsear campos para SUCCEEDED
+  if (!('sale' in value) || !('items' in value) || !('branch' in value) || !('payment' in value)) {
+    throw new CashierValidationError('Una respuesta SUCCEEDED debe contener sale, items, branch y payment.')
+  }
+
+  const sale = value.sale
+  const expectedSaleKeys = ['id', 'folio', 'createdAt', 'totalCents', 'createdByLabel']
+  if (!isRecord(sale) || !hasExactKeys(sale, expectedSaleKeys)) {
+    throw new CashierValidationError('La sección de venta (sale) en recuperación no es válida.')
+  }
+  const parsedSale = {
+    id: readUuid(sale.id, 'sale.id'),
+    folio: readString(sale.folio, 'sale.folio'),
+    createdAt: readString(sale.createdAt, 'sale.createdAt'),
+    totalCents: readSafeInteger(sale.totalCents, 'sale.totalCents'),
+    createdByLabel: readNullableString(sale.createdByLabel, 'sale.createdByLabel'),
+  }
+
+  if (!Array.isArray(value.items)) {
+    throw new CashierValidationError('Los artículos (items) en recuperación deben ser un arreglo.')
+  }
+  const items = value.items.map((item, index) => readDetailItem(item, index))
+
+  const branch = value.branch
+  if (!isRecord(branch) || !hasExactKeys(branch, ['name'])) {
+    throw new CashierValidationError('La sección de sucursal (branch) en recuperación no es válida.')
+  }
+  const parsedBranch = {
+    name: readString(branch.name, 'branch.name'),
+  }
+
+  const payment = value.payment
+  const expectedPaymentKeys = ['method', 'amountReceivedCents', 'changeCents', 'reference', 'createdAt']
+  if (!isRecord(payment) || !hasExactKeys(payment, expectedPaymentKeys)) {
+    throw new CashierValidationError('La sección de pago (payment) en recuperación no es válida.')
+  }
+
+  const parsedPayment = {
+    method: readPaymentMethod(payment.method, 'payment.method'),
+    amountReceivedCents: payment.amountReceivedCents === null ? null : readSafeInteger(payment.amountReceivedCents, 'payment.amountReceivedCents'),
+    changeCents: payment.changeCents === null ? null : readSafeInteger(payment.changeCents, 'payment.changeCents'),
+    reference: readNullableString(payment.reference, 'payment.reference'),
+    createdAt: readString(payment.createdAt, 'payment.createdAt'),
+  }
+
+  return {
+    schemaVersion: 1,
+    status: 'SUCCEEDED',
+    sale: parsedSale,
+    items,
+    branch: parsedBranch,
+    payment: parsedPayment,
+    serverTime,
   }
 }

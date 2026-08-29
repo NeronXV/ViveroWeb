@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { parseCashierSaleDetailResponse, parseCashierSalesResponse } from './cashier-parser'
+import {
+  parseCashierSaleDetailResponse,
+  parseCashierSalesResponse,
+  parseCashierClaimResponse,
+  parseCashierReleaseClaimResponse,
+  parseCashierConfirmResponse,
+  parseCashierPaymentResultResponse,
+} from './cashier-parser'
 
 const SALE_ID = '52000000-0000-0000-0000-000000000001'
 const ITEM_ID = '82000000-0000-0000-0000-000000000001'
+const BRANCH_ID = '12000000-0000-0000-0000-000000000001'
+const CASHIER_ID = '22000000-0000-0000-0000-000000000001'
+const CLAIM_TOKEN = '83000000-0000-0000-0000-000000000001'
+const IDEMPOTENCY_KEY = '73000000-0000-0000-0000-000000000001'
+const PAYMENT_ID = '72000000-0000-0000-0000-000000000001'
 
 function validSalesPayload(): Record<string, unknown> {
   return {
@@ -155,5 +167,153 @@ describe('parseCashierSaleDetailResponse', () => {
     const item = (payload.items as Record<string, unknown>[])[0]
     delete item.lineTotalCents
     expect(() => parseCashierSaleDetailResponse(payload)).toThrow()
+  })
+})
+
+describe('parseCashierClaimResponse', () => {
+  it('acepta una respuesta de reclamación correcta', () => {
+    const payload = {
+      sale_id: SALE_ID,
+      branch_id: BRANCH_ID,
+      cashier_id: CASHIER_ID,
+      claim_token: CLAIM_TOKEN,
+      created_at: '2026-08-28T09:00:00Z',
+      expires_at: '2026-08-28T09:05:00Z',
+      server_time: '2026-08-28T09:00:00Z',
+      renewed: false,
+    }
+    const result = parseCashierClaimResponse(payload)
+    expect(result.sale_id).toBe(SALE_ID)
+    expect(result.renewed).toBe(false)
+  })
+
+  it('rechaza si falta algún campo obligatorio', () => {
+    const payload = {
+      sale_id: SALE_ID,
+      claim_token: CLAIM_TOKEN,
+    }
+    expect(() => parseCashierClaimResponse(payload)).toThrow()
+  })
+})
+
+describe('parseCashierReleaseClaimResponse', () => {
+  it('acepta una respuesta de liberación correcta', () => {
+    const payload = {
+      sale_id: SALE_ID,
+      claim_token: CLAIM_TOKEN,
+      released_at: '2026-08-28T09:02:00Z',
+      closed_reason: 'RELEASED',
+    }
+    const result = parseCashierReleaseClaimResponse(payload)
+    expect(result.sale_id).toBe(SALE_ID)
+    expect(result.closed_reason).toBe('RELEASED')
+  })
+
+  it('rechaza closed_reason inválido', () => {
+    const payload = {
+      sale_id: SALE_ID,
+      claim_token: CLAIM_TOKEN,
+      released_at: '2026-08-28T09:02:00Z',
+      closed_reason: 'FORCED',
+    }
+    expect(() => parseCashierReleaseClaimResponse(payload)).toThrow()
+  })
+})
+
+describe('parseCashierConfirmResponse', () => {
+  it('acepta una respuesta de confirmación de pago correcta', () => {
+    const payload = {
+      idempotent_replay: false,
+      sale: {
+        id: SALE_ID,
+        folio: 'V-001',
+        branch_id: BRANCH_ID,
+        status: 'PAID',
+        total_cents: 15000,
+      },
+      payment: {
+        id: PAYMENT_ID,
+        sale_id: SALE_ID,
+        cashier_id: CASHIER_ID,
+        idempotency_key: IDEMPOTENCY_KEY,
+        method: 'CASH',
+        amount_due_cents: 15000,
+        amount_received_cents: 20000,
+        change_cents: 5000,
+        reference: null,
+        created_at: '2026-08-28T09:03:00Z',
+      },
+    }
+    const result = parseCashierConfirmResponse(payload)
+    expect(result.idempotent_replay).toBe(false)
+    expect(result.payment.method).toBe('CASH')
+    expect(result.payment.change_cents).toBe(5000)
+  })
+})
+
+describe('parseCashierPaymentResultResponse', () => {
+  it('acepta una respuesta SUCCEEDED de recuperación correcta', () => {
+    const payload = {
+      schemaVersion: 1,
+      status: 'SUCCEEDED',
+      sale: {
+        id: SALE_ID,
+        folio: 'V-001',
+        createdAt: '2026-08-28T09:00:00Z',
+        totalCents: 15000,
+        createdByLabel: 'Ana Ventas',
+      },
+      items: [
+        {
+          id: ITEM_ID,
+          productName: 'Aloe vera',
+          quantity: 1,
+          unitPriceCents: 15000,
+          lineTotalCents: 15000,
+        },
+      ],
+      branch: {
+        name: 'Web Centro',
+      },
+      payment: {
+        method: 'CASH',
+        amountReceivedCents: 20000,
+        changeCents: 5000,
+        reference: null,
+        createdAt: '2026-08-28T09:03:00Z',
+      },
+      serverTime: '2026-08-28T09:05:00Z',
+    }
+    const result = parseCashierPaymentResultResponse(payload)
+    expect(result.status).toBe('SUCCEEDED')
+    expect(result.sale?.createdByLabel).toBe('Ana Ventas')
+    expect(result.items?.[0].productName).toBe('Aloe vera')
+  })
+
+  it('acepta una respuesta NOT_FOUND de recuperación correcta', () => {
+    const payload = {
+      schemaVersion: 1,
+      status: 'NOT_FOUND',
+      serverTime: '2026-08-28T09:05:00Z',
+    }
+    const result = parseCashierPaymentResultResponse(payload)
+    expect(result.status).toBe('NOT_FOUND')
+    expect(result.sale).toBeUndefined()
+  })
+
+  it('rechaza una respuesta NOT_FOUND que contenga propiedades opcionales', () => {
+    const payload = {
+      schemaVersion: 1,
+      status: 'NOT_FOUND',
+      sale: {
+        id: SALE_ID,
+        folio: 'V-001',
+        createdAt: '2026-08-28T09:00:00Z',
+        totalCents: 15000,
+        createdByLabel: 'Ana Ventas',
+      },
+      serverTime: '2026-08-28T09:05:00Z',
+    }
+    expect(() => parseCashierPaymentResultResponse(payload)).toThrow()
   })
 })
