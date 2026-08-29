@@ -1,6 +1,6 @@
 # Vivero Dulcinea Web
 
-Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El catálogo público, la autenticación y el contexto de acceso usan Supabase; Caja y Administración conservan datos demostrativos locales.
+Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El catálogo público, la autenticación, el contexto de acceso y Caja usan contratos reales de Supabase; Administración conserva datos demostrativos locales.
 
 ## Requisitos
 
@@ -27,11 +27,12 @@ VITE_SUPABASE_PUBLISHABLE_KEY
 
 ```bash
 npm run dev
+npm test
 npm run lint
 npm run build
 ```
 
-`npm run dev` inicia el servidor de desarrollo. `npm run lint` revisa el código y `npm run build` ejecuta TypeScript y genera el bundle de producción.
+`npm run dev` inicia el servidor de desarrollo. `npm test` ejecuta las pruebas unitarias, `npm run lint` revisa el código y `npm run build` ejecuta TypeScript y genera el bundle de producción.
 
 ## Supabase local
 
@@ -42,13 +43,13 @@ Inicia el proyecto local desde el repositorio backend correspondiente y usa su U
 - `/`: inicio y catálogo público.
 - `/catalogo`: catálogo público con búsqueda, categorías y paginación.
 - `/login`: inicio de sesión y consulta del contexto de acceso real.
-- `/caja`: Caja demostrativa protegida por sesión, capacidad y sucursal activa.
+- `/caja`: Caja real protegida por sesión, capacidad y sucursal activa.
 - `/admin`: Administración demostrativa protegida por capacidades.
 
 ## Estado y autoridad de acceso
 
 - El catálogo público consulta `get_public_catalog` V2 sin requerir sesión, valida estrictamente su respuesta y resuelve sus imágenes desde el bucket público `catalog-images` mediante el cliente Supabase.
-- Caja utiliza datos locales de demostración y exige autorización real antes de renderizarse.
+- Caja consume los RPC autoritativos de bandeja, detalle, claims, confirmación y recuperación de pagos. Conserva localmente solo el intento técnico versionado necesario para idempotencia y recuperación; no almacena datos de tarjeta ni sustituye las validaciones del backend.
 - Administración utiliza datos locales de demostración y protege cada módulo por capacidad.
 - La sesión y el contexto de acceso provienen de Supabase mediante `get_my_access_context()`.
 

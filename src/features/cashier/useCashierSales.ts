@@ -28,7 +28,7 @@ export function useCashierSales(limit = 25) {
   const currentControllerRef = useRef<AbortController | null>(null)
 
   const fetchSalesList = useCallback(
-    async (isLoadMore = false) => {
+    async (isLoadMore = false, cursor: CashierCursor | null = null) => {
       const requestId = ++requestSequence.current
       currentControllerRef.current?.abort()
 
@@ -47,8 +47,7 @@ export function useCashierSales(limit = 25) {
       }
 
       try {
-        const cursor = isLoadMore ? state.nextCursor : null
-        const response = await fetchCashierSales({ limit, cursor }, controller.signal)
+        const response = await fetchCashierSales({ limit, cursor: isLoadMore ? cursor : null }, controller.signal)
 
         if (requestId !== requestSequence.current) return
 
@@ -82,11 +81,11 @@ export function useCashierSales(limit = 25) {
         }))
       }
     },
-    [limit, state.nextCursor],
+    [limit],
   )
 
   useEffect(() => {
-    void fetchSalesList(false)
+    void fetchSalesList(false, null)
     return () => {
       currentControllerRef.current?.abort()
     }
@@ -98,8 +97,8 @@ export function useCashierSales(limit = 25) {
 
   const loadMore = useCallback(() => {
     if (!state.hasMore || state.isLoadingMore || state.status !== 'ready' || state.isUpdating) return
-    void fetchSalesList(true)
-  }, [fetchSalesList, state.hasMore, state.isLoadingMore, state.status, state.isUpdating])
+    void fetchSalesList(true, state.nextCursor)
+  }, [fetchSalesList, state.hasMore, state.isLoadingMore, state.nextCursor, state.status, state.isUpdating])
 
   return {
     sales: state.items,

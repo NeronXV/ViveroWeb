@@ -32,7 +32,7 @@ export interface CashierSalesResponse {
 }
 
 export interface CashierSaleDetailItem {
-  id: string | number
+  id: string
   productName: string
   quantity: number
   unitPriceCents: number
@@ -117,11 +117,11 @@ export type CashierPaymentStatus =
   | 'CONFIRMING'
   | 'UNCERTAIN'
   | 'SUCCEEDED'
-  | 'FAILED'
   | 'EXPIRED'
+  | 'UNAVAILABLE'
 
 export interface CashierPaymentAttempt {
-  version: 1
+  version: 2
   userId: string
   saleId: string
   idempotencyKey: string

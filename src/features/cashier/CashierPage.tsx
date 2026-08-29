@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import { useAuth } from '../auth/useAuth'
-import { DemoBanner } from '../../components/feedback/DemoBanner'
 import { useCashierSales } from './useCashierSales'
 import { useCashierSaleDetail } from './useCashierSaleDetail'
 import { useCashierPaymentAttempt } from './useCashierPaymentAttempt'
+import { formatCents, parsePesosToCents } from './cashier-money'
+import { isNavigationLocked } from './cashier-payment-state'
 import type { CashierPaymentMethod } from './cashier-types'
 
 export function CashierPage() {
@@ -48,7 +49,7 @@ export function CashierPage() {
     releaseClaim,
     confirmPayment,
     reconcilePayment,
-    resetAttempt,
+    dismissSucceededAttempt,
   } = useCashierPaymentAttempt(userId, saleDetail?.sale ?? null)
 
   // Estados locales para el formulario de pago
@@ -57,27 +58,67 @@ export function CashierPage() {
   const [referenceText, setReferenceText] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
 
-  // Limpiar formulario al cambiar de venta o de método de pago
+  // Limpiar el formulario al cambiar de venta.
   useEffect(() => {
     setCashReceivedText('')
     setReferenceText('')
     setFormError(null)
-  }, [selectedSaleId, paymentMethod])
+    setPaymentMethod('CASH')
+  }, [selectedSaleId])
+
+  // Un intento recuperado solo puede reenviarse con el payload originalmente persistido.
+  useEffect(() => {
+    if (!attempt?.method) return
+    setPaymentMethod(attempt.method)
+    setCashReceivedText(
+      attempt.amountReceivedCents === null ? '' : formatCents(attempt.amountReceivedCents),
+    )
+    setReferenceText(attempt.reference ?? '')
+  }, [attempt?.amountReceivedCents, attempt?.method, attempt?.reference])
+
+  const navigationLocked = attempt ? isNavigationLocked(attempt.status) : false
+  const recoveredPayloadLocked = attempt?.status === 'CLAIMED' && attempt.method !== null
 
   const handleSelectSale = async (saleId: string) => {
+    if (saleId === selectedSaleId) return
+    if (navigationLocked || actionInProgress) {
+      setFormError('Concilia el cobro incierto antes de cambiar de venta.')
+      return
+    }
     // Si ya teníamos una venta seleccionada y reclamada por nosotros, la liberamos antes de cambiar
     if (attempt && attempt.status === 'CLAIMED' && attempt.claimToken) {
-      await releaseClaim()
+      const released = await releaseClaim()
+      if (!released) return
     }
     setSelectedSaleId(saleId)
   }
 
   const handleCloseDetail = async () => {
+    if (navigationLocked || actionInProgress) return
     if (attempt && attempt.status === 'CLAIMED' && attempt.claimToken) {
-      await releaseClaim()
+      const released = await releaseClaim()
+      if (!released) return
+    }
+    if (attempt?.status === 'SUCCEEDED') {
+      dismissSucceededAttempt()
     }
     setSelectedSaleId(null)
     clearDetail()
+  }
+
+  const handleReleaseClaim = async () => {
+    const released = await releaseClaim()
+    if (!released) return
+    setSelectedSaleId(null)
+    clearDetail()
+    refreshSales()
+  }
+
+  const handleFinishedPayment = () => {
+    if (!dismissSucceededAttempt()) return
+    setSelectedSaleId(null)
+    clearDetail()
+    refreshSales()
   }
 
   const handleConfirmPay = async (e: React.FormEvent) => {
@@ -90,13 +131,12 @@ export function CashierPage() {
     let finalReference: string | null = null
 
     if (paymentMethod === 'CASH') {
-      const parsedReceived = parseFloat(cashReceivedText)
-      if (isNaN(parsedReceived) || parsedReceived <= 0) {
-        setFormError('Por favor, ingresa una cantidad de efectivo válida.')
+      try {
+        amountReceivedCents = parsePesosToCents(cashReceivedText)
+      } catch (error) {
+        setFormError(error instanceof Error ? error.message : 'Ingresa una cantidad de efectivo válida.')
         return
       }
-      // Conversión a centavos evitando punto flotante
-      amountReceivedCents = Math.round(parsedReceived * 100)
       if (amountReceivedCents < totalCents) {
         setFormError('El efectivo recibido es insuficiente para cubrir el total.')
         return
@@ -125,14 +165,18 @@ export function CashierPage() {
       }
     }
 
-    await confirmPayment(paymentMethod, amountReceivedCents, finalReference)
-    // Refrescar la bandeja al procesar exitosamente
-    void refreshSales()
+    const succeeded = await confirmPayment(paymentMethod, amountReceivedCents, finalReference)
+    if (succeeded) refreshSales()
   }
 
   // Cálculos de efectivo y cambio en centavos
   const totalCents = saleDetail?.sale.totalCents ?? 0
-  const cashReceivedCents = cashReceivedText ? Math.round(parseFloat(cashReceivedText) * 100) : 0
+  let cashReceivedCents = 0
+  try {
+    cashReceivedCents = cashReceivedText ? parsePesosToCents(cashReceivedText) : 0
+  } catch {
+    cashReceivedCents = 0
+  }
   const changeCents = cashReceivedCents >= totalCents ? cashReceivedCents - totalCents : 0
 
   const cashierName = accessContext?.profile?.fullName ?? 'Cajero/a'
@@ -152,7 +196,6 @@ export function CashierPage() {
             </p>
           </div>
           <div>
-            <DemoBanner compact />
             <Link className="back-link" to="/">
               Salir
             </Link>
@@ -233,19 +276,22 @@ export function CashierPage() {
                     }
 
                     return (
-                      <article
+                      <button
+                        type="button"
                         key={sale.id}
                         className={`sale-card-item ${isSelected ? 'selected' : ''} ${
                           sale.claimState === 'CLAIMED_BY_OTHER' ? 'claimed-by-other' : ''
                         }`}
                         onClick={() => handleSelectSale(sale.id)}
+                        disabled={navigationLocked || actionInProgress}
+                        aria-pressed={isSelected}
                       >
                         <div className="sale-card-header">
                           <span className="sale-folio">{sale.folio}</span>
                           <span className="sale-time">{formattedDate}</span>
                         </div>
                         <div className="sale-card-body">
-                          <p className="sale-total-amount">${(sale.totalCents / 100).toFixed(2)} MXN</p>
+                          <p className="sale-total-amount">${formatCents(sale.totalCents)} MXN</p>
                           <p className="sale-meta-info">
                             {sale.itemCount} {sale.itemCount === 1 ? 'artículo' : 'artículos'}
                           </p>
@@ -259,7 +305,7 @@ export function CashierPage() {
                             <span className="claim-disabled-msg">Ocupada</span>
                           )}
                         </div>
-                      </article>
+                      </button>
                     )
                   })}
                 </div>
@@ -329,7 +375,7 @@ export function CashierPage() {
                       type="button"
                       className="close-ticket-btn"
                       onClick={handleCloseDetail}
-                      disabled={attempt.status === 'CONFIRMING' || actionInProgress}
+                      disabled={navigationLocked || actionInProgress}
                       aria-label="Cerrar ticket"
                     >
                       ✕
@@ -362,8 +408,8 @@ export function CashierPage() {
                   </div>
                 )}
 
-                {/* Fase 2: Venta reclamada (CLAIMED) o intento fallido previo (FAILED) */}
-                {(attempt.status === 'CLAIMED' || attempt.status === 'FAILED') && (
+                {/* Fase 2: Venta reclamada y lista para confirmar */}
+                {attempt.status === 'CLAIMED' && (
                   <div className="attempt-payment-form">
                     <div className="ticket-items-list">
                       {saleDetail.items.map((item, index) => (
@@ -371,11 +417,11 @@ export function CashierPage() {
                           <div className="ticket-item-name-col">
                             <span className="item-name">{item.productName}</span>
                             <span className="item-price-desc">
-                              {item.quantity} × ${(item.unitPriceCents / 100).toFixed(2)}
+                              {item.quantity} × ${formatCents(item.unitPriceCents)}
                             </span>
                           </div>
                           <span className="item-total-price">
-                            ${(item.lineTotalCents / 100).toFixed(2)}
+                            ${formatCents(item.lineTotalCents)}
                           </span>
                         </div>
                       ))}
@@ -385,7 +431,7 @@ export function CashierPage() {
 
                     <div className="ticket-total">
                       <span>Total</span>
-                      <strong>${(saleDetail.sale.totalCents / 100).toFixed(2)} MXN</strong>
+                      <strong>${formatCents(saleDetail.sale.totalCents)} MXN</strong>
                     </div>
 
                     {/* Formulario de Pago */}
@@ -396,7 +442,7 @@ export function CashierPage() {
                           id="payment-method-select"
                           value={paymentMethod}
                           onChange={(e) => setPaymentMethod(e.target.value as CashierPaymentMethod)}
-                          disabled={actionInProgress}
+                          disabled={actionInProgress || recoveredPayloadLocked}
                         >
                           <option value="CASH">Efectivo</option>
                           <option value="CARD">Tarjeta Bancaria</option>
@@ -411,20 +457,20 @@ export function CashierPage() {
                             <input
                               id="cash-received-input"
                               className="internal-input"
-                              type="number"
-                              step="0.01"
-                              min={(saleDetail.sale.totalCents / 100).toFixed(2)}
+                              type="text"
+                              inputMode="decimal"
+                              pattern="[0-9]+(?:\.[0-9]{1,2})?"
                               value={cashReceivedText}
                               onChange={(e) => setCashReceivedText(e.target.value)}
                               placeholder="0.00"
                               required
-                              disabled={actionInProgress}
+                              disabled={actionInProgress || recoveredPayloadLocked}
                             />
                           </div>
                           {cashReceivedCents >= totalCents && (
                             <div className="change-indicator">
                               <span>Cambio a devolver:</span>
-                              <strong>${(changeCents / 100).toFixed(2)} MXN</strong>
+                              <strong>${formatCents(changeCents)} MXN</strong>
                             </div>
                           )}
                         </div>
@@ -440,8 +486,8 @@ export function CashierPage() {
                             value={referenceText}
                             onChange={(e) => setReferenceText(e.target.value)}
                             placeholder="Ej. Nro Autorización"
-                            maxLength={120}
-                            disabled={actionInProgress}
+                            maxLength={64}
+                            disabled={actionInProgress || recoveredPayloadLocked}
                           />
                         </div>
                       )}
@@ -458,7 +504,7 @@ export function CashierPage() {
                             placeholder="Ej. Clave de rastreo SPEI"
                             required
                             maxLength={120}
-                            disabled={actionInProgress}
+                            disabled={actionInProgress || recoveredPayloadLocked}
                           />
                         </div>
                       )}
@@ -477,7 +523,7 @@ export function CashierPage() {
                         <button
                           type="button"
                           className="retry-btn-secondary full-width"
-                          onClick={releaseClaim}
+                          onClick={handleReleaseClaim}
                           disabled={actionInProgress}
                         >
                           Liberar y Volver
@@ -529,8 +575,8 @@ export function CashierPage() {
                       <p>Método: <strong>{attempt.paymentResult.payment?.method}</strong></p>
                       {attempt.paymentResult.payment?.method === 'CASH' && (
                         <>
-                          <p>Recibido: <strong>${((attempt.paymentResult.payment?.amountReceivedCents ?? 0) / 100).toFixed(2)} MXN</strong></p>
-                          <p>Cambio: <strong>${((attempt.paymentResult.payment?.changeCents ?? 0) / 100).toFixed(2)} MXN</strong></p>
+                          <p>Recibido: <strong>${formatCents(attempt.paymentResult.payment?.amountReceivedCents ?? 0)} MXN</strong></p>
+                          <p>Cambio: <strong>${formatCents(attempt.paymentResult.payment?.changeCents ?? 0)} MXN</strong></p>
                         </>
                       )}
                       {attempt.paymentResult.payment?.reference && (
@@ -539,8 +585,8 @@ export function CashierPage() {
                       <p>Fecha pago: <strong>{new Date(attempt.paymentResult.payment?.createdAt ?? '').toLocaleTimeString('es-MX')}</strong></p>
                     </div>
 
-                    <button type="button" className="checkout-btn" onClick={resetAttempt}>
-                      Cobrar Otra Venta
+                    <button type="button" className="checkout-btn" onClick={handleFinishedPayment}>
+                      Volver a la fila
                     </button>
                   </div>
                 )}
@@ -559,6 +605,22 @@ export function CashierPage() {
                     >
                       {actionInProgress ? 'Reclamando...' : 'Reclamar Venta'}
                     </button>
+                    <button
+                      type="button"
+                      className="retry-btn-secondary full-width"
+                      onClick={handleCloseDetail}
+                      disabled={actionInProgress}
+                    >
+                      Volver a la fila
+                    </button>
+                  </div>
+                )}
+
+                {attempt.status === 'UNAVAILABLE' && (
+                  <div className="attempt-status-box expired" role="alert">
+                    <h4>Venta no disponible</h4>
+                    <p>El pago no pertenece a este intento y el claim ya no puede utilizarse.</p>
+                    {attempt.errorMsg && <p className="error-msg-inline">{attempt.errorMsg}</p>}
                     <button
                       type="button"
                       className="retry-btn-secondary full-width"

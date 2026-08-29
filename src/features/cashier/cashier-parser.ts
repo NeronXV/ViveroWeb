@@ -16,6 +16,7 @@ import type {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const CLAIM_STATES: CashierClaimState[] = ['AVAILABLE', 'CLAIMED_BY_ME', 'CLAIMED_BY_OTHER']
 const PAYMENT_METHODS: CashierPaymentMethod[] = ['CASH', 'CARD', 'TRANSFER']
+const TIMESTAMP_WITH_ZONE_PATTERN = /(?:Z|[+-][0-9]{2}:[0-9]{2})$/
 
 export class CashierValidationError extends Error {
   constructor(message: string) {
@@ -43,6 +44,18 @@ function readString(value: unknown, field: string, allowEmpty = false): string {
 
 function readNullableString(value: unknown, field: string): string | null {
   return value === null ? null : readString(value, field, true)
+}
+
+function readTimestamp(value: unknown, field: string): string {
+  const timestamp = readString(value, field)
+  if (!TIMESTAMP_WITH_ZONE_PATTERN.test(timestamp) || Number.isNaN(Date.parse(timestamp))) {
+    throw new CashierValidationError(`El campo ${field} no es una fecha con zona horaria válida.`)
+  }
+  return timestamp
+}
+
+function readNullableTimestamp(value: unknown, field: string): string | null {
+  return value === null ? null : readTimestamp(value, field)
 }
 
 function readUuid(value: unknown, field: string): string {
@@ -96,14 +109,16 @@ function readSale(value: unknown, indexOrLabel: number | string): CashierSale {
   return {
     id: readUuid(value.id, `${label}.id`),
     folio: readString(value.folio, `${label}.folio`),
-    createdAt: readString(value.createdAt, `${label}.createdAt`),
+    createdAt: readTimestamp(value.createdAt, `${label}.createdAt`),
     totalCents: readSafeInteger(value.totalCents, `${label}.totalCents`),
     itemCount: readSafeInteger(value.itemCount, `${label}.itemCount`),
-    status: readString(value.status, `${label}.status`),
+    status: value.status === 'SENT_TO_CASHIER'
+      ? value.status
+      : (() => { throw new CashierValidationError(`El campo ${label}.status no es cobrable.`) })(),
     createdByLabel: readNullableString(value.createdByLabel, `${label}.createdByLabel`),
     claimState: readClaimState(value.claimState, `${label}.claimState`),
-    claimExpiresAt: readNullableString(value.claimExpiresAt, `${label}.claimExpiresAt`),
-    serverTime: readString(value.serverTime, `${label}.serverTime`),
+    claimExpiresAt: readNullableTimestamp(value.claimExpiresAt, `${label}.claimExpiresAt`),
+    serverTime: readTimestamp(value.serverTime, `${label}.serverTime`),
   }
 }
 
@@ -113,7 +128,7 @@ function readCursor(value: unknown, field: string): CashierCursor | null {
     throw new CashierValidationError(`El cursor ${field} no tiene la estructura esperada.`)
   }
   return {
-    createdAt: readString(value.createdAt, `${field}.createdAt`),
+    createdAt: readTimestamp(value.createdAt, `${field}.createdAt`),
     id: readUuid(value.id, `${field}.id`),
   }
 }
@@ -177,18 +192,19 @@ function readDetailItem(value: unknown, index: number): CashierSaleDetailItem {
     throw new CashierValidationError(`El artículo ${label} no tiene la estructura esperada.`)
   }
 
-  const id = value.id
-  if (typeof id !== 'string' && typeof id !== 'number') {
-    throw new CashierValidationError(`El id del artículo ${label} debe ser UUID o número.`)
+  const quantity = readSafeInteger(value.quantity, `${label}.quantity`, 1)
+  const unitPriceCents = readSafeInteger(value.unitPriceCents, `${label}.unitPriceCents`)
+  const lineTotalCents = readSafeInteger(value.lineTotalCents, `${label}.lineTotalCents`)
+  if (!Number.isSafeInteger(quantity * unitPriceCents) || lineTotalCents !== quantity * unitPriceCents) {
+    throw new CashierValidationError(`El total del artículo ${label} no coincide con cantidad por precio.`)
   }
-  const parsedId = typeof id === 'string' ? readUuid(id, `${label}.id`) : readSafeInteger(id, `${label}.id`, 1)
 
   return {
-    id: parsedId,
+    id: readUuid(value.id, `${label}.id`),
     productName: readString(value.productName, `${label}.productName`),
-    quantity: readSafeInteger(value.quantity, `${label}.quantity`, 1),
-    unitPriceCents: readSafeInteger(value.unitPriceCents, `${label}.unitPriceCents`),
-    lineTotalCents: readSafeInteger(value.lineTotalCents, `${label}.lineTotalCents`),
+    quantity,
+    unitPriceCents,
+    lineTotalCents,
   }
 }
 
@@ -208,6 +224,10 @@ export function parseCashierSaleDetailResponse(value: unknown): CashierSaleDetai
   }
 
   const items = value.items.map((item, index) => readDetailItem(item, index))
+
+  if (sale.itemCount !== items.length) {
+    throw new CashierValidationError('La cantidad de artículos no coincide con el detalle recibido.')
+  }
 
   return {
     schemaVersion: 1,
@@ -242,9 +262,9 @@ export function parseCashierClaimResponse(value: unknown): CashierClaimResponse 
     branch_id: readUuid(value.branch_id, 'branch_id'),
     cashier_id: readUuid(value.cashier_id, 'cashier_id'),
     claim_token: readUuid(value.claim_token, 'claim_token'),
-    created_at: readString(value.created_at, 'created_at'),
-    expires_at: readString(value.expires_at, 'expires_at'),
-    server_time: readString(value.server_time, 'server_time'),
+    created_at: readTimestamp(value.created_at, 'created_at'),
+    expires_at: readTimestamp(value.expires_at, 'expires_at'),
+    server_time: readTimestamp(value.server_time, 'server_time'),
     renewed: value.renewed,
   }
 }
@@ -264,7 +284,7 @@ export function parseCashierReleaseClaimResponse(value: unknown): CashierRelease
   return {
     sale_id: readUuid(value.sale_id, 'sale_id'),
     claim_token: readUuid(value.claim_token, 'claim_token'),
-    released_at: readString(value.released_at, 'released_at'),
+    released_at: readTimestamp(value.released_at, 'released_at'),
     closed_reason: closedReason,
   }
 }
@@ -290,7 +310,9 @@ export function parseCashierConfirmResponse(value: unknown): CashierConfirmRespo
     id: readUuid(sale.id, 'sale.id'),
     folio: readString(sale.folio, 'sale.folio'),
     branch_id: readUuid(sale.branch_id, 'sale.branch_id'),
-    status: readString(sale.status, 'sale.status'),
+    status: sale.status === 'PAID'
+      ? sale.status
+      : (() => { throw new CashierValidationError('La venta confirmada no tiene estado PAID.') })(),
     total_cents: readSafeInteger(sale.total_cents, 'sale.total_cents'),
   }
 
@@ -321,7 +343,22 @@ export function parseCashierConfirmResponse(value: unknown): CashierConfirmRespo
     amount_received_cents: readSafeInteger(payment.amount_received_cents, 'payment.amount_received_cents'),
     change_cents: readSafeInteger(payment.change_cents, 'payment.change_cents'),
     reference: readNullableString(payment.reference, 'payment.reference'),
-    created_at: readString(payment.created_at, 'payment.created_at'),
+    created_at: readTimestamp(payment.created_at, 'payment.created_at'),
+  }
+
+  if (parsedPayment.sale_id !== parsedSale.id || parsedPayment.amount_due_cents !== parsedSale.total_cents) {
+    throw new CashierValidationError('La confirmación contiene una venta o importe incoherente.')
+  }
+  if (parsedPayment.change_cents !== parsedPayment.amount_received_cents - parsedPayment.amount_due_cents) {
+    throw new CashierValidationError('El cambio de la confirmación no coincide con sus importes.')
+  }
+  if (parsedPayment.method === 'CASH' && parsedPayment.reference !== null) {
+    throw new CashierValidationError('Una confirmación CASH no debe contener referencia.')
+  }
+  if (parsedPayment.method !== 'CASH' && (
+    parsedPayment.amount_received_cents !== parsedPayment.amount_due_cents || parsedPayment.change_cents !== 0
+  )) {
+    throw new CashierValidationError('Una confirmación no efectiva debe usar el total autoritativo sin cambio.')
   }
 
   return {
@@ -364,7 +401,7 @@ export function parseCashierPaymentResultResponse(value: unknown): CashierPaymen
     throw new CashierValidationError('El estado de la recuperación debe ser SUCCEEDED o NOT_FOUND.')
   }
 
-  const serverTime = readString(value.serverTime, 'serverTime')
+  const serverTime = readTimestamp(value.serverTime, 'serverTime')
 
   if (status === 'NOT_FOUND') {
     // Si no se encuentra, no debe tener las propiedades opcionales pobladas
@@ -394,7 +431,7 @@ export function parseCashierPaymentResultResponse(value: unknown): CashierPaymen
   const parsedSale = {
     id: readUuid(sale.id, 'sale.id'),
     folio: readString(sale.folio, 'sale.folio'),
-    createdAt: readString(sale.createdAt, 'sale.createdAt'),
+    createdAt: readTimestamp(sale.createdAt, 'sale.createdAt'),
     totalCents: readSafeInteger(sale.totalCents, 'sale.totalCents'),
     createdByLabel: readNullableString(sale.createdByLabel, 'sale.createdByLabel'),
   }
@@ -423,7 +460,21 @@ export function parseCashierPaymentResultResponse(value: unknown): CashierPaymen
     amountReceivedCents: payment.amountReceivedCents === null ? null : readSafeInteger(payment.amountReceivedCents, 'payment.amountReceivedCents'),
     changeCents: payment.changeCents === null ? null : readSafeInteger(payment.changeCents, 'payment.changeCents'),
     reference: readNullableString(payment.reference, 'payment.reference'),
-    createdAt: readString(payment.createdAt, 'payment.createdAt'),
+    createdAt: readTimestamp(payment.createdAt, 'payment.createdAt'),
+  }
+
+  if (parsedPayment.method === 'CASH') {
+    if (parsedPayment.amountReceivedCents === null || parsedPayment.changeCents === null || parsedPayment.reference !== null) {
+      throw new CashierValidationError('El resultado CASH no contiene importes canónicos coherentes.')
+    }
+    if (parsedPayment.amountReceivedCents - parsedSale.totalCents !== parsedPayment.changeCents) {
+      throw new CashierValidationError('El cambio recuperado no coincide con el total de la venta.')
+    }
+  } else if (parsedPayment.amountReceivedCents !== null || parsedPayment.changeCents !== null) {
+    throw new CashierValidationError('Un resultado no efectivo no debe exponer importes de efectivo.')
+  }
+  if (parsedPayment.method === 'TRANSFER' && !parsedPayment.reference) {
+    throw new CashierValidationError('Una transferencia recuperada debe contener referencia.')
   }
 
   return {

@@ -6,77 +6,77 @@ import {
   releaseSalePaymentClaim,
   CashierServiceError,
 } from './cashier-service'
-import type {
-  CashierPaymentAttempt,
-  CashierPaymentMethod,
-  CashierPaymentResultResponse,
-  CashierPaymentStatus,
-  CashierSale,
-} from './cashier-types'
+import {
+  attachSucceededResult,
+  CashierPaymentStateError,
+  createPaymentAttempt,
+  getPaymentAttemptStorageKey,
+  loadPaymentAttempt,
+  removePaymentAttempt,
+  restoreInterruptedAttempt,
+  savePaymentAttempt,
+  withPaymentAttemptLock,
+} from './cashier-payment-state'
+import type { CashierPaymentAttempt, CashierPaymentMethod, CashierSale } from './cashier-types'
 
 function generateUuid(): string {
-  if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
-    return window.crypto.randomUUID()
+  if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
+    throw new CashierPaymentStateError('El navegador no puede generar una clave idempotente segura.')
   }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
+  return crypto.randomUUID()
 }
 
-function getStorageKey(userId: string, saleId: string): string {
-  return `viveroweb_payment_attempt_${userId}_${saleId}`
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
 }
 
-function loadAttemptFromStorage(userId: string, saleId: string): CashierPaymentAttempt | null {
-  try {
-    const raw = localStorage.getItem(getStorageKey(userId, saleId))
-    if (!raw) return null
-    const attempt = JSON.parse(raw) as CashierPaymentAttempt
-    if (attempt.version === 1 && attempt.userId === userId && attempt.saleId === saleId) {
-      return attempt
-    }
-  } catch {
-    // Ignorar error de lectura
-  }
-  return null
-}
-
-function saveAttemptToStorage(attempt: CashierPaymentAttempt): void {
-  try {
-    localStorage.setItem(getStorageKey(attempt.userId, attempt.saleId), JSON.stringify(attempt))
-  } catch {
-    // Ignorar error de escritura
-  }
-}
-
-function removeAttemptFromStorage(userId: string, saleId: string): void {
-  try {
-    localStorage.removeItem(getStorageKey(userId, saleId))
-  } catch {
-    // Ignorar
-  }
+function isSamePayload(
+  attempt: CashierPaymentAttempt,
+  method: CashierPaymentMethod,
+  amountReceivedCents: number | null,
+  reference: string | null,
+): boolean {
+  return attempt.method === null || (
+    attempt.method === method
+    && attempt.amountReceivedCents === amountReceivedCents
+    && attempt.reference === reference
+  )
 }
 
 export function useCashierPaymentAttempt(userId: string | null, activeSale: CashierSale | null) {
   const saleId = activeSale?.id ?? null
   const [attempt, setAttempt] = useState<CashierPaymentAttempt | null>(null)
   const [actionInProgress, setActionInProgress] = useState(false)
+  const actionRef = useRef(false)
+  const actionControllerRef = useRef<AbortController | null>(null)
   const renewTimerRef = useRef<number | null>(null)
-  const isMountedRef = useRef(true)
+  const mountedRef = useRef(false)
+  const identityRef = useRef({ userId, saleId })
+  identityRef.current = { userId, saleId }
 
-  // Sincronizar referencia montada
+  const isCurrentIdentity = useCallback((expectedUserId: string, expectedSaleId: string) => (
+    mountedRef.current
+    && identityRef.current.userId === expectedUserId
+    && identityRef.current.saleId === expectedSaleId
+  ), [])
+
+  const persist = useCallback((next: CashierPaymentAttempt) => {
+    savePaymentAttempt(window.localStorage, next)
+    if (isCurrentIdentity(next.userId, next.saleId)) setAttempt(next)
+  }, [isCurrentIdentity])
+
   useEffect(() => {
-    isMountedRef.current = true
+    mountedRef.current = true
     return () => {
-      isMountedRef.current = false
+      mountedRef.current = false
+      actionControllerRef.current?.abort()
+      if (renewTimerRef.current !== null) window.clearTimeout(renewTimerRef.current)
     }
   }, [])
 
-  // Inicializar o cargar intento desde storage al cambiar de venta
   useEffect(() => {
-    if (renewTimerRef.current) {
+    actionControllerRef.current?.abort()
+    if (renewTimerRef.current !== null) {
       window.clearTimeout(renewTimerRef.current)
       renewTimerRef.current = null
     }
@@ -86,304 +86,274 @@ export function useCashierPaymentAttempt(userId: string | null, activeSale: Cash
       return
     }
 
-    const stored = loadAttemptFromStorage(userId, saleId)
-    if (stored) {
-      setAttempt(stored)
-      // Si el intento quedó en CONFIRMING, resolverlo como UNCERTAIN para conciliar
-      if (stored.status === 'CONFIRMING') {
-        const uncertainAttempt: CashierPaymentAttempt = {
-          ...stored,
-          status: 'UNCERTAIN',
-          errorMsg: 'La transacción quedó en estado incierto. Se requiere conciliación.',
-        }
-        setAttempt(uncertainAttempt)
-        saveAttemptToStorage(uncertainAttempt)
-      }
-    } else {
-      // Si no existe intento previo, creamos el estado inicial CLAIMING si la venta está disponible
-      const newAttempt: CashierPaymentAttempt = {
-        version: 1,
-        userId,
-        saleId,
-        idempotencyKey: generateUuid(),
-        status: 'CLAIMING',
-        claimToken: null,
-        claimExpiresAt: null,
-        method: null,
-        amountReceivedCents: null,
-        reference: null,
-        errorMsg: null,
-        paymentResult: null,
-      }
-      setAttempt(newAttempt)
+    try {
+      const restored = loadPaymentAttempt(window.localStorage, userId, saleId)
+      const next = restoreInterruptedAttempt(restored ?? createPaymentAttempt(userId, saleId, generateUuid()))
+      savePaymentAttempt(window.localStorage, next)
+      setAttempt(next)
+    } catch (error) {
+      const fallback = createPaymentAttempt(userId, saleId, generateUuid())
+      setAttempt({
+        ...fallback,
+        errorMsg: errorMessage(error, 'No fue posible preparar almacenamiento seguro para el cobro.'),
+      })
     }
+
+    const storageKey = getPaymentAttemptStorageKey(userId, saleId)
+    const handleStorage = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage || event.key !== storageKey) return
+      if (event.newValue === null) {
+        setAttempt(null)
+        return
+      }
+      const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+      if (current) setAttempt(current)
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
   }, [userId, saleId])
 
-  const autoRenewClaim = useCallback(async () => {
-    if (!userId || !saleId || !attempt || attempt.status !== 'CLAIMED' || !attempt.claimToken) return
+  const beginForegroundAction = useCallback((): AbortController | null => {
+    if (actionRef.current) return null
+    actionRef.current = true
+    setActionInProgress(true)
+    const controller = new AbortController()
+    actionControllerRef.current = controller
+    return controller
+  }, [])
+
+  const finishForegroundAction = useCallback((controller: AbortController) => {
+    if (actionControllerRef.current === controller) actionControllerRef.current = null
+    actionRef.current = false
+    if (mountedRef.current) setActionInProgress(false)
+  }, [])
+
+  const claimSale = useCallback(async (): Promise<boolean> => {
+    if (!userId || !saleId) return false
+    const controller = beginForegroundAction()
+    if (!controller) return false
 
     try {
-      const response = await claimSaleForPayment(saleId, attempt.claimToken)
-      if (!isMountedRef.current) return
-
-      setAttempt((current) => {
-        if (!current || current.saleId !== saleId) return current
-        const updated = {
-          ...current,
-          claimExpiresAt: response.expires_at,
+      return await withPaymentAttemptLock(userId, saleId, async () => {
+        const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+        if (!current || !['CLAIMING', 'EXPIRED'].includes(current.status)) return false
+        const response = await claimSaleForPayment(saleId, null, controller.signal)
+        if (response.cashier_id !== userId) {
+          throw new CashierPaymentStateError('El claim recibido no corresponde al usuario actual.')
         }
-        saveAttemptToStorage(updated)
-        return updated
+        persist({
+          ...current,
+          status: 'CLAIMED',
+          claimToken: response.claim_token,
+          claimExpiresAt: response.expires_at,
+          method: null,
+          amountReceivedCents: null,
+          reference: null,
+          errorMsg: null,
+          paymentResult: null,
+        })
+        return true
+      })
+    } catch (error) {
+      const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+      if (current) persist({ ...current, errorMsg: errorMessage(error, 'No fue posible reclamar la venta.') })
+      return false
+    } finally {
+      finishForegroundAction(controller)
+    }
+  }, [beginForegroundAction, finishForegroundAction, persist, saleId, userId])
+
+  const renewClaim = useCallback(async () => {
+    if (!userId || !saleId || actionRef.current) return
+    try {
+      await withPaymentAttemptLock(userId, saleId, async () => {
+        const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+        if (!current || current.status !== 'CLAIMED' || !current.claimToken) return
+        try {
+          const response = await claimSaleForPayment(saleId, current.claimToken)
+          if (response.cashier_id !== userId) {
+            throw new CashierPaymentStateError('La renovación no corresponde al usuario actual.')
+          }
+          persist({ ...current, claimExpiresAt: response.expires_at, errorMsg: null })
+        } catch (error) {
+          const code = error instanceof CashierServiceError ? error.code : null
+          persist({
+            ...current,
+            status: code === 'CLAIM_EXPIRED' || code === 'CLAIM_NOT_OWNED' ? 'EXPIRED' : 'CLAIMED',
+            errorMsg: errorMessage(error, 'No fue posible renovar la reserva; vuelve a intentarlo antes de confirmar.'),
+          })
+        }
       })
     } catch {
-      // Ignorar fallo de renovación automática en background;
-      // el cajero recibirá error CLAIM_EXPIRED al confirmar si realmente expira.
+      // Otra pestaña está realizando una operación autoritativa; no se inicia otra renovación.
     }
-  }, [userId, saleId, attempt])
+  }, [persist, saleId, userId])
 
-  // Temporizador para renovación automática del claim antes de expirar
   useEffect(() => {
-    if (renewTimerRef.current) {
+    if (renewTimerRef.current !== null) {
       window.clearTimeout(renewTimerRef.current)
       renewTimerRef.current = null
     }
+    if (!attempt || attempt.status !== 'CLAIMED' || !attempt.claimExpiresAt) return
 
-    if (!attempt || attempt.status !== 'CLAIMED' || !attempt.claimExpiresAt || !userId || !saleId) {
-      return
-    }
-
-    const expiresAtMs = new Date(attempt.claimExpiresAt).getTime()
-    const nowMs = Date.now()
-    // Renovar 1 minuto antes de expirar (o 10 segundos antes si falta poco)
-    const timeToRenew = Math.max(10_000, expiresAtMs - nowMs - 60_000)
-
-    renewTimerRef.current = window.setTimeout(() => {
-      void autoRenewClaim()
-    }, timeToRenew)
-
+    const delay = Math.max(10_000, Date.parse(attempt.claimExpiresAt) - Date.now() - 60_000)
+    renewTimerRef.current = window.setTimeout(() => void renewClaim(), delay)
     return () => {
-      if (renewTimerRef.current) window.clearTimeout(renewTimerRef.current)
+      if (renewTimerRef.current !== null) window.clearTimeout(renewTimerRef.current)
     }
-  }, [attempt, userId, saleId, autoRenewClaim])
+  }, [attempt, renewClaim])
 
-  // Flujo 1: Reclamar venta
-  const claimSale = useCallback(async () => {
-    if (!userId || !saleId || !attempt || actionInProgress) return
-    if (attempt.status !== 'CLAIMING' && attempt.status !== 'EXPIRED' && attempt.status !== 'FAILED') return
+  const releaseClaim = useCallback(async (): Promise<boolean> => {
+    if (!userId || !saleId) return false
+    const controller = beginForegroundAction()
+    if (!controller) return false
 
-    setActionInProgress(true)
     try {
-      const response = await claimSaleForPayment(saleId, null)
-      if (!isMountedRef.current) return
-
-      const updatedAttempt: CashierPaymentAttempt = {
-        ...attempt,
-        status: 'CLAIMED',
-        claimToken: response.claim_token,
-        claimExpiresAt: response.expires_at,
-        errorMsg: null,
-      }
-      setAttempt(updatedAttempt)
-      saveAttemptToStorage(updatedAttempt)
-    } catch (err) {
-      if (!isMountedRef.current) return
-      const code = err instanceof CashierServiceError ? err.code : 'UNKNOWN'
-      const msg = err instanceof Error ? err.message : 'No fue posible reclamar la venta.'
-
-      const nextStatus: CashierPaymentStatus = code === 'CLAIM_UNAVAILABLE' ? 'FAILED' : 'CLAIMING'
-
-      setAttempt((current) => {
-        if (!current) return null
-        const updated = {
-          ...current,
-          status: nextStatus,
-          errorMsg: msg,
-        }
-        saveAttemptToStorage(updated)
-        return updated
+      return await withPaymentAttemptLock(userId, saleId, async () => {
+        const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+        if (!current || current.status !== 'CLAIMED' || !current.claimToken) return false
+        await releaseSalePaymentClaim(saleId, current.claimToken, controller.signal)
+        removePaymentAttempt(window.localStorage, userId, saleId)
+        if (isCurrentIdentity(userId, saleId)) setAttempt(null)
+        return true
       })
+    } catch (error) {
+      const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+      if (current) persist({ ...current, errorMsg: errorMessage(error, 'No fue posible liberar la reserva. La venta continúa seleccionada.') })
+      return false
     } finally {
-      if (isMountedRef.current) setActionInProgress(false)
+      finishForegroundAction(controller)
     }
-  }, [userId, saleId, attempt, actionInProgress])
+  }, [beginForegroundAction, finishForegroundAction, isCurrentIdentity, persist, saleId, userId])
 
-  // Flujo 2: Liberar claim voluntariamente
-  const releaseClaim = useCallback(async () => {
-    if (!userId || !saleId || !attempt || !attempt.claimToken || actionInProgress) return
-    if (attempt.status !== 'CLAIMED') return
+  const confirmPayment = useCallback(async (
+    method: CashierPaymentMethod,
+    amountReceivedCents: number | null,
+    reference: string | null,
+  ): Promise<boolean> => {
+    if (!userId || !saleId) return false
+    const controller = beginForegroundAction()
+    if (!controller) return false
 
-    setActionInProgress(true)
     try {
-      await releaseSalePaymentClaim(saleId, attempt.claimToken)
-      removeAttemptFromStorage(userId, saleId)
-      if (isMountedRef.current) {
-        setAttempt(null)
-      }
-    } catch {
-      // Aún si falla la liberación en red, limpiamos el intento local
-      removeAttemptFromStorage(userId, saleId)
-      if (isMountedRef.current) {
-        setAttempt(null)
-      }
-    } finally {
-      if (isMountedRef.current) setActionInProgress(false)
-    }
-  }, [userId, saleId, attempt, actionInProgress])
+      return await withPaymentAttemptLock(userId, saleId, async () => {
+        const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+        if (!current || current.status !== 'CLAIMED' || !current.claimToken) return false
+        const claimToken = current.claimToken
+        if (!isSamePayload(current, method, amountReceivedCents, reference)) {
+          throw new CashierPaymentStateError('El intento recuperado debe reenviarse con los mismos datos.')
+        }
 
-  // Flujo 3: Confirmar cobro
-  const confirmPayment = useCallback(
-    async (method: CashierPaymentMethod, amountReceivedCents: number | null, reference: string | null) => {
-      if (!userId || !saleId || !attempt || !attempt.claimToken || actionInProgress) return
-      if (attempt.status !== 'CLAIMED' && attempt.status !== 'FAILED') return
-
-      setActionInProgress(true)
-
-      // 1. Persistir intento en LocalStorage en estado CONFIRMING antes de enviar a Supabase
-      const confirmingAttempt: CashierPaymentAttempt = {
-        ...attempt,
-        status: 'CONFIRMING',
-        method,
-        amountReceivedCents,
-        reference,
-        errorMsg: null,
-      }
-      setAttempt(confirmingAttempt)
-      saveAttemptToStorage(confirmingAttempt)
-
-      try {
-        const response = await confirmSalePayment({
-          saleId,
-          claimToken: attempt.claimToken,
-          idempotencyKey: attempt.idempotencyKey,
+        const confirming: CashierPaymentAttempt = {
+          ...current,
+          status: 'CONFIRMING',
           method,
           amountReceivedCents,
           reference,
-        })
-
-        if (!isMountedRef.current) return
-
-        // Mapear respuesta exitosa a CashierPaymentResultResponse
-        const paymentResult: CashierPaymentResultResponse = {
-          schemaVersion: 1,
-          status: 'SUCCEEDED',
-          sale: {
-            id: response.sale.id,
-            folio: response.sale.folio,
-            createdAt: activeSale?.createdAt ?? new Date().toISOString(),
-            totalCents: response.sale.total_cents,
-            createdByLabel: activeSale?.createdByLabel ?? null,
-          },
-          items: [], // En confirm_sale_payment no vienen items de detalle, pero no son necesarios si guardamos en storage
-          payment: {
-            method: response.payment.method,
-            amountReceivedCents: response.payment.amount_received_cents,
-            changeCents: response.payment.change_cents,
-            reference: response.payment.reference,
-            createdAt: response.payment.created_at,
-          },
-          serverTime: new Date().toISOString(),
-        }
-
-        const succeededAttempt: CashierPaymentAttempt = {
-          ...confirmingAttempt,
-          status: 'SUCCEEDED',
-          paymentResult,
-        }
-        setAttempt(succeededAttempt)
-        saveAttemptToStorage(succeededAttempt)
-      } catch (err) {
-        if (!isMountedRef.current) return
-
-        const code = err instanceof CashierServiceError ? err.code : 'UNKNOWN'
-        const msg = err instanceof Error ? err.message : 'No fue posible registrar el pago.'
-
-        // Si ocurre un error de timeout, red o interrupción incierta, pasamos a UNCERTAIN
-        const isUncertain = code === 'TIMEOUT' || code === 'UNKNOWN' || (err instanceof Error && err.name === 'AbortError')
-
-        const nextStatus: CashierPaymentStatus = isUncertain
-          ? 'UNCERTAIN'
-          : code === 'CLAIM_EXPIRED'
-          ? 'EXPIRED'
-          : 'FAILED'
-
-        const nextAttempt: CashierPaymentAttempt = {
-          ...confirmingAttempt,
-          status: nextStatus,
-          errorMsg: msg,
-        }
-        setAttempt(nextAttempt)
-        saveAttemptToStorage(nextAttempt)
-      } finally {
-        if (isMountedRef.current) setActionInProgress(false)
-      }
-    },
-    [userId, saleId, attempt, actionInProgress, activeSale],
-  )
-
-  // Flujo 4: Conciliar / Recuperar cobro incierto
-  const reconcilePayment = useCallback(async () => {
-    if (!userId || !saleId || !attempt || actionInProgress) return
-    if (attempt.status !== 'UNCERTAIN') return
-
-    setActionInProgress(true)
-    try {
-      const response = await getCashierPaymentResult(saleId, attempt.idempotencyKey)
-      if (!isMountedRef.current) return
-
-      if (response.status === 'SUCCEEDED') {
-        const succeededAttempt: CashierPaymentAttempt = {
-          ...attempt,
-          status: 'SUCCEEDED',
-          paymentResult: response,
           errorMsg: null,
         }
-        setAttempt(succeededAttempt)
-        saveAttemptToStorage(succeededAttempt)
-      } else {
-        // NOT_FOUND significa que el intento previo nunca se registró en el servidor.
-        // Regresamos el estado a CLAIMED para que el cajero pueda reintentar de forma segura.
-        const resetAttempt: CashierPaymentAttempt = {
-          ...attempt,
-          status: 'CLAIMED',
-          errorMsg: 'No se encontró registro del cobro anterior. Puedes intentar cobrar nuevamente.',
-        }
-        setAttempt(resetAttempt)
-        saveAttemptToStorage(resetAttempt)
-      }
-    } catch (err) {
-      if (!isMountedRef.current) return
-      const msg = err instanceof Error ? err.message : 'No fue posible conciliar el estado del cobro.'
-      setAttempt((current) => {
-        if (!current) return null
-        return {
-          ...current,
-          errorMsg: msg,
+        persist(confirming)
+
+        try {
+          const confirmation = await confirmSalePayment({
+            saleId,
+            claimToken,
+            idempotencyKey: confirming.idempotencyKey,
+            method,
+            amountReceivedCents,
+            reference,
+          }, controller.signal)
+          if (confirmation.payment.cashier_id !== userId) {
+            throw new CashierPaymentStateError('La confirmación no corresponde al usuario actual.')
+          }
+
+          const canonical = await getCashierPaymentResult(saleId, confirming.idempotencyKey, controller.signal)
+          if (canonical.status !== 'SUCCEEDED') {
+            persist({
+              ...confirming,
+              status: 'UNCERTAIN',
+              errorMsg: 'La confirmación respondió, pero el comprobante canónico todavía no está disponible.',
+            })
+            return false
+          }
+          persist(attachSucceededResult(confirming, canonical))
+          return true
+        } catch (error) {
+          const code = error instanceof CashierServiceError ? error.code : null
+          persist({
+            ...confirming,
+            status: code === 'CLAIM_EXPIRED' ? 'EXPIRED' : 'UNCERTAIN',
+            errorMsg: errorMessage(error, 'El resultado del cobro es incierto y debe conciliarse.'),
+          })
+          return false
         }
       })
+    } catch (error) {
+      const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+      if (current && current.status === 'CLAIMED') persist({ ...current, errorMsg: errorMessage(error, 'No fue posible iniciar la confirmación.') })
+      return false
     } finally {
-      if (isMountedRef.current) setActionInProgress(false)
+      finishForegroundAction(controller)
     }
-  }, [userId, saleId, attempt, actionInProgress])
+  }, [beginForegroundAction, finishForegroundAction, persist, saleId, userId])
 
-  // Resetear intento de pago manual (ej. para limpiar después de un cobro completado)
-  const resetAttempt = useCallback(() => {
-    if (!userId || !saleId) return
-    removeAttemptFromStorage(userId, saleId)
-    setAttempt({
-      version: 1,
-      userId,
-      saleId,
-      idempotencyKey: generateUuid(),
-      status: 'CLAIMING',
-      claimToken: null,
-      claimExpiresAt: null,
-      method: null,
-      amountReceivedCents: null,
-      reference: null,
-      errorMsg: null,
-      paymentResult: null,
-    })
-  }, [userId, saleId])
+  const reconcilePayment = useCallback(async (): Promise<boolean> => {
+    if (!userId || !saleId) return false
+    const controller = beginForegroundAction()
+    if (!controller) return false
+
+    try {
+      return await withPaymentAttemptLock(userId, saleId, async () => {
+        const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+        if (!current || !['CONFIRMING', 'UNCERTAIN'].includes(current.status)) return false
+        const response = await getCashierPaymentResult(saleId, current.idempotencyKey, controller.signal)
+        if (response.status === 'SUCCEEDED') {
+          persist(attachSucceededResult(current, response))
+          return true
+        }
+
+        if (!current.claimToken) {
+          persist({ ...current, status: 'UNCERTAIN', errorMsg: 'No existe un claim verificable para reintentar este cobro.' })
+          return false
+        }
+
+        try {
+          const renewed = await claimSaleForPayment(saleId, current.claimToken, controller.signal)
+          if (renewed.cashier_id !== userId) {
+            throw new CashierPaymentStateError('La revalidación no corresponde al usuario actual.')
+          }
+          persist({
+            ...current,
+            status: 'CLAIMED',
+            claimExpiresAt: renewed.expires_at,
+            errorMsg: 'No se encontró el pago y el claim fue revalidado. Revisa y reenvía exactamente el mismo intento.',
+          })
+        } catch (claimError) {
+          const claimCode = claimError instanceof CashierServiceError ? claimError.code : null
+          const unavailable = ['SALE_STATUS_INVALID', 'SALE_UNAVAILABLE', 'CLAIM_NOT_OWNED', 'CLAIM_UNAVAILABLE', 'CLAIM_EXPIRED'].includes(claimCode ?? '')
+          persist({
+            ...current,
+            status: unavailable ? 'UNAVAILABLE' : 'UNCERTAIN',
+            errorMsg: `No se encontró el pago y tampoco fue posible validar el claim: ${errorMessage(claimError, 'estado desconocido')}`,
+          })
+        }
+        return false
+      })
+    } catch (error) {
+      const current = loadPaymentAttempt(window.localStorage, userId, saleId)
+      if (current) persist({ ...current, status: 'UNCERTAIN', errorMsg: errorMessage(error, 'No fue posible conciliar el cobro.') })
+      return false
+    } finally {
+      finishForegroundAction(controller)
+    }
+  }, [beginForegroundAction, finishForegroundAction, persist, saleId, userId])
+
+  const dismissSucceededAttempt = useCallback((): boolean => {
+    if (!userId || !saleId || attempt?.status !== 'SUCCEEDED') return false
+    removePaymentAttempt(window.localStorage, userId, saleId)
+    setAttempt(null)
+    return true
+  }, [attempt?.status, saleId, userId])
 
   return {
     attempt,
@@ -392,6 +362,6 @@ export function useCashierPaymentAttempt(userId: string | null, activeSale: Cash
     releaseClaim,
     confirmPayment,
     reconcilePayment,
-    resetAttempt,
+    dismissSucceededAttempt,
   }
 }

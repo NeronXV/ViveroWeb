@@ -187,7 +187,14 @@ export async function claimSaleForPayment(
     }
 
     try {
-      return parseCashierClaimResponse(data)
+      const response = parseCashierClaimResponse(data)
+      if (response.sale_id !== saleId) {
+        throw new Error('La respuesta no corresponde a la venta reclamada.')
+      }
+      if (claimToken !== null && (response.claim_token !== claimToken || !response.renewed)) {
+        throw new Error('La renovación no conservó el claim esperado.')
+      }
+      return response
     } catch (parseError) {
       throw new CashierServiceError(
         parseError instanceof Error ? parseError.message : 'La respuesta del backend es incompatible.',
@@ -242,7 +249,11 @@ export async function releaseSalePaymentClaim(
     }
 
     try {
-      return parseCashierReleaseClaimResponse(data)
+      const response = parseCashierReleaseClaimResponse(data)
+      if (response.sale_id !== saleId || response.claim_token !== claimToken) {
+        throw new Error('La respuesta no corresponde al claim liberado.')
+      }
+      return response
     } catch (parseError) {
       throw new CashierServiceError(
         parseError instanceof Error ? parseError.message : 'La respuesta del backend es incompatible.',
@@ -286,8 +297,8 @@ export async function confirmSalePayment(
       p_claim_token: params.claimToken,
       p_idempotency_key: params.idempotencyKey,
       p_method: params.method,
-      p_amount_received_cents: params.amountReceivedCents || null,
-      p_reference: params.reference || null,
+      p_amount_received_cents: params.amountReceivedCents ?? null,
+      p_reference: params.reference ?? null,
     }
 
     const { data, error } = await client
@@ -342,7 +353,21 @@ export async function confirmSalePayment(
     }
 
     try {
-      return parseCashierConfirmResponse(data)
+      const response = parseCashierConfirmResponse(data)
+      const normalizedReference = params.reference?.trim() || null
+      if (
+        response.sale.id !== params.saleId
+        || response.payment.sale_id !== params.saleId
+        || response.payment.idempotency_key !== params.idempotencyKey
+        || response.payment.method !== params.method
+        || response.payment.reference !== normalizedReference
+      ) {
+        throw new Error('La confirmación no corresponde al intento enviado.')
+      }
+      if (params.method === 'CASH' && response.payment.amount_received_cents !== params.amountReceivedCents) {
+        throw new Error('El efectivo confirmado no corresponde al intento enviado.')
+      }
+      return response
     } catch (parseError) {
       throw new CashierServiceError(
         parseError instanceof Error ? parseError.message : 'La respuesta de confirmación del backend es incompatible.',
