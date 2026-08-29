@@ -5,8 +5,9 @@ Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El c
 ## Checkpoint del MVP
 
 - Caja Web está congelada funcionalmente en `c99fd10882f42639904c8d1d67a9722274f543c1` y consume el contrato backend local `79681695ad493718b4f11195d421de3719343555`.
-- Pasan 93 pruebas unitarias, lint, build y las 58 comprobaciones estáticas de migraciones.
-- Permanecen pendientes la aplicación actual de las once migraciones desde cero, la suite pgTAP actual y los veinte escenarios integrales de Caja contra Supabase local.
+- Administración esencial incorpora directorios reales de sucursales y personal sobre el contrato backend local `7a598aa`.
+- Pasan 99 pruebas unitarias, lint, build y las 65 comprobaciones estáticas de migraciones.
+- Permanecen pendientes la aplicación actual de las doce migraciones desde cero, las 251 aserciones pgTAP actuales y los escenarios integrales contra Supabase local.
 - Caja no se considera desplegable mientras esas validaciones permanezcan pendientes. No se ha realizado push, despliegue ni validación sobre staging o producción.
 
 El orden restante, los gates y la propuesta para el siguiente módulo se mantienen en [MVP_ROADMAP.md](MVP_ROADMAP.md).
@@ -53,13 +54,13 @@ Inicia el proyecto local desde el repositorio backend correspondiente y usa su U
 - `/catalogo`: catálogo público con búsqueda, categorías y paginación.
 - `/login`: inicio de sesión y consulta del contexto de acceso real.
 - `/caja`: Caja real protegida por sesión, capacidad y sucursal activa.
-- `/admin`: Administración demostrativa protegida por capacidades.
+- `/admin`: Administración mixta protegida por capacidades; sucursales y personal son reales, mientras los demás módulos siguen identificados como demo.
 
 ## Estado y autoridad de acceso
 
 - El catálogo público consulta `get_public_catalog` V2 sin requerir sesión, valida estrictamente su respuesta y resuelve sus imágenes desde el bucket público `catalog-images` mediante el cliente Supabase.
 - Caja consume los RPC autoritativos de bandeja, detalle, claims, confirmación y recuperación de pagos. Conserva localmente solo el intento técnico versionado necesario para idempotencia y recuperación; no almacena datos de tarjeta ni sustituye las validaciones del backend.
-- Administración utiliza datos locales de demostración y protege cada módulo por capacidad.
+- Administración consulta directorios reales de sucursales y personal mediante RPC V1 estrictamente validados. Productos, inventario, promociones, ventas y reportes conservan datos demo explícitos.
 - La sesión y el contexto de acceso provienen de Supabase mediante `get_my_access_context()`.
 
 Los guards del cliente mejoran la navegación y evitan mostrar módulos no autorizados, pero no sustituyen la seguridad del backend. La autoridad final corresponde a RLS, permisos SQL y RPC definidas en el repositorio backend.

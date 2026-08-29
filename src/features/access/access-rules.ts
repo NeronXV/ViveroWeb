@@ -20,7 +20,7 @@ export const ADMIN_ENTRY_CAPABILITIES = [
   'MANAGE_SETTINGS',
 ] as const
 
-export type AdminModuleId = 'editorial' | 'inventario' | 'stock' | 'promociones' | 'ventas' | 'pedidos' | 'personal'
+export type AdminModuleId = 'editorial' | 'sucursales' | 'inventario' | 'stock' | 'promociones' | 'ventas' | 'pedidos' | 'personal'
 
 export interface AdminModuleRule {
   id: AdminModuleId
@@ -31,6 +31,7 @@ export interface AdminModuleRule {
 
 export const ADMIN_MODULE_RULES: readonly AdminModuleRule[] = [
   { id: 'editorial', label: '📝 Editorial', anyCapability: [], pendingBackendPermission: true },
+  { id: 'sucursales', label: '🏬 Sucursales', anyCapability: ['MANAGE_BRANCHES', 'MANAGE_USERS'] },
   { id: 'inventario', label: '📦 Productos', anyCapability: ['MANAGE_PRODUCTS'] },
   { id: 'stock', label: '📈 Inventario', anyCapability: ['MANAGE_INVENTORY'] },
   { id: 'promociones', label: '🏷 Promociones', anyCapability: ['MANAGE_DISCOUNTS'] },

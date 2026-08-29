@@ -7,7 +7,7 @@
 | Catálogo público | Integración real local | `get_public_catalog` V2 y pruebas Web existentes |
 | Sesión y acceso | Integración real local | `get_my_access_context()` y guards por capacidad |
 | Caja Web | Código auditado y congelado | Web `c99fd10882f42639904c8d1d67a9722274f543c1`; backend `79681695ad493718b4f11195d421de3719343555` |
-| Administración | Demostrativa | No iniciar integración real hasta cerrar el gate de base de datos y aprobar un contrato de presentación |
+| Administración | Parcial real | Directorios de sucursales y personal integrados; mutaciones y módulos restantes pendientes |
 | Despliegue | No autorizado | Sin push, staging ni producción |
 
 La infraestructura local basada en Docker Desktop, WSL y Supabase CLI queda fuera de investigación hasta nueva indicación. Esto no convierte las validaciones omitidas en aprobadas.
@@ -16,24 +16,24 @@ La infraestructura local basada en Docker Desktop, WSL y Supabase CLI queda fuer
 
 Antes de considerar Caja desplegable deben ejecutarse en un entorno local seguro y funcional:
 
-1. Las once migraciones desde una base vacía.
-2. La suite pgTAP completa actual. El resultado histórico 215/215 no sustituye una ejecución actual.
+1. Las doce migraciones desde una base vacía.
+2. Las 251 aserciones pgTAP actuales. El resultado histórico 215/215 no sustituye una ejecución actual.
 3. Los veinte escenarios integrales documentados: autorización, bandeja, detalle, competición y renovación de claims, liberación, pagos, doble pulsación, incertidumbre, recuperación, recarga, cambio de usuario, expiración, venta pagada, terminalidad, paginación y contrato incompatible.
 
 ## Inspección de solo lectura del siguiente módulo
 
-La siguiente fase de mayor valor es Administración de sucursales y personal. El backend autoritativo ya contiene:
+La fase actual es Administración de sucursales y personal. El backend autoritativo contiene:
 
 - `create_branch(text, text)`, `update_branch(uuid, text, text)` y `set_branch_active(uuid, boolean)`, protegidos por `MANAGE_BRANCHES`;
 - `assign_user_branch(uuid, uuid)`, protegido por `MANAGE_USERS`;
 - `assign_user_role(uuid, text)`, protegido por `ASSIGN_ROLES` y por la jerarquía `ADMIN`/`OWNER`;
 - lectura RLS de `branches`, `profiles`, `user_roles` y `roles` para usuarios autorizados.
 
-Estos contratos de mutación no bastan para fijar una interfaz Web estable: retornan filas o `void`, sus errores son SQLSTATE y las pantallas necesitarían componer varias tablas mediante PostgREST. No existe una respuesta JSON versionada, paginada y mínima para los listados administrativos. Implementar la interfaz ahora acoplaría el cliente al esquema físico y no podría validarse integralmente bajo el gate vigente.
+La migración local `202608280002_admin_web_contract.sql` añadió las proyecciones JSON V1 `get_admin_branches` y `get_admin_staff`. Web ya consume ambas para los directorios de solo lectura sin acoplarse a tablas ni exponer datos de autenticación. Su ejecución real y la integración de mutaciones permanecen pendientes.
 
-## Propuesta contractual previa a Administración real
+## Contrato local de Administración
 
-Crear una migración posterior, sin modificar las once existentes, con dos funciones `security definer`, `set search_path = ''`, propiedad de `postgres`, ejecución revocada a `PUBLIC` y `anon`, y concedida solo a `authenticated`:
+La migración 12 define dos funciones `security definer`, `set search_path = ''`, propiedad de `postgres`, ejecución revocada a `PUBLIC`, `anon` y `service_role`, y concedida solo a `authenticated`:
 
 ### `get_admin_branches(integer, text, uuid, boolean)`
 
@@ -61,8 +61,11 @@ Respuesta `jsonb`:
     "pendingSaleCount": 2,
     "updatedAt": "timestamptz"
   }],
-  "nextCursor": { "code": "CENTRO", "id": "uuid" },
-  "hasMore": false,
+  "page": {
+    "limit": 50,
+    "nextCursor": { "code": "CENTRO", "id": "uuid" },
+    "hasMore": true
+  },
   "serverTime": "timestamptz"
 }
 ```
@@ -96,8 +99,11 @@ Respuesta `jsonb`:
     "role": { "name": "CASHIER", "displayName": "Cajero" },
     "updatedAt": "timestamptz"
   }],
-  "nextCursor": { "fullName": "Nombre mostrado", "id": "uuid" },
-  "hasMore": false,
+  "page": {
+    "limit": 50,
+    "nextCursor": { "fullName": "Nombre mostrado", "id": "uuid" },
+    "hasMore": true
+  },
   "serverTime": "timestamptz"
 }
 ```
@@ -118,4 +124,4 @@ Errores estables: `ADMIN_UNAUTHORIZED`, `ADMIN_STAFF_QUERY_INVALID`.
 - conteos de personal y ventas pendientes coherentes;
 - `schemaVersion` y estructura JSON exactos.
 
-Hasta que esta migración y sus pruebas puedan ejecutarse, Administración continúa explícitamente como demostración y no se inicia su integración real.
+Hasta que la migración y sus pruebas puedan ejecutarse, los directorios se consideran integración local no desplegable. La siguiente fase habilitará de forma separada las mutaciones existentes de sucursales, asignación de sucursal y roles; los demás módulos continúan explícitamente como demostración.

@@ -3,13 +3,15 @@ import { Link, useSearchParams } from 'react-router-dom'
 
 import { useDemoStore } from '../../app/providers/DemoStore'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
-import { DemoBanner } from '../../components/feedback/DemoBanner'
 import type { PlantCategory } from '../../types/domain'
 import { AccessDenied } from '../access/AccessDenied'
 import { hasCapability } from '../access/access-helpers'
 import { ADMIN_MODULE_RULES, getAuthorizedAdminModules, type AdminModuleId } from '../access/access-rules'
 import type { UserAccessContext } from '../access/access-types'
 import { useAuth } from '../auth/useAuth'
+import { BranchDirectory, StaffDirectory } from './AdminDirectories'
+import { useAdminReports } from './useAdminReports'
+import { useAdminBranches } from './useAdminDirectories'
 
 export function AdminPage() {
   const { accessContext, refreshAccessContext } = useAuth()
@@ -27,17 +29,35 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const requestedTab = searchParams.get('tab') as AdminModuleId | null
   const firstAuthorizedTab = authorizedTabs[0]
   const [tab, setTab] = useState<AdminModuleId>(() => requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab)
-  const { plants, orders, staff, addPlant, setDiscount, restock, toggleStaff } = useDemoStore()
+  const { plants, orders, addPlant, setDiscount, restock } = useDemoStore()
   const [notice, setNotice] = useState('')
+  
   const canManagePrices = hasCapability(context, 'MANAGE_PRICES')
-  const canViewBranchSales = hasCapability(context, 'VIEW_BRANCH_SALES')
   const canViewAllSales = hasCapability(context, 'VIEW_ALL_SALES')
   const canViewReports = hasCapability(context, 'VIEW_REPORTS')
-  const canManageUsers = hasCapability(context, 'MANAGE_USERS')
   const canAssignRoles = hasCapability(context, 'ASSIGN_ROLES')
-  const revenue = orders.reduce((sum, order) => sum + order.total, 0)
+  
   const headingRef = useHeadingFocus<HTMLHeadingElement>(context.userId)
   useDocumentTitle('Administración')
+
+  // Cargar sucursales si tiene permisos globales para filtrar
+  const branchesDir = useAdminBranches(canViewAllSales)
+
+  // Hook de reportes reales de Supabase
+  const {
+    dailySales,
+    topProducts,
+    isLoading: isReportsLoading,
+    isError: isReportsError,
+    errorMsg: reportsErrorMsg,
+    startDate,
+    endDate,
+    selectedBranchId,
+    setStartDate,
+    setEndDate,
+    setSelectedBranchId,
+    refresh: refreshReports,
+  } = useAdminReports(context.branch?.id ?? null)
 
   useEffect(() => {
     const nextTab = requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : authorizedTabs[0]
@@ -85,18 +105,297 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
     requestAnimationFrame(() => document.getElementById(`admin-tab-${nextTab}`)?.focus())
   }
 
-  return <main className="internal-page"><div className="dashboard-panel open embedded"><div className="dashboard-header"><div><h2 ref={headingRef} tabIndex={-1}>Panel Vivero Dulcinea</h2><DemoBanner compact /></div><div className="dashboard-header-actions"><span className="role-badge-db admin">Demo</span><button type="button" className="logout-btn" onClick={onRefreshAccess}>Actualizar acceso</button><Link className="logout-btn" to="/login">Sesión y acceso</Link></div></div><div className="dashboard-body"><aside className="dashboard-sidebar"><nav aria-label="Módulos administrativos"><ul role="tablist" aria-orientation="vertical">{ADMIN_MODULE_RULES.map((item) => {
-    const authorized = authorizedTabs.includes(item.id)
-    const explanation = item.pendingBackendPermission ? 'Pendiente de permiso backend' : 'No disponible con tus capacidades actuales'
-    return <li key={item.id} role="presentation"><button id={`admin-tab-${item.id}`} type="button" role="tab" className={`db-nav-item ${tab === item.id ? 'active' : ''}`} onClick={() => selectTab(item.id)} onKeyDown={(event) => navigateTabs(event, item.id)} disabled={!authorized} aria-disabled={!authorized} aria-selected={authorized && tab === item.id} aria-controls={authorized ? `admin-panel-${item.id}` : undefined} tabIndex={authorized && tab === item.id ? 0 : -1} title={!authorized ? explanation : undefined}>{item.label}{!authorized && <span className="module-lock-reason">{explanation}</span>}</button></li>
-  })}</ul></nav></aside><section className="dashboard-content"><p className="form-notice" aria-live="polite">{notice}</p><div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} tabIndex={0}>
-    {tab === 'inventario' && authorizedTabs.includes('inventario') && <section className="db-tab-content active"><h3>Agregar producto</h3><p className="demo-copy">Todos los cambios de este módulo permanecen en datos demostrativos locales.</p><form className="dashboard-form" onSubmit={createPlant}><div className="form-row"><div className="form-group"><label htmlFor="plant-name">Nombre</label><input id="plant-name" name="name" required /></div><div className="form-group"><label htmlFor="plant-category">Categoría</label><select id="plant-category" name="category"><option value="interior">Interior</option><option value="exterior">Exterior</option><option value="suculentas">Suculentas</option></select></div></div><div className="form-row"><div className="form-group"><label htmlFor="plant-price">Precio</label><input id="plant-price" name="price" type="number" min="0.1" step="0.01" disabled={!canManagePrices} required /></div><div className="form-group"><label htmlFor="plant-stock">Existencias</label><input id="plant-stock" name="stock" type="number" min="0" required /></div></div>{!canManagePrices && <p className="module-permission-note">La edición de precios está deshabilitada porque requiere MANAGE_PRICES.</p>}<div className="form-group"><label htmlFor="plant-description">Descripción</label><textarea id="plant-description" name="description" required /></div><button className="submit-db-btn" disabled={!canManagePrices}>Agregar producto demo</button></form></section>}
-    {tab === 'stock' && authorizedTabs.includes('stock') && <section className="db-tab-content active"><h3>Control de inventario</h3><p className="demo-copy">Inventario exclusivamente demostrativo.</p><div className="db-stock-grid">{plants.map((plant) => <article key={plant.id} className={`stock-card ${plant.stock <= 1 ? 'critical' : plant.stock <= 4 ? 'low' : 'adequate'}`}><div className="stock-card-image-container"><img src={plant.image} alt={plant.name} className="stock-card-img-large" /><span className="stock-badge-floating">{plant.stock <= 1 ? '🔴 Crítico' : plant.stock <= 4 ? '🟡 Bajo' : '🟢 Adecuado'}</span></div><div className="stock-card-body"><h4>{plant.name}</h4><p>{plant.stock} unidades · Datos de demostración</p><div className="stock-action-group"><button className="stock-btn" onClick={() => restock(plant.id, 5)}>+5 u.</button><button className="stock-btn" onClick={() => restock(plant.id, 10)}>+10 u.</button></div></div></article>)}</div></section>}
-    {tab === 'promociones' && authorizedTabs.includes('promociones') && <section className="db-tab-content active"><h3>Promociones</h3><p className="demo-copy">Promociones exclusivamente demostrativas.</p><form className="dashboard-form" onSubmit={savePromotion}><div className="form-row"><div className="form-group"><label htmlFor="promo-plant">Producto</label><select id="promo-plant" name="plantId">{plants.map((plant) => <option value={plant.id} key={plant.id}>{plant.name}</option>)}</select></div><div className="form-group"><label htmlFor="promo-discount">Descuento (%)</label><input id="promo-discount" name="discount" type="number" min="0" max="90" required /></div></div><button className="submit-db-btn">Aplicar promoción demo</button></form><DataTable headings={['Producto', 'Precio', 'Descuento']} rows={plants.filter(({ discount }) => discount > 0).map((plant) => [plant.name, `$${plant.price.toFixed(2)}`, `${plant.discount}%`])} /></section>}
-    {tab === 'ventas' && authorizedTabs.includes('ventas') && <section className="db-tab-content active"><h3>Ventas y reportes</h3><DemoBanner compact />{(canViewBranchSales || canViewAllSales) && <div><h4>{canViewAllSales ? 'Ventas globales demo' : 'Ventas de sucursal demo'}</h4><DataTable headings={['Pedido', 'Fecha', 'Total', 'Estado']} rows={orders.map((order) => [order.id, order.createdAt, `$${order.total.toFixed(2)}`, order.status])} /></div>}{canViewReports && <div><h4>Métricas demostrativas</h4><div className="stats-grid"><Stat label="Ingresos demo" value={`$${revenue.toFixed(2)}`} /><Stat label="Pedidos demo" value={String(orders.length)} /><Stat label="Ticket promedio demo" value={`$${orders.length ? (revenue / orders.length).toFixed(2) : '0.00'}`} /></div></div>}</section>}
-    {tab === 'pedidos' && authorizedTabs.includes('pedidos') && <section className="db-tab-content active"><h3>Pedidos</h3><p className="demo-copy">Datos de demostración guardados localmente.</p><DataTable headings={['Pedido', 'Fecha', 'Artículos', 'Total', 'Estado']} rows={orders.map((order) => [order.id, order.createdAt, order.items.map((item) => `${item.name} ×${item.quantity}`).join(', '), `$${order.total.toFixed(2)}`, order.status])} /></section>}
-    {tab === 'personal' && authorizedTabs.includes('personal') && <section className="db-tab-content active"><h3>Personal y roles</h3>{canManageUsers && <div><p className="demo-copy">Personal exclusivamente demostrativo.</p><div className="table-responsive"><table className="db-table"><thead><tr><th>Nombre</th><th>Especialidad</th><th>Turno</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{staff.map((member) => <tr key={member.id}><td>{member.name}</td><td>{member.specialty}</td><td>{member.shift}</td><td>{member.active ? 'Activo (demo)' : 'Inactivo (demo)'}</td><td><button className="staff-action-btn" onClick={() => toggleStaff(member.id)}>Alternar turno</button></td></tr>)}</tbody></table></div></div>}{canAssignRoles && <section className="role-assignment-placeholder"><h4>Asignación de roles</h4><p className="demo-copy">Capacidad reconocida. La edición continúa deshabilitada hasta una fase backend posterior.</p></section>}</section>}
-  </div></section></div></div></main>
+  // Cálculos acumulativos reales en centavos para el Stats-Grid de Ventas
+  const totalRevenueReal = dailySales.reduce((sum, item) => sum + item.revenueCents, 0) / 100
+  const totalSalesCountReal = dailySales.reduce((sum, item) => sum + item.salesCount, 0)
+  const averageTicketReal = totalSalesCountReal > 0 ? totalRevenueReal / totalSalesCountReal : 0
+  const totalDiscountsReal = dailySales.reduce((sum, item) => sum + item.discountCents, 0) / 100
+
+  return (
+    <main className="internal-page">
+      <div className="dashboard-panel open embedded">
+        <div className="dashboard-header">
+          <div>
+            <h2 ref={headingRef} tabIndex={-1}>Panel Vivero Dulcinea</h2>
+            <p className="demo-copy">Módulos reales y demostrativos claramente identificados.</p>
+          </div>
+          <div className="dashboard-header-actions">
+            <span className="role-badge-db admin">Mixto</span>
+            <button type="button" className="logout-btn" onClick={onRefreshAccess}>Actualizar acceso</button>
+            <Link className="logout-btn" to="/login">Sesión y acceso</Link>
+          </div>
+        </div>
+
+        <div className="dashboard-body">
+          <aside className="dashboard-sidebar">
+            <nav aria-label="Módulos administrativos">
+              <ul role="tablist" aria-orientation="vertical">
+                {ADMIN_MODULE_RULES.map((item) => {
+                  const authorized = authorizedTabs.includes(item.id)
+                  const explanation = item.pendingBackendPermission ? 'Pendiente de permiso backend' : 'No disponible con tus capacidades actuales'
+                  return (
+                    <li key={item.id} role="presentation">
+                      <button
+                        id={`admin-tab-${item.id}`}
+                        type="button"
+                        role="tab"
+                        className={`db-nav-item ${tab === item.id ? 'active' : ''}`}
+                        onClick={() => selectTab(item.id)}
+                        onKeyDown={(event) => navigateTabs(event, item.id)}
+                        disabled={!authorized}
+                        aria-disabled={!authorized}
+                        aria-selected={authorized && tab === item.id}
+                        aria-controls={authorized ? `admin-panel-${item.id}` : undefined}
+                        tabIndex={authorized && tab === item.id ? 0 : -1}
+                        title={!authorized ? explanation : undefined}
+                      >
+                        {item.label}
+                        {!authorized && <span className="module-lock-reason">{explanation}</span>}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </nav>
+          </aside>
+
+          <section className="dashboard-content">
+            {notice && <p className="form-notice" aria-live="polite">{notice}</p>}
+            <div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} tabIndex={0}>
+              
+              {tab === 'sucursales' && authorizedTabs.includes('sucursales') && <BranchDirectory active />}
+              
+              {tab === 'inventario' && authorizedTabs.includes('inventario') && (
+                <section className="db-tab-content active">
+                  <h3>Agregar producto</h3>
+                  <p className="demo-copy">Todos los cambios de este módulo permanecen en datos demostrativos locales.</p>
+                  <form className="dashboard-form" onSubmit={createPlant}>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label htmlFor="plant-name">Nombre</label>
+                        <input id="plant-name" name="name" required />
+                      </div>
+                      <div className="form-group">
+                        <label htmlFor="plant-category">Categoría</label>
+                        <select id="plant-category" name="category">
+                          <option value="interior">Interior</option>
+                          <option value="exterior">Exterior</option>
+                          <option value="suculentas">Suculentas</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label htmlFor="plant-price">Precio</label>
+                        <input id="plant-price" name="price" type="number" min="0.1" step="0.01" disabled={!canManagePrices} required />
+                      </div>
+                      <div className="form-group">
+                        <label htmlFor="plant-stock">Existencias</label>
+                        <input id="plant-stock" name="stock" type="number" min="0" required />
+                      </div>
+                    </div>
+                    {!canManagePrices && <p className="module-permission-note">La edición de precios está deshabilitada porque requiere MANAGE_PRICES.</p>}
+                    <div className="form-group">
+                      <label htmlFor="plant-description">Descripción</label>
+                      <textarea id="plant-description" name="description" required />
+                    </div>
+                    <button className="submit-db-btn" disabled={!canManagePrices}>Agregar producto demo</button>
+                  </form>
+                </section>
+              )}
+
+              {tab === 'stock' && authorizedTabs.includes('stock') && (
+                <section className="db-tab-content active">
+                  <h3>Control de inventario</h3>
+                  <p className="demo-copy">Inventario exclusivamente demostrativo.</p>
+                  <div className="db-stock-grid">
+                    {plants.map((plant) => (
+                      <article key={plant.id} className={`stock-card ${plant.stock <= 1 ? 'critical' : plant.stock <= 4 ? 'low' : 'adequate'}`}>
+                        <div className="stock-card-image-container">
+                          <img src={plant.image} alt={plant.name} className="stock-card-img-large" />
+                          <span className="stock-badge-floating">{plant.stock <= 1 ? '🔴 Crítico' : plant.stock <= 4 ? '🟡 Bajo' : '🟢 Adecuado'}</span>
+                        </div>
+                        <div className="stock-card-body">
+                          <h4>{plant.name}</h4>
+                          <p>{plant.stock} unidades · Datos de demostración</p>
+                          <div className="stock-action-group">
+                            <button className="stock-btn" onClick={() => restock(plant.id, 5)}>+5 u.</button>
+                            <button className="stock-btn" onClick={() => restock(plant.id, 10)}>+10 u.</button>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {tab === 'promociones' && authorizedTabs.includes('promociones') && (
+                <section className="db-tab-content active">
+                  <h3>Promociones</h3>
+                  <p className="demo-copy">Promociones exclusivamente demostrativas.</p>
+                  <form className="dashboard-form" onSubmit={savePromotion}>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label htmlFor="promo-plant">Producto</label>
+                        <select id="promo-plant" name="plantId">
+                          {plants.map((plant) => <option value={plant.id} key={plant.id}>{plant.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label htmlFor="promo-discount">Descuento (%)</label>
+                        <input id="promo-discount" name="discount" type="number" min="0" max="90" required />
+                      </div>
+                    </div>
+                    <button className="submit-db-btn">Aplicar promoción demo</button>
+                  </form>
+                  <DataTable headings={['Producto', 'Precio', 'Descuento']} rows={plants.filter(({ discount }) => discount > 0).map((plant) => [plant.name, `$${plant.price.toFixed(2)}`, `${plant.discount}%`])} />
+                </section>
+              )}
+
+              {tab === 'ventas' && authorizedTabs.includes('ventas') && (
+                <section className="db-tab-content active">
+                  <div className="section-header-row">
+                    <h3>Ventas y Reportes Reales</h3>
+                    <button type="button" className="refresh-btn-secondary" onClick={refreshReports} disabled={isReportsLoading}>
+                      {isReportsLoading ? 'Cargando...' : '↻ Actualizar'}
+                    </button>
+                  </div>
+
+                  {/* Panel de Controles y Filtros */}
+                  <div className="dashboard-filters-card">
+                    <div className="filters-grid">
+                      <div className="form-group">
+                        <label htmlFor="filter-start-date">Fecha Inicio</label>
+                        <input
+                          id="filter-start-date"
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          disabled={isReportsLoading}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label htmlFor="filter-end-date">Fecha Fin</label>
+                        <input
+                          id="filter-end-date"
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          disabled={isReportsLoading}
+                        />
+                      </div>
+                      {canViewAllSales && (
+                        <div className="form-group">
+                          <label htmlFor="filter-branch-select">Sucursal</label>
+                          <select
+                            id="filter-branch-select"
+                            value={selectedBranchId || ''}
+                            onChange={(e) => setSelectedBranchId(e.target.value || null)}
+                            disabled={isReportsLoading || branchesDir.status === 'loading'}
+                          >
+                            <option value="">Todas las Sucursales</option>
+                            {branchesDir.items.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name} ({b.code})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Estado de Carga y Errores */}
+                  {isReportsLoading && dailySales.length === 0 && (
+                    <div className="cashier-status-container" role="status">
+                      <div className="loading-spinner" />
+                      <p>Generando reportes a partir de transacciones de Supabase...</p>
+                    </div>
+                  )}
+
+                  {isReportsError && (
+                    <div className="cashier-status-container error" role="alert">
+                      <p className="error-copy">{reportsErrorMsg}</p>
+                      <button type="button" className="retry-btn-primary" onClick={refreshReports}>
+                        Reintentar cargar reportes
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Renderizar Métricas y Tablas Reales */}
+                  {!isReportsError && (!isReportsLoading || dailySales.length > 0) && (
+                    <div className="reports-real-content">
+                      {/* Stats Grid de Métricas Consolidadas */}
+                      {canViewReports ? (
+                        <div className="stats-grid">
+                          <Stat label="Ingresos" value={`$${totalRevenueReal.toFixed(2)} MXN`} />
+                          <Stat label="Descuentos Otorgados" value={`$${totalDiscountsReal.toFixed(2)} MXN`} />
+                          <Stat label="Transacciones" value={String(totalSalesCountReal)} />
+                          <Stat label="Ticket Promedio" value={`$${averageTicketReal.toFixed(2)} MXN`} />
+                        </div>
+                      ) : (
+                        <p className="module-permission-note">No tienes el permiso VIEW_REPORTS para visualizar las métricas de ingresos.</p>
+                      )}
+
+                      {/* Tablas de Reportes */}
+                      <div className="reports-tables-layout">
+                        {/* Tabla 1: Reporte Diario de Ventas */}
+                        <div className="report-table-section">
+                          <h4>Historial Diario de Ventas (PAID)</h4>
+                          <DataTable
+                            headings={['Fecha', 'Sucursal', 'Ventas', 'Descuentos', 'Ingresos']}
+                            rows={dailySales.map((item) => {
+                              const dateStr = new Date(item.day).toLocaleDateString('es-MX', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                timeZone: 'UTC',
+                              })
+                              return [
+                                dateStr,
+                                item.branchName,
+                                String(item.salesCount),
+                                `$${(item.discountCents / 100).toFixed(2)}`,
+                                `$${(item.revenueCents / 100).toFixed(2)}`,
+                              ]
+                            })}
+                          />
+                        </div>
+
+                        {/* Tabla 2: Productos Más Vendidos */}
+                        <div className="report-table-section">
+                          <h4>Top 10 Productos Más Vendidos</h4>
+                          <DataTable
+                            headings={['Código', 'Producto', 'Cantidad Vendida', 'Ingreso Total']}
+                            rows={topProducts.map((p) => [
+                              p.productCode,
+                              p.productName,
+                              String(p.totalQuantity),
+                              `$${(p.totalRevenueCents / 100).toFixed(2)}`,
+                            ])}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {tab === 'pedidos' && authorizedTabs.includes('pedidos') && (
+                <section className="db-tab-content active">
+                  <h3>Pedidos</h3>
+                  <p className="demo-copy">Datos de demostración guardados localmente.</p>
+                  <DataTable headings={['Pedido', 'Fecha', 'Artículos', 'Total', 'Estado']} rows={orders.map((order) => [order.id, order.createdAt, order.items.map((item) => `${item.name} ×${item.quantity}`).join(', '), `$${order.total.toFixed(2)}`, order.status])} />
+                </section>
+              )}
+
+              {tab === 'personal' && authorizedTabs.includes('personal') && <StaffDirectory active canAssignRoles={canAssignRoles} />}
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  )
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -104,5 +403,5 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function DataTable({ headings, rows }: { headings: string[]; rows: string[][] }) {
-  return <div className="table-responsive"><table className="db-table"><thead><tr>{headings.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, rowIndex) => <tr key={`${row[0]}-${rowIndex}`}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`}>{cell}</td>)}</tr>) : <tr><td colSpan={headings.length}>Sin datos de demostración todavía.</td></tr>}</tbody></table></div>
+  return <div className="table-responsive"><table className="db-table"><thead><tr>{headings.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, rowIndex) => <tr key={`${row[0]}-${rowIndex}`}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`}>{cell}</td>)}</tr>) : <tr><td colSpan={headings.length}>Sin información registrada para este período.</td></tr>}</tbody></table></div>
 }
