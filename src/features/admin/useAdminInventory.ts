@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AdminServiceError, fetchAdminInventoryBalances, fetchInventoryProductOptions } from './admin-service'
+import { AdminServiceError, fetchAdminInventoryBalances } from './admin-service'
 import type { AdminInventoryBalance, AdminInventoryProductOption } from './admin-types'
 
 export function useAdminInventory(active: boolean) {
@@ -14,18 +14,24 @@ export function useAdminInventory(active: boolean) {
     const controller = new AbortController()
     setStatus('loading')
     setError(null)
-    Promise.all([
-      fetchAdminInventoryBalances(controller.signal),
-      fetchInventoryProductOptions(controller.signal),
-    ]).then(([inventory, productOptions]) => {
-      setBalances(inventory.items)
-      setProducts(productOptions)
-      setStatus('ready')
-    }).catch((reason: unknown) => {
-      if (reason instanceof DOMException && reason.name === 'AbortError') return
-      setError(reason instanceof AdminServiceError ? reason.message : 'No fue posible cargar el inventario.')
-      setStatus('error')
-    })
+
+    fetchAdminInventoryBalances(controller.signal)
+      .then((inventory) => {
+        setBalances(inventory.items)
+        const productOptions: AdminInventoryProductOption[] = inventory.items.map((item) => ({
+          id: item.productId,
+          name: item.productName,
+          unit: item.productUnit,
+        }))
+        setProducts(productOptions)
+        setStatus('ready')
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === 'AbortError') return
+        setError(reason instanceof AdminServiceError ? reason.message : 'No fue posible cargar el inventario.')
+        setStatus('error')
+      })
+
     return () => controller.abort()
   }, [active, revision])
 

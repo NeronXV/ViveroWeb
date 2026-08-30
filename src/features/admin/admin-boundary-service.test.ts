@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchAdminCategories, fetchAdminProducts } from './admin-catalog-service'
 import { searchCustomers } from './admin-customers-service'
-import { AdminServiceError, fetchAdminInventoryBalances } from './admin-service'
+import {
+  AdminServiceError,
+  fetchAdminInventoryBalances,
+  fetchInventoryHistory,
+  reconcileInventoryCount,
+  recordInventoryReception,
+} from './admin-service'
 
 type ServiceResult = {
   data: unknown
@@ -140,6 +146,98 @@ describe('límites de los servicios administrativos de Supabase', () => {
     await expect(fetchAdminInventoryBalances()).rejects.toMatchObject({
       message: 'El flujo de inventario todavía no está disponible en este entorno. Falta aplicar su contrato de servidor.',
       code: 'INVENTORY_CONTRACT_UNAVAILABLE',
+    })
+  })
+
+  it('envía el contrato exacto de record_inventory_reception', async () => {
+    result = {
+      data: {
+        schemaVersion: 1,
+        idempotentReplay: false,
+        movementId: '22222222-2222-4222-8222-222222222222',
+        productId: '33333333-3333-4333-8333-333333333333',
+        quantity: 15,
+        totalQuantity: 35,
+      },
+      error: null,
+    }
+
+    const response = await recordInventoryReception({
+      productId: '33333333-3333-4333-8333-333333333333',
+      quantity: 15,
+      notes: 'Lote de invernadero',
+      idempotencyKey: '44444444-4444-4444-8444-444444444444',
+    })
+
+    expect(lastRpc).toEqual({
+      name: 'record_inventory_reception',
+      parameters: {
+        p_product_id: '33333333-3333-4333-8333-333333333333',
+        p_quantity: 15,
+        p_notes: 'Lote de invernadero',
+        p_idempotency_key: '44444444-4444-4444-8444-444444444444',
+      },
+    })
+    expect(response.totalQuantity).toBe(35)
+  })
+
+  it('envía el contrato exacto de reconcile_inventory_count', async () => {
+    result = {
+      data: {
+        schemaVersion: 1,
+        idempotentReplay: false,
+        countId: '55555555-5555-4555-8555-555555555555',
+        productId: '33333333-3333-4333-8333-333333333333',
+        previousQuantity: 35,
+        countedQuantity: 28,
+        adjustmentQuantity: -7,
+        totalQuantity: 28,
+      },
+      error: null,
+    }
+
+    const response = await reconcileInventoryCount({
+      productId: '33333333-3333-4333-8333-333333333333',
+      countedQuantity: 28,
+      reason: 'Conteo físico fin de mes',
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+    })
+
+    expect(lastRpc).toEqual({
+      name: 'reconcile_inventory_count',
+      parameters: {
+        p_product_id: '33333333-3333-4333-8333-333333333333',
+        p_counted_quantity: 28,
+        p_reason: 'Conteo físico fin de mes',
+        p_idempotency_key: '66666666-6666-4666-8666-666666666666',
+        p_location_id: null,
+      },
+    })
+    expect(response.adjustmentQuantity).toBe(-7)
+  })
+
+  it('envía el contrato exacto de get_my_inventory_history', async () => {
+    result = {
+      data: {
+        schemaVersion: 1,
+        branchId: '11111111-1111-4111-8111-111111111111',
+        items: [],
+        hasMore: false,
+        nextCursor: null,
+      },
+      error: null,
+    }
+
+    await fetchInventoryHistory('33333333-3333-4333-8333-333333333333')
+
+    expect(lastRpc).toEqual({
+      name: 'get_my_inventory_history',
+      parameters: {
+        p_product_id: '33333333-3333-4333-8333-333333333333',
+        p_limit: 50,
+        p_after_created_at: null,
+        p_after_id: null,
+      },
     })
   })
 })

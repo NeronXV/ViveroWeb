@@ -37,7 +37,7 @@ function Feedback({
   return null
 }
 
-export function AdminCatalog({ active }: { active: boolean }) {
+export function AdminCatalog({ active, onContinueToInventory }: { active: boolean; onContinueToInventory?: () => void }) {
   const { accessContext } = useAuth()
   const canManageProducts = hasCapability(accessContext, 'MANAGE_PRODUCTS')
   const canManagePrices = hasCapability(accessContext, 'MANAGE_PRICES')
@@ -76,6 +76,7 @@ export function AdminCatalog({ active }: { active: boolean }) {
 
   // Error/Success state inside modals
   const [modalError, setModalError] = useState<string | null>(null)
+  const [savedProductName, setSavedProductName] = useState<string | null>(null)
 
   // Open product modal for creation
   const handleCreateProductOpen = () => {
@@ -96,6 +97,7 @@ export function AdminCatalog({ active }: { active: boolean }) {
     setRecommendedClimate('')
     setIsActive(true)
     setModalError(null)
+    setSavedProductName(null)
     setIsProductModalOpen(true)
   }
 
@@ -178,6 +180,7 @@ export function AdminCatalog({ active }: { active: boolean }) {
       })
 
       setIsProductModalOpen(false)
+      setSavedProductName(commonName.trim())
     } catch (err) {
       setModalError(err instanceof Error ? err.message : 'Error al guardar el producto.')
     }
@@ -256,6 +259,17 @@ export function AdminCatalog({ active }: { active: boolean }) {
           )}
         </div>
       </div>
+
+      {savedProductName && (
+        <div className="form-notice">
+          <span role="status">{savedProductName} quedó guardado en el catálogo.</span>
+          {onContinueToInventory && (
+            <button type="button" className="retry-btn-secondary" onClick={onContinueToInventory}>
+              Registrar ingreso al inventario
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Filters card */}
       <div className="dashboard-filters-card">

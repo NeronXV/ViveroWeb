@@ -170,11 +170,18 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               {tab === 'sucursales' && authorizedTabs.includes('sucursales') && <BranchDirectory active />}
 
               {tab === 'inventario' && authorizedTabs.includes('inventario') && (
-                <AdminCatalog active={tab === 'inventario'} />
+                <AdminCatalog
+                  active={tab === 'inventario'}
+                  onContinueToInventory={authorizedTabs.includes('stock') ? () => selectTab('stock') : undefined}
+                />
               )}
 
               {tab === 'stock' && authorizedTabs.includes('stock') && (
-                <AdminInventory active branchName={context.branch?.name ?? 'Sin sucursal asignada'} />
+                <AdminInventory
+                  active
+                  branchName={context.branch?.name ?? 'Sin sucursal asignada'}
+                  onManageProducts={authorizedTabs.includes('inventario') ? () => selectTab('inventario') : undefined}
+                />
               )}
 
               {tab === 'promociones' && authorizedTabs.includes('promociones') && (
