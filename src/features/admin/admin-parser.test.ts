@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseAdminBranchesResponse,
   parseAdminStaffResponse,
-  parseCreateBranchResponse,
+  parseBranchRowResponse,
   parseVoidResponse,
   validateAssignUserBranchInput,
   validateAssignUserRoleInput,
@@ -10,11 +10,18 @@ import {
   validateUpdateBranchInput,
   parseAdminDailySalesReport,
   parseAdminTopProductsReport,
+  parseAdminInventoryBalances,
+  validateInventoryReceptionInput,
+  validateInventoryCountInput,
+  parseInventoryReceptionResult,
+  parseInventoryCountResult,
+  parseInventoryHistory,
 } from './admin-parser'
 
 const BRANCH_ID = '91000000-0000-0000-0000-000000000001'
 const USER_ID = '92000000-0000-0000-0000-000000000001'
 const PRODUCT_ID = '93000000-0000-0000-0000-000000000001'
+const OPERATION_ID = '93000000-0000-4000-8000-000000000002'
 
 function branchResponse(): Record<string, unknown> {
   return {
@@ -138,15 +145,12 @@ describe('validadores y parsers de mutaciones administrativas', () => {
   })
 
   describe('validateAssignUserBranchInput', () => {
-    it('acepta asignaciones y desasignaciones válidas', () => {
+    it('acepta asignaciones válidas y rechaza null y vacío', () => {
       const result = validateAssignUserBranchInput(USER_ID, BRANCH_ID)
       expect(result).toEqual({ userId: USER_ID, branchId: BRANCH_ID })
 
-      const desasignar = validateAssignUserBranchInput(USER_ID, null)
-      expect(desasignar).toEqual({ userId: USER_ID, branchId: null })
-
-      const desasignarVacio = validateAssignUserBranchInput(USER_ID, '')
-      expect(desasignarVacio).toEqual({ userId: USER_ID, branchId: null })
+      expect(() => validateAssignUserBranchInput(USER_ID, null)).toThrow()
+      expect(() => validateAssignUserBranchInput(USER_ID, '')).toThrow()
     })
 
     it('rechaza UUIDs inválidos', () => {
@@ -156,18 +160,13 @@ describe('validadores y parsers de mutaciones administrativas', () => {
   })
 
   describe('validateAssignUserRoleInput', () => {
-    it('acepta roles válidos', () => {
+    it('acepta roles válidos y rechaza null, vacío y NONE', () => {
       const result = validateAssignUserRoleInput(USER_ID, 'CASHIER')
       expect(result).toEqual({ userId: USER_ID, role: 'CASHIER' })
 
-      const quitarRol = validateAssignUserRoleInput(USER_ID, null)
-      expect(quitarRol).toEqual({ userId: USER_ID, role: null })
-
-      const quitarRolVacio = validateAssignUserRoleInput(USER_ID, '')
-      expect(quitarRolVacio).toEqual({ userId: USER_ID, role: null })
-
-      const quitarRolNone = validateAssignUserRoleInput(USER_ID, 'NONE')
-      expect(quitarRolNone).toEqual({ userId: USER_ID, role: null })
+      expect(() => validateAssignUserRoleInput(USER_ID, null)).toThrow()
+      expect(() => validateAssignUserRoleInput(USER_ID, '')).toThrow()
+      expect(() => validateAssignUserRoleInput(USER_ID, 'NONE')).toThrow()
     })
 
     it('rechaza roles desconocidos', () => {
@@ -175,22 +174,35 @@ describe('validadores y parsers de mutaciones administrativas', () => {
     })
   })
 
-  describe('parseCreateBranchResponse', () => {
-    it('acepta un UUID válido', () => {
-      expect(parseCreateBranchResponse(BRANCH_ID)).toBe(BRANCH_ID)
+  describe('parseBranchRowResponse', () => {
+    it('acepta una fila completa de public.branches', () => {
+      const row = {
+        id: BRANCH_ID,
+        code: 'CENTRO',
+        name: 'Sucursal Centro',
+        is_active: true,
+        created_at: '2026-01-15T10:00:00Z',
+        updated_at: '2026-08-29T12:00:00Z',
+      }
+      const result = parseBranchRowResponse(row)
+      expect(result.id).toBe(BRANCH_ID)
+      expect(result.code).toBe('CENTRO')
+      expect(result.isActive).toBe(true)
+      expect(result.createdAt).toBe('2026-01-15T10:00:00Z')
     })
 
-    it('rechaza valores que no son UUID', () => {
-      expect(() => parseCreateBranchResponse('12345')).toThrow()
-      expect(() => parseCreateBranchResponse(null)).toThrow()
+    it('rechaza valores escalares y formas incompletas', () => {
+      expect(() => parseBranchRowResponse(BRANCH_ID)).toThrow()
+      expect(() => parseBranchRowResponse(null)).toThrow()
+      expect(() => parseBranchRowResponse({ id: BRANCH_ID })).toThrow()
     })
   })
 
   describe('parseVoidResponse', () => {
-    it('acepta null y booleanos', () => {
+    it('acepta únicamente la respuesta vacía del backend', () => {
       expect(parseVoidResponse(null)).toBeNull()
-      expect(parseVoidResponse(true)).toBe(true)
-      expect(parseVoidResponse(false)).toBe(false)
+      expect(() => parseVoidResponse(true)).toThrow()
+      expect(() => parseVoidResponse(false)).toThrow()
     })
 
     it('rechaza otros tipos de datos', () => {
@@ -256,5 +268,102 @@ describe('parsers de reportes administrativos reales', () => {
         },
       ])).toThrow()
     })
+  })
+})
+
+describe('contrato de inventario administrativo real', () => {
+  const payload = {
+    schemaVersion: 1,
+    branchId: BRANCH_ID,
+    items: [{
+      productId: PRODUCT_ID,
+      productName: 'Planta de prueba',
+      productCode: 'TEST-01',
+      productUnit: 'pieza',
+      totalQuantity: 12,
+      minimumStock: 3,
+      isLowStock: false,
+      balanceUpdatedAt: '2026-08-29T10:00:00Z',
+    }],
+    hasMore: false,
+    nextProductId: null,
+  }
+
+  it('acepta saldos V1 coherentes de una sola sucursal', () => {
+    expect(parseAdminInventoryBalances(payload).items[0]).toMatchObject({ productId: PRODUCT_ID, totalQuantity: 12 })
+  })
+
+  it('acepta productos sin saldo y rechaza campos desconocidos o paginación incoherente', () => {
+    expect(parseAdminInventoryBalances({
+      ...payload,
+      items: [{ ...payload.items[0], totalQuantity: 0, isLowStock: true, balanceUpdatedAt: null }],
+    }).items[0].balanceUpdatedAt).toBeNull()
+    expect(() => parseAdminInventoryBalances({ ...payload, privateData: true })).toThrow()
+    expect(() => parseAdminInventoryBalances({ ...payload, items: [{ ...payload.items[0], isLowStock: true }] })).toThrow()
+    expect(() => parseAdminInventoryBalances({ ...payload, hasMore: true, nextProductId: null })).toThrow()
+  })
+
+  it('valida una recepción entera y normaliza sus notas', () => {
+    expect(validateInventoryReceptionInput(PRODUCT_ID, 5, '  Entrada inicial  ', OPERATION_ID)).toEqual({
+      productId: PRODUCT_ID, quantity: 5, notes: 'Entrada inicial', idempotencyKey: OPERATION_ID,
+    })
+    expect(() => validateInventoryReceptionInput(PRODUCT_ID, 1.5, '', OPERATION_ID)).toThrow()
+    expect(() => validateInventoryReceptionInput(PRODUCT_ID, 0, '', OPERATION_ID)).toThrow()
+  })
+
+  it('valida conteos físicos y motivos obligatorios', () => {
+    expect(validateInventoryCountInput(PRODUCT_ID, 8, '  Conteo de cierre  ', OPERATION_ID)).toEqual({
+      productId: PRODUCT_ID, countedQuantity: 8, reason: 'Conteo de cierre', idempotencyKey: OPERATION_ID,
+    })
+    expect(() => validateInventoryCountInput(PRODUCT_ID, -1, 'Conteo', OPERATION_ID)).toThrow()
+    expect(() => validateInventoryCountInput(PRODUCT_ID, 8, 'x', OPERATION_ID)).toThrow()
+  })
+
+  it('acepta resultados estrictos de recepción y conciliación', () => {
+    expect(parseInventoryReceptionResult({
+      schemaVersion: 1,
+      idempotentReplay: false,
+      movementId: OPERATION_ID,
+      productId: PRODUCT_ID,
+      quantity: 5,
+      totalQuantity: 15,
+    }).totalQuantity).toBe(15)
+    expect(parseInventoryCountResult({
+      schemaVersion: 1,
+      idempotentReplay: false,
+      countId: OPERATION_ID,
+      productId: PRODUCT_ID,
+      previousQuantity: 15,
+      countedQuantity: 13,
+      adjustmentQuantity: -2,
+      totalQuantity: 13,
+    }).adjustmentQuantity).toBe(-2)
+  })
+
+  it('acepta historial V1 sin tratar la etiqueta actual como dato inmutable', () => {
+    const parsed = parseInventoryHistory({
+      schemaVersion: 1,
+      branchId: BRANCH_ID,
+      items: [{
+        id: OPERATION_ID,
+        productId: PRODUCT_ID,
+        productName: 'Planta de prueba',
+        productCode: 'TEST-01',
+        movementType: 'ADJUSTMENT_SUB',
+        quantity: -2,
+        notes: 'Conteo de cierre',
+        createdAt: '2026-08-29T10:00:00Z',
+        createdByLabel: 'Gerente actual',
+      }],
+      hasMore: false,
+      nextCursor: null,
+    })
+    expect(parsed.items[0]).toMatchObject({ quantity: -2, createdByLabel: 'Gerente actual' })
+  })
+
+  it('rechaza historial sin cursor cuando anuncia más resultados', () => {
+    expect(() => parseInventoryHistory({
+      schemaVersion: 1, branchId: BRANCH_ID, items: [], hasMore: true, nextCursor: null,
+    })).toThrow()
   })
 })

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import { useAuth } from '../auth/useAuth'
 import { useCashierSales } from './useCashierSales'
@@ -8,29 +8,24 @@ import { useCashierPaymentAttempt } from './useCashierPaymentAttempt'
 import { formatCents, parsePesosToCents } from './cashier-money'
 import { isNavigationLocked } from './cashier-payment-state'
 import type { CashierPaymentMethod } from './cashier-types'
+import { CashierPrintableTicket } from './CashierPrintableTicket'
 
 export function CashierPage() {
   useDocumentTitle('Caja')
   const headingRef = useHeadingFocus<HTMLHeadingElement>('cashier')
-  const { accessContext } = useAuth()
+  const { accessContext, signOut } = useAuth()
+  const navigate = useNavigate()
   const userId = accessContext?.userId ?? null
+
+  const handleSignOut = async () => {
+    if (await signOut()) {
+      navigate('/login', { replace: true })
+    }
+  }
 
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
 
-  // 1. Obtener la fila de ventas pendientes de Supabase
-  const {
-    sales,
-    isLoading: isSalesLoading,
-    isUpdating: isSalesUpdating,
-    isLoadingMore,
-    isError: isSalesError,
-    errorMsg: salesErrorMsg,
-    hasMore,
-    refresh: refreshSales,
-    loadMore,
-  } = useCashierSales(15)
-
-  // 2. Obtener el detalle de la venta seleccionada
+  // 1. Obtener el detalle de la venta seleccionada
   const {
     saleDetail,
     isLoading: isDetailLoading,
@@ -41,7 +36,7 @@ export function CashierPage() {
     clearDetail,
   } = useCashierSaleDetail(selectedSaleId)
 
-  // 3. Orquestar el flujo de intento de pago idempotente para la venta activa
+  // 2. Orquestar el flujo de intento de pago idempotente para la venta activa
   const {
     attempt,
     actionInProgress,
@@ -51,6 +46,29 @@ export function CashierPage() {
     reconcilePayment,
     dismissSucceededAttempt,
   } = useCashierPaymentAttempt(userId, saleDetail?.sale ?? null)
+
+  const isCriticalPaymentActive = Boolean(
+    attempt && (
+      ['CLAIMING', 'CONFIRMING', 'UNCERTAIN'].includes(attempt.status) ||
+      (attempt.status === 'CLAIMED' && actionInProgress)
+    )
+  )
+
+  // 3. Obtener la fila de ventas pendientes de Supabase con auto-polling
+  const {
+    sales,
+    isLoading: isSalesLoading,
+    isUpdating: isSalesUpdating,
+    isLoadingMore,
+    isError: isSalesError,
+    errorMsg: salesErrorMsg,
+    hasMore,
+    refresh: refreshSales,
+    loadMore,
+    pollingStatus,
+    lastUpdatedAt,
+    newComandasNotice,
+  } = useCashierSales(15, isCriticalPaymentActive, userId, accessContext?.branch?.id ?? null)
 
   // Estados locales para el formulario de pago
   const [paymentMethod, setPaymentMethod] = useState<CashierPaymentMethod>('CASH')
@@ -194,11 +212,25 @@ export function CashierPage() {
             <p className="cashier-info-subtitle">
               Operador: <strong>{cashierName}</strong> · Sucursal: <strong>{branchName}</strong>
             </p>
+            {newComandasNotice && (
+              <div className="module-permission-note" role="status" aria-live="polite" style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>🔔</span> <span>{newComandasNotice}</span>
+              </div>
+            )}
           </div>
-          <div>
-            <Link className="back-link" to="/">
-              Salir
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <Link className="back-link" to="/panel" style={{ textDecoration: 'none' }}>
+              ← Volver al panel
             </Link>
+            <button
+              type="button"
+              className="retry-btn-secondary"
+              style={{ margin: 0, padding: '0.45rem 0.85rem', fontSize: '0.85rem', minHeight: 'unset', minWidth: 'unset', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              onClick={handleSignOut}
+              disabled={actionInProgress}
+            >
+              Cerrar sesión
+            </button>
           </div>
         </div>
 
@@ -216,6 +248,20 @@ export function CashierPage() {
               >
                 {isSalesUpdating ? 'Actualizando...' : '↻ Actualizar'}
               </button>
+            </div>
+            <div className="polling-status-indicator" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              {pollingStatus === 'active' && (
+                <span>🟢 Actualización automática activa (Última: {lastUpdatedAt || '--:--:--'})</span>
+              )}
+              {pollingStatus === 'offline' && (
+                <span style={{ color: '#7a4b00' }}>⚠️ Sin conexión; conservando la última bandeja</span>
+              )}
+              {pollingStatus === 'error' && (
+                <span style={{ color: '#a42929' }}>❌ No se pudo actualizar; mostrando la información anterior</span>
+              )}
+              {pollingStatus === 'idle' && (
+                <span>⏸️ Actualización automática en pausa</span>
+              )}
             </div>
 
             {/* Estado de carga inicial */}
@@ -568,22 +614,7 @@ export function CashierPage() {
                     <h4>¡Cobro Confirmado!</h4>
                     <p className="success-copy">El pago se registró con éxito en el servidor.</p>
 
-                    <div className="ticket-divider" />
-
-                    <div className="succeeded-ticket-meta">
-                      <p>Folio: <strong>{attempt.paymentResult.sale?.folio}</strong></p>
-                      <p>Método: <strong>{attempt.paymentResult.payment?.method}</strong></p>
-                      {attempt.paymentResult.payment?.method === 'CASH' && (
-                        <>
-                          <p>Recibido: <strong>${formatCents(attempt.paymentResult.payment?.amountReceivedCents ?? 0)} MXN</strong></p>
-                          <p>Cambio: <strong>${formatCents(attempt.paymentResult.payment?.changeCents ?? 0)} MXN</strong></p>
-                        </>
-                      )}
-                      {attempt.paymentResult.payment?.reference && (
-                        <p>Referencia: <strong>{attempt.paymentResult.payment.reference}</strong></p>
-                      )}
-                      <p>Fecha pago: <strong>{new Date(attempt.paymentResult.payment?.createdAt ?? '').toLocaleTimeString('es-MX')}</strong></p>
-                    </div>
+                    <CashierPrintableTicket result={attempt.paymentResult} />
 
                     <button type="button" className="checkout-btn" onClick={handleFinishedPayment}>
                       Volver a la fila

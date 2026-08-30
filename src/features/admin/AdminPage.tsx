@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 
 import { useDemoStore } from '../../app/providers/DemoStore'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
-import type { PlantCategory } from '../../types/domain'
 import { AccessDenied } from '../access/AccessDenied'
 import { hasCapability } from '../access/access-helpers'
 import { ADMIN_MODULE_RULES, getAuthorizedAdminModules, type AdminModuleId } from '../access/access-rules'
 import type { UserAccessContext } from '../access/access-types'
 import { useAuth } from '../auth/useAuth'
 import { BranchDirectory, StaffDirectory } from './AdminDirectories'
+import { AdminInventory } from './AdminInventory'
 import { useAdminReports } from './useAdminReports'
 import { useAdminBranches } from './useAdminDirectories'
+import { AdminCatalog } from './AdminCatalog'
+import { AdminCustomers } from './AdminCustomers'
 
 export function AdminPage() {
   const { accessContext, refreshAccessContext } = useAuth()
@@ -29,14 +31,22 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const requestedTab = searchParams.get('tab') as AdminModuleId | null
   const firstAuthorizedTab = authorizedTabs[0]
   const [tab, setTab] = useState<AdminModuleId>(() => requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab)
-  const { plants, orders, addPlant, setDiscount, restock } = useDemoStore()
+  const { plants, orders, setDiscount } = useDemoStore()
   const [notice, setNotice] = useState('')
-  
-  const canManagePrices = hasCapability(context, 'MANAGE_PRICES')
+  const { signOut } = useAuth()
+  const navigate = useNavigate()
+
+  const handleSignOut = async () => {
+    if (await signOut()) {
+      navigate('/login', { replace: true })
+    }
+  }
+
+
   const canViewAllSales = hasCapability(context, 'VIEW_ALL_SALES')
   const canViewReports = hasCapability(context, 'VIEW_REPORTS')
   const canAssignRoles = hasCapability(context, 'ASSIGN_ROLES')
-  
+
   const headingRef = useHeadingFocus<HTMLHeadingElement>(context.userId)
   useDocumentTitle('Administración')
 
@@ -64,17 +74,6 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
     if (nextTab) setTab(nextTab)
   }, [authorizedTabs, context.userId, requestedTab])
 
-  const createPlant = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!canManagePrices) {
-      setNotice('Necesitas permiso para gestionar precios antes de agregar este producto demo.')
-      return
-    }
-    const data = new FormData(event.currentTarget)
-    addPlant({ name: String(data.get('name')), category: String(data.get('category')) as PlantCategory, price: Number(data.get('price')), light: 'media', water: 'alta', pets: true, image: plants[0].image, lightDesc: 'Luz indirecta', waterDesc: 'Riego moderado', petDesc: 'Segura para mascotas', description: String(data.get('description')), stock: Number(data.get('stock')) })
-    event.currentTarget.reset()
-    setNotice('Producto de demostración agregado localmente.')
-  }
 
   const savePromotion = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -115,14 +114,19 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
     <main className="internal-page">
       <div className="dashboard-panel open embedded">
         <div className="dashboard-header">
-          <div>
-            <h2 ref={headingRef} tabIndex={-1}>Panel Vivero Dulcinea</h2>
-            <p className="demo-copy">Módulos reales y demostrativos claramente identificados.</p>
+          <div className="dashboard-title-area">
+            <span className="dashboard-brand-mark" aria-hidden="true">VD</span>
+            <div>
+              <p className="dashboard-kicker">Administración interna</p>
+              <h2 ref={headingRef} tabIndex={-1}>Panel Vivero Dulcinea</h2>
+              <p className="demo-copy">Módulos reales y demostrativos claramente identificados.</p>
+            </div>
           </div>
           <div className="dashboard-header-actions">
             <span className="role-badge-db admin">Mixto</span>
+            <Link className="logout-btn" to="/panel">Volver al panel</Link>
             <button type="button" className="logout-btn" onClick={onRefreshAccess}>Actualizar acceso</button>
-            <Link className="logout-btn" to="/login">Sesión y acceso</Link>
+            <button type="button" className="logout-btn" onClick={handleSignOut}>Cerrar sesión</button>
           </div>
         </div>
 
@@ -162,71 +166,15 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
           <section className="dashboard-content">
             {notice && <p className="form-notice" aria-live="polite">{notice}</p>}
             <div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} tabIndex={0}>
-              
+
               {tab === 'sucursales' && authorizedTabs.includes('sucursales') && <BranchDirectory active />}
-              
+
               {tab === 'inventario' && authorizedTabs.includes('inventario') && (
-                <section className="db-tab-content active">
-                  <h3>Agregar producto</h3>
-                  <p className="demo-copy">Todos los cambios de este módulo permanecen en datos demostrativos locales.</p>
-                  <form className="dashboard-form" onSubmit={createPlant}>
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label htmlFor="plant-name">Nombre</label>
-                        <input id="plant-name" name="name" required />
-                      </div>
-                      <div className="form-group">
-                        <label htmlFor="plant-category">Categoría</label>
-                        <select id="plant-category" name="category">
-                          <option value="interior">Interior</option>
-                          <option value="exterior">Exterior</option>
-                          <option value="suculentas">Suculentas</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label htmlFor="plant-price">Precio</label>
-                        <input id="plant-price" name="price" type="number" min="0.1" step="0.01" disabled={!canManagePrices} required />
-                      </div>
-                      <div className="form-group">
-                        <label htmlFor="plant-stock">Existencias</label>
-                        <input id="plant-stock" name="stock" type="number" min="0" required />
-                      </div>
-                    </div>
-                    {!canManagePrices && <p className="module-permission-note">La edición de precios está deshabilitada porque requiere MANAGE_PRICES.</p>}
-                    <div className="form-group">
-                      <label htmlFor="plant-description">Descripción</label>
-                      <textarea id="plant-description" name="description" required />
-                    </div>
-                    <button className="submit-db-btn" disabled={!canManagePrices}>Agregar producto demo</button>
-                  </form>
-                </section>
+                <AdminCatalog active={tab === 'inventario'} />
               )}
 
               {tab === 'stock' && authorizedTabs.includes('stock') && (
-                <section className="db-tab-content active">
-                  <h3>Control de inventario</h3>
-                  <p className="demo-copy">Inventario exclusivamente demostrativo.</p>
-                  <div className="db-stock-grid">
-                    {plants.map((plant) => (
-                      <article key={plant.id} className={`stock-card ${plant.stock <= 1 ? 'critical' : plant.stock <= 4 ? 'low' : 'adequate'}`}>
-                        <div className="stock-card-image-container">
-                          <img src={plant.image} alt={plant.name} className="stock-card-img-large" />
-                          <span className="stock-badge-floating">{plant.stock <= 1 ? '🔴 Crítico' : plant.stock <= 4 ? '🟡 Bajo' : '🟢 Adecuado'}</span>
-                        </div>
-                        <div className="stock-card-body">
-                          <h4>{plant.name}</h4>
-                          <p>{plant.stock} unidades · Datos de demostración</p>
-                          <div className="stock-action-group">
-                            <button className="stock-btn" onClick={() => restock(plant.id, 5)}>+5 u.</button>
-                            <button className="stock-btn" onClick={() => restock(plant.id, 10)}>+10 u.</button>
-                          </div>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
+                <AdminInventory active branchName={context.branch?.name ?? 'Sin sucursal asignada'} />
               )}
 
               {tab === 'promociones' && authorizedTabs.includes('promociones') && (
@@ -390,6 +338,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               )}
 
               {tab === 'personal' && authorizedTabs.includes('personal') && <StaffDirectory active canAssignRoles={canAssignRoles} />}
+              {tab === 'clientes' && authorizedTabs.includes('clientes') && <AdminCustomers active={tab === 'clientes'} />}
             </div>
           </section>
         </div>

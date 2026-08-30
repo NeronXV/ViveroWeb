@@ -37,8 +37,12 @@ export function LoginPage() {
   useDocumentTitle(pageTitle)
 
   useEffect(() => {
-    if (returnTo && status === 'authenticated' && accessStatus === 'ready' && canAccessDestination(accessContext, returnTo)) {
-      navigate(returnTo, { replace: true })
+    if (status === 'authenticated' && accessStatus === 'ready') {
+      if (returnTo && canAccessDestination(accessContext, returnTo)) {
+        navigate(returnTo, { replace: true })
+      } else {
+        navigate('/panel', { replace: true })
+      }
     }
   }, [accessContext, accessStatus, navigate, returnTo, status])
 

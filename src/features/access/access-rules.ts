@@ -1,7 +1,7 @@
 import { hasCapability } from './access-helpers'
 import type { UserAccessContext } from './access-types'
 
-export const PROTECTED_DESTINATIONS = ['/caja', '/admin'] as const
+export const PROTECTED_DESTINATIONS = ['/caja', '/admin', '/panel'] as const
 
 export type ProtectedDestination = (typeof PROTECTED_DESTINATIONS)[number]
 
@@ -20,7 +20,7 @@ export const ADMIN_ENTRY_CAPABILITIES = [
   'MANAGE_SETTINGS',
 ] as const
 
-export type AdminModuleId = 'editorial' | 'sucursales' | 'inventario' | 'stock' | 'promociones' | 'ventas' | 'pedidos' | 'personal'
+export type AdminModuleId = 'editorial' | 'sucursales' | 'inventario' | 'stock' | 'promociones' | 'ventas' | 'pedidos' | 'personal' | 'clientes'
 
 export interface AdminModuleRule {
   id: AdminModuleId
@@ -38,6 +38,7 @@ export const ADMIN_MODULE_RULES: readonly AdminModuleRule[] = [
   { id: 'ventas', label: '📊 Ventas y reportes', anyCapability: ['VIEW_BRANCH_SALES', 'VIEW_ALL_SALES', 'VIEW_REPORTS'] },
   { id: 'pedidos', label: '🧾 Pedidos', anyCapability: ['VIEW_BRANCH_SALES', 'VIEW_ALL_SALES'] },
   { id: 'personal', label: '👥 Personal', anyCapability: ['MANAGE_USERS', 'ASSIGN_ROLES'] },
+  { id: 'clientes', label: '👥 Clientes', anyCapability: ['MANAGE_USERS'] },
 ] as const
 
 export function hasAnyCapability(context: UserAccessContext | null, capabilities: readonly string[]): boolean {
@@ -83,5 +84,8 @@ export function getLoginPath(returnTo: ProtectedDestination): string {
 }
 
 export function canAccessDestination(context: UserAccessContext | null, destination: ProtectedDestination): boolean {
+  if (destination === '/panel') {
+    return context !== null && context.accessState === 'ACTIVE'
+  }
   return destination === '/caja' ? canEnterCashier(context) : canEnterAdmin(context)
 }

@@ -182,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearAccess()
         setUser(null)
         setStatus('anonymous')
-        setError(getSafeAuthError(signInError, 'Correo o contraseña incorrectos.'))
+        setError(getSafeAuthError(signInError))
         return false
       }
 

@@ -10,7 +10,6 @@ interface DirectoryState<T, C> {
   loadingMore: boolean
   error: string | null
 }
-
 function initialState<T, C>(): DirectoryState<T, C> {
   return { items: [], cursor: null, hasMore: false, status: 'idle', loadingMore: false, error: null }
 }
@@ -95,4 +94,3 @@ export function useAdminStaff(enabled: boolean) {
     loadMore: () => state.hasMore && !state.loadingMore && void load(true, state.cursor),
   }
 }
-

@@ -9,6 +9,7 @@ const LoginPage = lazy(() => import('../features/auth/LoginPage').then((module) 
 const CashierPage = lazy(() => import('../features/cashier/CashierPage').then((module) => ({ default: module.CashierPage })))
 const CatalogPage = lazy(() => import('../features/public-catalog/CatalogPage').then((module) => ({ default: module.CatalogPage })))
 const HomePage = lazy(() => import('../features/public-catalog/HomePage').then((module) => ({ default: module.HomePage })))
+const PanelPage = lazy(() => import('../features/internal-home/PanelPage').then((module) => ({ default: module.PanelPage })))
 
 function RouteLoading() {
   return <main className="internal-page access-boundary-page"><section className="login-card" aria-busy="true"><p role="status" aria-live="polite">Cargando página…</p></section></main>
@@ -28,4 +29,8 @@ function ProtectedAdminRoute() {
   return <RequireSession returnTo="/admin"><RequireAccessContext><RequireAdminAccess><LazyRoute><AdminPage /></LazyRoute></RequireAdminAccess></RequireAccessContext></RequireSession>
 }
 
-export const router = createBrowserRouter([{ element: <App />, children: [{ element: <PublicLayout />, children: [{ index: true, element: <LazyRoute><HomePage /></LazyRoute> }, { path: 'catalogo', element: <LazyRoute><CatalogPage /></LazyRoute> }] }, { path: 'login', element: <LazyRoute><LoginPage /></LazyRoute> }, { path: 'caja', element: <ProtectedCashierRoute /> }, { path: 'admin', element: <ProtectedAdminRoute /> }, { path: '*', element: <NotFound /> }] }])
+function ProtectedPanelRoute() {
+  return <RequireSession returnTo="/panel"><LazyRoute><PanelPage /></LazyRoute></RequireSession>
+}
+
+export const router = createBrowserRouter([{ element: <App />, children: [{ element: <PublicLayout />, children: [{ index: true, element: <LazyRoute><HomePage /></LazyRoute> }, { path: 'catalogo', element: <LazyRoute><CatalogPage /></LazyRoute> }] }, { path: 'login', element: <LazyRoute><LoginPage /></LazyRoute> }, { path: 'caja', element: <ProtectedCashierRoute /> }, { path: 'admin', element: <ProtectedAdminRoute /> }, { path: 'panel', element: <ProtectedPanelRoute /> }, { path: '*', element: <NotFound /> }] }])

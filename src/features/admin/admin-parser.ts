@@ -8,12 +8,18 @@ import type {
   AdminStaffMember,
   AdminStaffResponse,
   AdminStaffRole,
+  BranchRow,
   CreateBranchInput,
   UpdateBranchInput,
   AssignUserBranchInput,
   AssignUserRoleInput,
   AdminDailySaleReportItem,
   AdminTopProductReportItem,
+  AdminInventoryBalancesResponse,
+  RecordInventoryReceptionInput,
+  ReconcileInventoryCountInput,
+  InventoryOperationResult,
+  InventoryHistoryResponse,
 } from './admin-types'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -26,7 +32,6 @@ export class AdminValidationError extends Error {
     this.name = 'AdminValidationError'
   }
 }
-
 function record(value: unknown, field: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new AdminValidationError(`${field} no es un objeto válido.`)
@@ -73,6 +78,25 @@ function safeInteger(value: unknown, field: string, min = 0): number {
 function boolean(value: unknown, field: string): boolean {
   if (typeof value !== 'boolean') throw new AdminValidationError(`${field} no contiene un booleano.`)
   return value
+}
+
+function nonNegativeNumber(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new AdminValidationError(`${field} no contiene una cantidad válida.`)
+  }
+  return value
+}
+
+function signedInteger(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw new AdminValidationError(`${field} no contiene un entero válido.`)
+  }
+  return value
+}
+
+function nullableText(value: unknown, field: string, max: number): string | null {
+  if (value === null) return null
+  return text(value, field, max)
 }
 
 function branch(value: unknown, index: number): AdminBranch {
@@ -204,35 +228,56 @@ export function validateUpdateBranchInput(id: unknown, code: unknown, name: unkn
 }
 
 export function validateAssignUserBranchInput(userId: unknown, branchId: unknown): AssignUserBranchInput {
+  if (branchId === null || branchId === '') {
+    throw new AdminValidationError('Debes seleccionar una sucursal activa.')
+  }
   return {
     userId: uuid(userId, 'userId'),
-    branchId: branchId === null || branchId === '' ? null : uuid(branchId, 'branchId'),
+    branchId: uuid(branchId, 'branchId'),
   }
 }
 
 export function validateAssignUserRoleInput(userId: unknown, role: unknown): AssignUserRoleInput {
-  const validatedUserId = uuid(userId, 'userId')
   if (role === null || role === '' || role === 'NONE') {
-    return { userId: validatedUserId, role: null }
+    throw new AdminValidationError('Debes seleccionar un rol válido.')
   }
   const roleStr = text(role, 'role', 32)
   if (!USER_ROLES.includes(roleStr as UserRole)) {
     throw new AdminValidationError('El rol proporcionado no es válido.')
   }
   return {
-    userId: validatedUserId,
+    userId: uuid(userId, 'userId'),
     role: roleStr as UserRole,
   }
 }
 
-export function parseCreateBranchResponse(value: unknown): string {
-  return uuid(value, 'createBranchResponse')
+export function validateSetUserActiveInput(userId: unknown, isActive: unknown): { userId: string; isActive: boolean } {
+  return {
+    userId: uuid(userId, 'El ID de usuario'),
+    isActive: boolean(isActive, 'El estado de activación'),
+  }
 }
 
-export function parseVoidResponse(value: unknown): null | boolean {
+export function parseBranchRowResponse(value: unknown): BranchRow {
+  const row = record(value, 'branchRow')
+  exactKeys(row, ['id', 'code', 'name', 'is_active', 'created_at', 'updated_at'], 'branchRow')
+  const code = text(row.code, 'branchRow.code', 24)
+  if (!BRANCH_CODE_PATTERN.test(code)) {
+    throw new AdminValidationError('branchRow.code no es válido.')
+  }
+  return {
+    id: uuid(row.id, 'branchRow.id'),
+    code,
+    name: text(row.name, 'branchRow.name', 120),
+    isActive: boolean(row.is_active, 'branchRow.is_active'),
+    createdAt: timestamp(row.created_at, 'branchRow.created_at'),
+    updatedAt: timestamp(row.updated_at, 'branchRow.updated_at'),
+  }
+}
+
+export function parseVoidResponse(value: unknown): null {
   if (value === null) return null
-  if (typeof value === 'boolean') return value
-  throw new AdminValidationError('La respuesta de la mutación debe ser vacía (null) o booleana.')
+  throw new AdminValidationError('La respuesta de la mutación debe ser vacía (null).')
 }
 
 export function parseAdminDailySalesReport(value: unknown): AdminDailySaleReportItem[] {
@@ -272,3 +317,163 @@ export function parseAdminTopProductsReport(value: unknown): AdminTopProductRepo
   })
 }
 
+export function parseAdminInventoryBalances(value: unknown): AdminInventoryBalancesResponse {
+  const root = record(value, 'respuesta de inventario')
+  exactKeys(root, ['schemaVersion', 'branchId', 'items', 'hasMore', 'nextProductId'], 'respuesta de inventario')
+  if (root.schemaVersion !== 1) throw new AdminValidationError('La versión del contrato de inventario no es compatible.')
+  if (!Array.isArray(root.items)) throw new AdminValidationError('Los saldos de inventario no son una lista.')
+
+  const branchId = uuid(root.branchId, 'branchId')
+
+  const items = root.items.map((value, index) => {
+    const field = `items[${index}]`
+    const item = record(value, field)
+    exactKeys(item, [
+      'productId', 'productName', 'productCode', 'productUnit',
+      'totalQuantity', 'minimumStock', 'isLowStock', 'balanceUpdatedAt',
+    ], field)
+    const totalQuantity = nonNegativeNumber(item.totalQuantity, `${field}.totalQuantity`)
+    const minimumStock = nonNegativeNumber(item.minimumStock, `${field}.minimumStock`)
+    const isLowStock = boolean(item.isLowStock, `${field}.isLowStock`)
+    if (isLowStock !== (totalQuantity <= minimumStock)) {
+      throw new AdminValidationError(`${field}.isLowStock es incoherente.`)
+    }
+    return {
+      branchId,
+      productId: uuid(item.productId, `${field}.productId`),
+      productName: text(item.productName, `${field}.productName`, 160),
+      productCode: text(item.productCode, `${field}.productCode`, 40),
+      productUnit: text(item.productUnit, `${field}.productUnit`, 20),
+      totalQuantity,
+      minimumStock,
+      isLowStock,
+      balanceUpdatedAt: item.balanceUpdatedAt === null
+        ? null
+        : timestamp(item.balanceUpdatedAt, `${field}.balanceUpdatedAt`),
+    }
+  })
+
+  const hasMore = boolean(root.hasMore, 'hasMore')
+  const nextProductId = root.nextProductId === null ? null : uuid(root.nextProductId, 'nextProductId')
+  if (hasMore !== (nextProductId !== null)) {
+    throw new AdminValidationError('La paginación del inventario es incoherente.')
+  }
+  return { schemaVersion: 1, branchId, items, hasMore, nextProductId }
+}
+
+export function validateInventoryReceptionInput(
+  productId: unknown,
+  quantity: unknown,
+  notes: unknown,
+  idempotencyKey: unknown,
+): RecordInventoryReceptionInput {
+  if (typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity < 1 || quantity > 100_000) {
+    throw new AdminValidationError('La cantidad recibida debe ser un entero entre 1 y 100000.')
+  }
+  if (typeof notes !== 'string') throw new AdminValidationError('Las notas de recepción no son válidas.')
+  const normalizedNotes = notes.trim()
+  if (normalizedNotes.length > 240) throw new AdminValidationError('Las notas no pueden superar 240 caracteres.')
+  return {
+    productId: uuid(productId, 'productId'),
+    quantity,
+    notes: normalizedNotes === '' ? null : normalizedNotes,
+    idempotencyKey: uuid(idempotencyKey, 'idempotencyKey'),
+  }
+}
+
+export function validateInventoryCountInput(
+  productId: unknown,
+  countedQuantity: unknown,
+  reason: unknown,
+  idempotencyKey: unknown,
+): ReconcileInventoryCountInput {
+  if (typeof countedQuantity !== 'number' || !Number.isInteger(countedQuantity) || countedQuantity < 0 || countedQuantity > 100_000) {
+    throw new AdminValidationError('La existencia contada debe ser un entero entre 0 y 100000.')
+  }
+  if (typeof reason !== 'string' || reason.trim().length < 3 || reason.trim().length > 240) {
+    throw new AdminValidationError('El motivo debe tener entre 3 y 240 caracteres.')
+  }
+  return {
+    productId: uuid(productId, 'productId'),
+    countedQuantity,
+    reason: reason.trim(),
+    idempotencyKey: uuid(idempotencyKey, 'idempotencyKey'),
+  }
+}
+
+export function parseInventoryReceptionResult(value: unknown): InventoryOperationResult {
+  const root = record(value, 'recepción de inventario')
+  exactKeys(root, ['schemaVersion', 'idempotentReplay', 'movementId', 'productId', 'quantity', 'totalQuantity'], 'recepción de inventario')
+  if (root.schemaVersion !== 1) throw new AdminValidationError('La versión de la recepción no es compatible.')
+  uuid(root.movementId, 'movementId')
+  safeInteger(root.quantity, 'quantity', 1)
+  return {
+    schemaVersion: 1,
+    idempotentReplay: boolean(root.idempotentReplay, 'idempotentReplay'),
+    productId: uuid(root.productId, 'productId'),
+    totalQuantity: safeInteger(root.totalQuantity, 'totalQuantity'),
+    adjustmentQuantity: null,
+  }
+}
+
+export function parseInventoryCountResult(value: unknown): InventoryOperationResult {
+  const root = record(value, 'conteo de inventario')
+  exactKeys(root, [
+    'schemaVersion', 'idempotentReplay', 'countId', 'productId', 'previousQuantity',
+    'countedQuantity', 'adjustmentQuantity', 'totalQuantity',
+  ], 'conteo de inventario')
+  if (root.schemaVersion !== 1) throw new AdminValidationError('La versión del conteo no es compatible.')
+  uuid(root.countId, 'countId')
+  const counted = safeInteger(root.countedQuantity, 'countedQuantity')
+  const total = safeInteger(root.totalQuantity, 'totalQuantity')
+  if (counted !== total) throw new AdminValidationError('El saldo del conteo no coincide con la existencia contada.')
+  return {
+    schemaVersion: 1,
+    idempotentReplay: boolean(root.idempotentReplay, 'idempotentReplay'),
+    productId: uuid(root.productId, 'productId'),
+    totalQuantity: total,
+    adjustmentQuantity: signedInteger(root.adjustmentQuantity, 'adjustmentQuantity'),
+  }
+}
+
+export function parseInventoryHistory(value: unknown): InventoryHistoryResponse {
+  const root = record(value, 'historial de inventario')
+  exactKeys(root, ['schemaVersion', 'branchId', 'items', 'hasMore', 'nextCursor'], 'historial de inventario')
+  if (root.schemaVersion !== 1 || !Array.isArray(root.items)) {
+    throw new AdminValidationError('El historial de inventario no es compatible.')
+  }
+  const items = root.items.map((entry, index) => {
+    const field = `items[${index}]`
+    const item = record(entry, field)
+    exactKeys(item, ['id', 'productId', 'productName', 'productCode', 'movementType', 'quantity', 'notes', 'createdAt', 'createdByLabel'], field)
+    return {
+      id: uuid(item.id, `${field}.id`),
+      productId: uuid(item.productId, `${field}.productId`),
+      productName: text(item.productName, `${field}.productName`, 160),
+      productCode: text(item.productCode, `${field}.productCode`, 40),
+      movementType: text(item.movementType, `${field}.movementType`, 32),
+      quantity: signedInteger(item.quantity, `${field}.quantity`),
+      notes: nullableText(item.notes, `${field}.notes`, 240),
+      createdAt: timestamp(item.createdAt, `${field}.createdAt`),
+      createdByLabel: nullableText(item.createdByLabel, `${field}.createdByLabel`, 160),
+    }
+  })
+  if (root.nextCursor !== null) {
+    const cursor = record(root.nextCursor, 'nextCursor')
+    exactKeys(cursor, ['createdAt', 'id'], 'nextCursor')
+    timestamp(cursor.createdAt, 'nextCursor.createdAt')
+    uuid(cursor.id, 'nextCursor.id')
+  }
+  if (root.hasMore === true && root.nextCursor === null) {
+    throw new AdminValidationError('El historial indicó más resultados sin cursor.')
+  }
+  if (root.hasMore === false && root.nextCursor !== null) {
+    throw new AdminValidationError('El historial devolvió un cursor innecesario.')
+  }
+  return {
+    schemaVersion: 1,
+    branchId: uuid(root.branchId, 'branchId'),
+    items,
+    hasMore: boolean(root.hasMore, 'hasMore'),
+  }
+}

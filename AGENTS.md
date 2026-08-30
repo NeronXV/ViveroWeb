@@ -109,10 +109,11 @@
 ## Validación respaldada por el repositorio
 
 - Lint: `npm run lint`.
+- Pruebas unitarias: `npm test`.
 - TypeScript y bundle de producción: `npm run build`.
 - Desarrollo manual: `npm run dev`; inícialo solo cuando la tarea lo requiera y no lo dejes ejecutándose.
 - Vista previa del bundle: `npm run preview`; úsala solo con justificación y autorización para iniciar el servidor.
-- No existe script de pruebas automatizadas; no declares pruebas ejecutadas ni inventes un comando `test`.
+- Las pruebas Vitest existentes cubren parsers y contratos de frontera; no sustituyen las pruebas integrales contra Supabase.
 - No instales dependencias ni regeneres el lockfile salvo solicitud expresa.
 
 ## Protección del trabajo y operaciones restringidas

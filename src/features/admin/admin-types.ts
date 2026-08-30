@@ -55,6 +55,15 @@ export interface AdminPage<T, C> {
 export type AdminBranchesResponse = AdminPage<AdminBranch, AdminBranchCursor>
 export type AdminStaffResponse = AdminPage<AdminStaffMember, AdminStaffCursor>
 
+export interface BranchRow {
+  id: string
+  code: string
+  name: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export interface CreateBranchInput {
   code: string
   name: string
@@ -68,12 +77,12 @@ export interface UpdateBranchInput {
 
 export interface AssignUserBranchInput {
   userId: string
-  branchId: string | null
+  branchId: string
 }
 
 export interface AssignUserRoleInput {
   userId: string
-  role: UserRole | null
+  role: UserRole
 }
 
 export interface AdminDailySaleReportItem {
@@ -91,4 +100,71 @@ export interface AdminTopProductReportItem {
   productCode: string
   totalQuantity: number
   totalRevenueCents: number
+}
+
+export interface AdminInventoryBalance {
+  branchId: string
+  productId: string
+  productName: string
+  productCode: string
+  productUnit: string
+  totalQuantity: number
+  minimumStock: number
+  isLowStock: boolean
+  balanceUpdatedAt: string | null
+}
+
+export interface AdminInventoryBalancesResponse {
+  schemaVersion: 1
+  branchId: string
+  items: AdminInventoryBalance[]
+  hasMore: boolean
+  nextProductId: string | null
+}
+
+export interface AdminInventoryProductOption {
+  id: string
+  name: string
+  unit: string
+}
+
+export interface RecordInventoryReceptionInput {
+  productId: string
+  quantity: number
+  notes: string | null
+  idempotencyKey: string
+}
+
+export interface ReconcileInventoryCountInput {
+  productId: string
+  countedQuantity: number
+  reason: string
+  idempotencyKey: string
+}
+
+export interface InventoryOperationResult {
+  schemaVersion: 1
+  idempotentReplay: boolean
+  productId: string
+  totalQuantity: number
+  adjustmentQuantity: number | null
+}
+
+export interface InventoryMovement {
+  id: string
+  productId: string
+  productName: string
+  productCode: string
+  movementType: string
+  quantity: number
+  notes: string | null
+  createdAt: string
+  createdByLabel: string | null
+}
+
+export interface InventoryHistoryResponse {
+  schemaVersion: 1
+  branchId: string
+  items: InventoryMovement[]
+  hasMore: boolean
 }

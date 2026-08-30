@@ -10,6 +10,7 @@ import {
   assignUserBranch,
   assignUserRole,
   fetchAdminBranches,
+  setUserActive,
   AdminServiceError,
 } from './admin-service'
 import type { AdminBranch, AdminStaffMember } from './admin-types'
@@ -37,6 +38,34 @@ function Feedback({
     )
   }
   return null
+}
+
+export function isToggleActiveDisabled(
+  actorId: string | null,
+  actorRole: string | null,
+  targetId: string,
+  targetRole: string | null,
+  isMutatingThisUser: boolean
+): { disabled: boolean; reason: string | null } {
+  if (isMutatingThisUser) {
+    return { disabled: true, reason: 'Operación en curso para este usuario.' }
+  }
+  if (actorId === targetId) {
+    return { disabled: true, reason: 'No puedes cambiar tu propio estado de activación.' }
+  }
+  if (actorRole === 'ADMIN' && targetRole === 'OWNER') {
+    return { disabled: true, reason: 'Un Administrador no puede cambiar el estado de un Propietario.' }
+  }
+  return { disabled: false, reason: null }
+}
+
+export function isAssignDisabledForInactive(
+  isActive: boolean
+): { disabled: boolean; reason: string | null } {
+  if (!isActive) {
+    return { disabled: true, reason: 'Debes activar al usuario antes de modificar su asignación.' }
+  }
+  return { disabled: false, reason: null }
 }
 
 export function BranchDirectory({ active }: { active: boolean }) {
@@ -322,17 +351,20 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
   // Modales
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false)
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false)
+  const [isConfirmActiveOpen, setIsConfirmActiveOpen] = useState(false)
   const [selectedStaff, setSelectedStaff] = useState<AdminStaffMember | null>(null)
+  const [confirmingStaff, setConfirmingStaff] = useState<AdminStaffMember | null>(null)
 
   // Combos
   const [branchId, setBranchId] = useState('')
-  const [roleName, setRoleName] = useState<UserRole | 'NONE'>('NONE')
+  const [roleName, setRoleName] = useState('')
   const [branchesList, setBranchesList] = useState<AdminBranch[]>([])
   const [loadingBranches, setLoadingBranches] = useState(false)
 
   // Mutaciones
   const [isMutating, setIsMutating] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
+  const [ariaNotification, setAriaNotification] = useState<string | null>(null)
 
   // Cargar sucursales para asignar
   useEffect(() => {
@@ -361,7 +393,7 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
 
   const handleRoleOpen = (staff: AdminStaffMember) => {
     setSelectedStaff(staff)
-    setRoleName(staff.role?.name || 'NONE')
+    setRoleName(staff.role?.name || '')
     setMutationError(null)
     setIsRoleModalOpen(true)
   }
@@ -372,7 +404,7 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
     setIsMutating(true)
     setMutationError(null)
     try {
-      await assignUserBranch({ userId: selectedStaff.id, branchId: branchId || null })
+      await assignUserBranch({ userId: selectedStaff.id, branchId })
       setIsBranchModalOpen(false)
       setSelectedStaff(null)
       directory.refresh()
@@ -389,12 +421,47 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
     setIsMutating(true)
     setMutationError(null)
     try {
-      await assignUserRole({ userId: selectedStaff.id, role: roleName === 'NONE' ? null : roleName })
+      await assignUserRole({ userId: selectedStaff.id, role: roleName as UserRole })
       setIsRoleModalOpen(false)
       setSelectedStaff(null)
       directory.refresh()
     } catch (err) {
       setMutationError(err instanceof AdminServiceError ? err.message : 'Error al asignar rol.')
+    } finally {
+      setIsMutating(false)
+    }
+  }
+
+  const isMutatingUser = (memberId: string): boolean => {
+    return isMutating && (selectedStaff?.id === memberId || confirmingStaff?.id === memberId)
+  }
+
+  const handleToggleActiveOpen = (staff: AdminStaffMember) => {
+    setConfirmingStaff(staff)
+    setMutationError(null)
+    setIsConfirmActiveOpen(true)
+  }
+
+  const handleToggleActiveSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!confirmingStaff) return
+    setIsMutating(true)
+    setMutationError(null)
+    try {
+      const nextActive = !confirmingStaff.isActive
+      await setUserActive(confirmingStaff.id, nextActive)
+
+      const actionText = nextActive ? 'activado' : 'desactivado'
+      setAriaNotification(`El trabajador ${confirmingStaff.fullName} ha sido ${actionText} con éxito.`)
+      setTimeout(() => {
+        setAriaNotification(null)
+      }, 5000)
+
+      setIsConfirmActiveOpen(false)
+      setConfirmingStaff(null)
+      directory.refresh()
+    } catch (err) {
+      setMutationError(err instanceof AdminServiceError ? err.message : 'Error al cambiar el estado del trabajador.')
     } finally {
       setIsMutating(false)
     }
@@ -449,7 +516,18 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
               {directory.items.map((member) => {
                 const disabledByHierarchy = isProtectedByHierarchy(member)
                 const disabledSelf = isSelf(member)
-                const cannotModify = disabledByHierarchy || disabledSelf
+                const disabledByMutation = isMutatingUser(member.id)
+                const cannotModify = disabledByHierarchy || disabledSelf || disabledByMutation
+                const inactiveAssignCheck = isAssignDisabledForInactive(member.isActive)
+                const isAssignDisabled = cannotModify || inactiveAssignCheck.disabled
+
+                const activeCheck = isToggleActiveDisabled(
+                  accessContext?.userId ?? null,
+                  accessContext?.role?.name ?? null,
+                  member.id,
+                  member.role?.name ?? null,
+                  disabledByMutation
+                )
 
                 return (
                   <tr key={member.id}>
@@ -465,12 +543,16 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                               type="button"
                               className="admin-action-btn secondary"
                               onClick={() => handleBranchOpen(member)}
-                              disabled={cannotModify}
+                              disabled={isAssignDisabled}
                               title={
                                 disabledByHierarchy
                                   ? 'La jerarquía ADMIN/OWNER protege a este usuario'
                                   : disabledSelf
                                   ? 'No puedes reasignar tu propia sucursal'
+                                  : disabledByMutation
+                                  ? 'Operación en curso para este usuario'
+                                  : inactiveAssignCheck.disabled
+                                  ? inactiveAssignCheck.reason ?? ''
                                   : 'Asignar sucursal'
                               }
                             >
@@ -482,16 +564,37 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                               type="button"
                               className="admin-action-btn secondary"
                               onClick={() => handleRoleOpen(member)}
-                              disabled={cannotModify}
+                              disabled={isAssignDisabled}
                               title={
                                 disabledByHierarchy
                                   ? 'La jerarquía ADMIN/OWNER protege a este usuario'
                                   : disabledSelf
                                   ? 'No puedes cambiar tu propio rol'
+                                  : disabledByMutation
+                                  ? 'Operación en curso para este usuario'
+                                  : inactiveAssignCheck.disabled
+                                  ? inactiveAssignCheck.reason ?? ''
                                   : 'Asignar rol'
                               }
                             >
                               Rol
+                            </button>
+                          )}
+                          {canManageUsers && (
+                            <button
+                              type="button"
+                              className={`admin-action-btn ${member.isActive ? 'danger' : 'primary'}`}
+                              onClick={() => handleToggleActiveOpen(member)}
+                              disabled={activeCheck.disabled}
+                              title={
+                                activeCheck.disabled
+                                  ? activeCheck.reason ?? ''
+                                  : member.isActive
+                                  ? 'Desactivar trabajador'
+                                  : 'Activar trabajador'
+                              }
+                            >
+                              {member.isActive ? 'Desactivar' : 'Activar'}
                             </button>
                           )}
                         </div>
@@ -546,7 +649,7 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                     onChange={(e) => setBranchId(e.target.value)}
                     disabled={isMutating}
                   >
-                    <option value="">(Ninguna - Sin sucursal)</option>
+                    <option value="" disabled>Selecciona una sucursal</option>
                     {branchesList.map((b) => (
                       <option value={b.id} key={b.id}>
                         {b.code} · {b.name}
@@ -564,7 +667,7 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                 >
                   Cancelar
                 </button>
-                <button type="submit" className="catalog-action" disabled={isMutating || loadingBranches}>
+                <button type="submit" className="catalog-action" disabled={isMutating || loadingBranches || branchId === ''}>
                   {isMutating ? 'Guardando…' : 'Asignar'}
                 </button>
               </div>
@@ -593,10 +696,10 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                 <select
                   id="role-select"
                   value={roleName}
-                  onChange={(e) => setRoleName(e.target.value as UserRole | 'NONE')}
+                  onChange={(e) => setRoleName(e.target.value)}
                   disabled={isMutating}
                 >
-                  <option value="NONE">(Ninguno - Sin rol)</option>
+                  <option value="" disabled>Selecciona un rol</option>
                   {USER_ROLES.filter(isRoleOptionAllowed).map((r) => (
                     <option value={r} key={r}>
                       {r === 'OWNER'
@@ -623,7 +726,7 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                 >
                   Cancelar
                 </button>
-                <button type="submit" className="catalog-action" disabled={isMutating}>
+                <button type="submit" className="catalog-action" disabled={isMutating || roleName === ''}>
                   {isMutating ? 'Guardando…' : 'Asignar'}
                 </button>
               </div>
@@ -631,7 +734,73 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
           </div>
         </div>
       )}
+
+      {/* Modal Confirmar Activar/Desactivar */}
+      {isConfirmActiveOpen && confirmingStaff && (
+        <div className="admin-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-active-title">
+          <div className="admin-modal-content">
+            <div className="admin-modal-header">
+              <h3 id="confirm-active-title">
+                {confirmingStaff.isActive ? 'Desactivar Trabajador' : 'Activar Trabajador'}
+              </h3>
+              <button
+                type="button"
+                className="admin-modal-close"
+                onClick={() => setIsConfirmActiveOpen(false)}
+                disabled={isMutating}
+                aria-label="Cerrar modal"
+              >
+                &times;
+              </button>
+            </div>
+            <div style={{ margin: '1rem 0', fontSize: '0.95rem', lineHeight: '1.5' }}>
+              <p>
+                ¿Estás seguro de que deseas <strong>{confirmingStaff.isActive ? 'desactivar' : 'activar'}</strong> al trabajador <strong>{confirmingStaff.fullName}</strong>?
+              </p>
+              {confirmingStaff.isActive ? (
+                <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
+                  Su configuración de sucursal y rol se conservará para futuras reincorporaciones, pero no podrá iniciar sesión en los módulos internos mientras esté inactivo.
+                </p>
+              ) : (
+                <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
+                  Una vez activo, el trabajador podrá iniciar sesión y podrás reasignarle rol o sucursal si es necesario.
+                </p>
+              )}
+            </div>
+            {mutationError && <div className="admin-dialog-error" role="alert">{mutationError}</div>}
+            <form onSubmit={handleToggleActiveSubmit}>
+              <div className="admin-modal-footer">
+                <button
+                  type="button"
+                  className="retry-btn-secondary"
+                  onClick={() => setIsConfirmActiveOpen(false)}
+                  disabled={isMutating}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className={`catalog-action ${confirmingStaff.isActive ? 'danger' : 'primary'}`}
+                  disabled={isMutating}
+                >
+                  {isMutating
+                    ? confirmingStaff.isActive
+                      ? 'Desactivando…'
+                      : 'Activando…'
+                    : confirmingStaff.isActive
+                    ? 'Desactivar'
+                    : 'Activar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Contenedor aria-live oculto para confirmación accesible */}
+      <div className="sr-only" role="status" aria-live="polite">
+        {ariaNotification}
+      </div>
     </section>
   )
 }
-
