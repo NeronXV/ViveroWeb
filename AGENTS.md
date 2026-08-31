@@ -7,6 +7,17 @@
 - Prioriza cambios pequeños, verificables y compatibles con la arquitectura y el diseño existentes.
 - Distingue explícitamente las fuentes demostrativas de las fuentes reales del backend; mientras existan datos demo, no los presentes como persistidos ni autoritativos y no los mezcles con contratos reales.
 
+
+## Modo actual: MVP funcional
+
+- La prioridad vigente es completar recorridos utilizables de extremo a extremo y obtener retroalimentación real.
+- Lee `docs/PROJECT_STATUS.md`, `docs/ROADMAP.md`, `docs/MVP_RULES.md` y `docs/tasks/current.md` antes de planear trabajo funcional.
+- Clasifica los hallazgos como **bloqueante**, **importante** o **deuda técnica**.
+- Corrige de inmediato sólo los bloqueantes del flujo y los riesgos de pérdida de datos, autorización, secretos, cobros o contratos incompatibles.
+- Documenta lo demás y continúa; no amplíes la tarea por posibilidades hipotéticas.
+- La validación debe ser proporcional al cambio. Empieza por la prueba específica y el camino principal; reserva suites exhaustivas para cambios críticos o checkpoints integrales.
+- No uses esta prioridad para retirar controles ya implementados ni para debilitar autenticación, RLS, privilegios, idempotencia, totales autoritativos o protección de secretos.
+
 ## Mapa del repositorio
 
 - `src/main.tsx`: entrada de React y composición de providers globales.
