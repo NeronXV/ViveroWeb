@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-
-import { useDemoStore } from '../../app/providers/DemoStore'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import { AccessDenied } from '../access/AccessDenied'
 import { hasCapability } from '../access/access-helpers'
@@ -14,6 +12,8 @@ import { useAdminReports } from './useAdminReports'
 import { useAdminBranches } from './useAdminDirectories'
 import { AdminCatalog } from './AdminCatalog'
 import { AdminCustomers } from './AdminCustomers'
+import { AdminPromotions } from './AdminPromotions'
+import { AdminOrders } from './AdminOrders'
 
 export function AdminPage() {
   const { accessContext, refreshAccessContext } = useAuth()
@@ -31,7 +31,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const requestedTab = searchParams.get('tab') as AdminModuleId | null
   const firstAuthorizedTab = authorizedTabs[0]
   const [tab, setTab] = useState<AdminModuleId>(() => requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab)
-  const { plants, orders, setDiscount } = useDemoStore()
+  const [preselectedStockProductId, setPreselectedStockProductId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const { signOut } = useAuth()
   const navigate = useNavigate()
@@ -75,12 +75,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   }, [authorizedTabs, context.userId, requestedTab])
 
 
-  const savePromotion = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    setDiscount(Number(data.get('plantId')), Number(data.get('discount')))
-    setNotice('Promoción de demostración actualizada.')
-  }
+
 
   const selectTab = (nextTab: AdminModuleId) => {
     if (!authorizedTabs.includes(nextTab)) return
@@ -172,7 +167,10 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               {tab === 'inventario' && authorizedTabs.includes('inventario') && (
                 <AdminCatalog
                   active={tab === 'inventario'}
-                  onContinueToInventory={authorizedTabs.includes('stock') ? () => selectTab('stock') : undefined}
+                  onContinueToInventory={authorizedTabs.includes('stock') ? (productId?: string) => {
+                    if (productId) setPreselectedStockProductId(productId)
+                    selectTab('stock')
+                  } : undefined}
                 />
               )}
 
@@ -180,31 +178,14 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
                 <AdminInventory
                   active
                   branchName={context.branch?.name ?? 'Sin sucursal asignada'}
+                  initialProductId={preselectedStockProductId}
+                  onClearInitialProductId={() => setPreselectedStockProductId(null)}
                   onManageProducts={authorizedTabs.includes('inventario') ? () => selectTab('inventario') : undefined}
                 />
               )}
 
               {tab === 'promociones' && authorizedTabs.includes('promociones') && (
-                <section className="db-tab-content active">
-                  <h3>Promociones</h3>
-                  <p className="demo-copy">Promociones exclusivamente demostrativas.</p>
-                  <form className="dashboard-form" onSubmit={savePromotion}>
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label htmlFor="promo-plant">Producto</label>
-                        <select id="promo-plant" name="plantId">
-                          {plants.map((plant) => <option value={plant.id} key={plant.id}>{plant.name}</option>)}
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label htmlFor="promo-discount">Descuento (%)</label>
-                        <input id="promo-discount" name="discount" type="number" min="0" max="90" required />
-                      </div>
-                    </div>
-                    <button className="submit-db-btn">Aplicar promoción demo</button>
-                  </form>
-                  <DataTable headings={['Producto', 'Precio', 'Descuento']} rows={plants.filter(({ discount }) => discount > 0).map((plant) => [plant.name, `$${plant.price.toFixed(2)}`, `${plant.discount}%`])} />
-                </section>
+                <AdminPromotions active />
               )}
 
               {tab === 'ventas' && authorizedTabs.includes('ventas') && (
@@ -282,21 +263,48 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
                     <div className="reports-real-content">
                       {/* Stats Grid de Métricas Consolidadas */}
                       {canViewReports ? (
-                        <div className="stats-grid">
-                          <Stat label="Ingresos" value={`$${totalRevenueReal.toFixed(2)} MXN`} />
-                          <Stat label="Descuentos Otorgados" value={`$${totalDiscountsReal.toFixed(2)} MXN`} />
-                          <Stat label="Transacciones" value={String(totalSalesCountReal)} />
-                          <Stat label="Ticket Promedio" value={`$${averageTicketReal.toFixed(2)} MXN`} />
+                        <div className="stock-kpi-bar">
+                          <Stat
+                            label="Ingresos Totales"
+                            value={`$${totalRevenueReal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`}
+                            icon="💰"
+                            iconBg="rgba(16, 185, 129, 0.15)"
+                            iconColor="#10b981"
+                          />
+                          <Stat
+                            label="Descuentos Otorgados"
+                            value={`$${totalDiscountsReal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`}
+                            icon="🏷️"
+                            iconBg="rgba(239, 68, 68, 0.15)"
+                            iconColor="#ef4444"
+                          />
+                          <Stat
+                            label="Transacciones Realizadas"
+                            value={String(totalSalesCountReal)}
+                            icon="🧾"
+                            iconBg="rgba(59, 130, 246, 0.15)"
+                            iconColor="#3b82f6"
+                          />
+                          <Stat
+                            label="Ticket Promedio"
+                            value={`$${averageTicketReal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`}
+                            icon="📈"
+                            iconBg="rgba(139, 92, 246, 0.15)"
+                            iconColor="#8b5cf6"
+                          />
                         </div>
                       ) : (
                         <p className="module-permission-note">No tienes el permiso VIEW_REPORTS para visualizar las métricas de ingresos.</p>
                       )}
 
                       {/* Tablas de Reportes */}
-                      <div className="reports-tables-layout">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1.25rem' }}>
                         {/* Tabla 1: Reporte Diario de Ventas */}
-                        <div className="report-table-section">
-                          <h4>Historial Diario de Ventas (PAID)</h4>
+                        <div className="botanical-section-card">
+                          <div className="botanical-section-header">
+                            <span>📅</span>
+                            <h4>Historial Diario de Ventas (PAID)</h4>
+                          </div>
                           <DataTable
                             headings={['Fecha', 'Sucursal', 'Ventas', 'Descuentos', 'Ingresos']}
                             rows={dailySales.map((item) => {
@@ -310,23 +318,26 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
                                 dateStr,
                                 item.branchName,
                                 String(item.salesCount),
-                                `$${(item.discountCents / 100).toFixed(2)}`,
-                                `$${(item.revenueCents / 100).toFixed(2)}`,
+                                `$${(item.discountCents / 100).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                                `$${(item.revenueCents / 100).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
                               ]
                             })}
                           />
                         </div>
 
                         {/* Tabla 2: Productos Más Vendidos */}
-                        <div className="report-table-section">
-                          <h4>Top 10 Productos Más Vendidos</h4>
+                        <div className="botanical-section-card">
+                          <div className="botanical-section-header">
+                            <span>🏆</span>
+                            <h4>Top 10 Productos Más Vendidos</h4>
+                          </div>
                           <DataTable
                             headings={['Código', 'Producto', 'Cantidad Vendida', 'Ingreso Total']}
                             rows={topProducts.map((p) => [
                               p.productCode,
                               p.productName,
                               String(p.totalQuantity),
-                              `$${(p.totalRevenueCents / 100).toFixed(2)}`,
+                              `$${(p.totalRevenueCents / 100).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
                             ])}
                           />
                         </div>
@@ -337,11 +348,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               )}
 
               {tab === 'pedidos' && authorizedTabs.includes('pedidos') && (
-                <section className="db-tab-content active">
-                  <h3>Pedidos</h3>
-                  <p className="demo-copy">Datos de demostración guardados localmente.</p>
-                  <DataTable headings={['Pedido', 'Fecha', 'Artículos', 'Total', 'Estado']} rows={orders.map((order) => [order.id, order.createdAt, order.items.map((item) => `${item.name} ×${item.quantity}`).join(', '), `$${order.total.toFixed(2)}`, order.status])} />
-                </section>
+                <AdminOrders active={tab === 'pedidos'} />
               )}
 
               {tab === 'personal' && authorizedTabs.includes('personal') && <StaffDirectory active canAssignRoles={canAssignRoles} />}
@@ -354,10 +361,61 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return <article className="stat-card"><span className="stat-icon">●</span><div><h4>{label}</h4><p>{value}</p></div></article>
+function Stat({
+  label,
+  value,
+  icon,
+  iconBg,
+  iconColor,
+}: {
+  label: string
+  value: string
+  icon?: string
+  iconBg?: string
+  iconColor?: string
+}) {
+  return (
+    <div className="stock-kpi-card">
+      <div className="stock-kpi-icon" style={{ background: iconBg || 'rgba(16, 185, 129, 0.15)', color: iconColor || '#10b981' }}>
+        {icon || '📊'}
+      </div>
+      <div className="stock-kpi-info">
+        <span className="stock-kpi-value">{value}</span>
+        <span className="stock-kpi-label">{label}</span>
+      </div>
+    </div>
+  )
 }
 
 function DataTable({ headings, rows }: { headings: string[]; rows: string[][] }) {
-  return <div className="table-responsive"><table className="db-table"><thead><tr>{headings.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, rowIndex) => <tr key={`${row[0]}-${rowIndex}`}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`}>{cell}</td>)}</tr>) : <tr><td colSpan={headings.length}>Sin información registrada para este período.</td></tr>}</tbody></table></div>
+  return (
+    <div className="table-responsive">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            {headings.map((heading) => (
+              <th key={heading}>{heading}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((row, rowIndex) => (
+              <tr key={`${row[0]}-${rowIndex}`}>
+                {row.map((cell, cellIndex) => (
+                  <td key={`${cell}-${cellIndex}`}>{cell}</td>
+                ))}
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={headings.length} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                Sin información registrada para este período.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
 }

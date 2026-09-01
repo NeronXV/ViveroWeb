@@ -32,8 +32,8 @@ export interface AdminModuleRule {
 export const ADMIN_MODULE_RULES: readonly AdminModuleRule[] = [
   { id: 'editorial', label: '📝 Editorial', anyCapability: [], pendingBackendPermission: true },
   { id: 'sucursales', label: '🏬 Sucursales', anyCapability: ['MANAGE_BRANCHES', 'MANAGE_USERS'] },
-  { id: 'inventario', label: '📦 Productos', anyCapability: ['MANAGE_PRODUCTS'] },
-  { id: 'stock', label: '📈 Inventario', anyCapability: ['MANAGE_INVENTORY'] },
+  { id: 'inventario', label: '🌿 Catálogo y Plantas', anyCapability: ['MANAGE_PRODUCTS'] },
+  { id: 'stock', label: '📈 Existencias y Stock', anyCapability: ['MANAGE_INVENTORY'] },
   { id: 'promociones', label: '🏷 Promociones', anyCapability: ['MANAGE_DISCOUNTS'] },
   { id: 'ventas', label: '📊 Ventas y reportes', anyCapability: ['VIEW_BRANCH_SALES', 'VIEW_ALL_SALES', 'VIEW_REPORTS'] },
   { id: 'pedidos', label: '🧾 Pedidos', anyCapability: ['VIEW_BRANCH_SALES', 'VIEW_ALL_SALES'] },
@@ -54,6 +54,19 @@ export function canEnterCashier(context: UserAccessContext | null): boolean {
 
 export function canEnterAdmin(context: UserAccessContext | null): boolean {
   return context?.accessState === 'ACTIVE' && hasAnyCapability(context, ADMIN_ENTRY_CAPABILITIES)
+}
+
+export function canViewCatalog(context: UserAccessContext | null): boolean {
+  return context?.accessState === 'ACTIVE' && hasCapability(context, 'VIEW_CATALOG')
+}
+
+export function getWorkspaceTitle(context: UserAccessContext | null): string {
+  switch (context?.role?.name) {
+    case 'MANAGER': return 'Panel de gerencia'
+    case 'ADMIN':
+    case 'OWNER': return 'Panel de administración'
+    default: return 'Panel de trabajador'
+  }
 }
 
 export function isAdminModuleAuthorized(context: UserAccessContext | null, moduleId: AdminModuleId): boolean {

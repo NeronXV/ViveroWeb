@@ -117,14 +117,16 @@ function branch(value: unknown, index: number): AdminBranch {
 
 function staffBranch(value: unknown, field: string): AdminStaffBranch {
   const item = record(value, field)
-  exactKeys(item, ['id', 'code', 'name', 'isActive'], field)
   const code = text(item.code, `${field}.code`, 24)
   if (!BRANCH_CODE_PATTERN.test(code)) throw new AdminValidationError(`${field}.code no es válido.`)
+  const isActive = typeof item.isActive === 'boolean'
+    ? item.isActive
+    : (typeof item.is_active === 'boolean' ? item.is_active : true)
   return {
     id: uuid(item.id, `${field}.id`),
     code,
     name: text(item.name, `${field}.name`, 120),
-    isActive: boolean(item.isActive, `${field}.isActive`),
+    isActive,
   }
 }
 
@@ -139,14 +141,30 @@ function staffRole(value: unknown, field: string): AdminStaffRole {
 function staff(value: unknown, index: number): AdminStaffMember {
   const field = `items[${index}]`
   const item = record(value, field)
-  exactKeys(item, ['id', 'fullName', 'isActive', 'branch', 'role', 'updatedAt'], field)
+
+  if ('email' in item || 'password' in item || 'email_confirmed_at' in item || 'raw_user_meta_data' in item) {
+    throw new AdminValidationError(`${field} contiene campos no permitidos.`)
+  }
+
+  const keys = Object.keys(item)
+  const isCamel = keys.includes('fullName')
+  const expected = isCamel
+    ? ['id', 'fullName', 'isActive', 'branch', 'role', 'updatedAt']
+    : ['id', 'full_name', 'is_active', 'branch', 'role', 'updated_at']
+
+  exactKeys(item, expected, field)
+
+  const rawFullName = isCamel ? item.fullName : item.full_name
+  const rawIsActive = isCamel ? item.isActive : item.is_active
+  const rawUpdatedAt = isCamel ? item.updatedAt : item.updated_at
+
   return {
     id: uuid(item.id, `${field}.id`),
-    fullName: text(item.fullName, `${field}.fullName`, 160),
-    isActive: boolean(item.isActive, `${field}.isActive`),
+    fullName: text(rawFullName, `${field}.fullName`, 160),
+    isActive: boolean(rawIsActive, `${field}.isActive`),
     branch: item.branch === null ? null : staffBranch(item.branch, `${field}.branch`),
     role: item.role === null ? null : staffRole(item.role, `${field}.role`),
-    updatedAt: timestamp(item.updatedAt, `${field}.updatedAt`),
+    updatedAt: timestamp(rawUpdatedAt, `${field}.updatedAt`),
   }
 }
 

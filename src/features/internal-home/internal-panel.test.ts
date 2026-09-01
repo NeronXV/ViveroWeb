@@ -5,6 +5,8 @@ import {
   getAuthorizedAdminModules,
   getSafeReturnTo,
   canAccessDestination,
+  canViewCatalog,
+  getWorkspaceTitle,
 } from '../access/access-rules'
 import type { UserAccessContext } from '../access/access-types'
 
@@ -66,6 +68,7 @@ describe('Pruebas de Acceso al Panel Interno', () => {
       expect(getAuthorizedAdminModules(context)).toContain('inventario')
       expect(getAuthorizedAdminModules(context)).toContain('ventas')
       expect(getAuthorizedAdminModules(context)).not.toContain('personal')
+      expect(getWorkspaceTitle(context)).toBe('Panel de gerencia')
     })
   })
 
@@ -79,6 +82,18 @@ describe('Pruebas de Acceso al Panel Interno', () => {
       expect(canEnterAdmin(context)).toBe(true)
       expect(canEnterCashier(context)).toBe(false)
       expect(getAuthorizedAdminModules(context)).toContain('personal')
+      expect(getWorkspaceTitle(context)).toBe('Panel de administración')
+    })
+  })
+
+  describe('panel de trabajador', () => {
+    it('ofrece catálogo por capacidad y no por el nombre del rol', () => {
+      const context = createContext({
+        role: { name: 'SALES', displayName: 'Ventas' },
+        capabilities: ['VIEW_CATALOG'],
+      })
+      expect(canViewCatalog(context)).toBe(true)
+      expect(getWorkspaceTitle(context)).toBe('Panel de trabajador')
     })
   })
 

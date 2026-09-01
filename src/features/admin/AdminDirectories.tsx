@@ -145,12 +145,27 @@ export function BranchDirectory({ active }: { active: boolean }) {
     }
   }
 
+  const [branchSearch, setBranchSearch] = useState('')
+
+  const filteredBranches = directory.items.filter((b) => {
+    if (!branchSearch.trim()) return true
+    const q = branchSearch.trim().toLowerCase()
+    return b.code.toLowerCase().includes(q) || b.name.toLowerCase().includes(q)
+  })
+
+  const totalStaffCount = directory.items.reduce((acc, b) => acc + b.activeStaffCount, 0)
+  const totalPendingSales = directory.items.reduce((acc, b) => acc + b.pendingSaleCount, 0)
+
   return (
     <section className="db-tab-content active" aria-busy={directory.status === 'loading' || directory.loadingMore}>
       <div className="section-header-row">
         <div>
-          <h3>Sucursales</h3>
-          <p className="real-data-copy">Directorio real de Supabase. Operaciones administrativas protegidas.</p>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>🏬</span> Directorio de Sucursales
+          </h3>
+          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Gestión centralizada de ubicaciones físicas y asignaciones operativas en Supabase.
+          </p>
         </div>
         {canManageBranches && (
           <button type="button" className="catalog-action" onClick={handleCreateOpen}>
@@ -161,56 +176,193 @@ export function BranchDirectory({ active }: { active: boolean }) {
 
       <Feedback status={directory.status} error={directory.error} retry={directory.retry} />
 
-      {directory.status === 'ready' && directory.items.length === 0 && (
-        <p role="status">No hay sucursales disponibles.</p>
+      {directory.status === 'ready' && (
+        <>
+          {/* KPI Metrics */}
+          <div className="stock-kpi-bar" style={{ marginTop: '1rem' }}>
+            <div className="stock-kpi-card">
+              <div className="stock-kpi-icon" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' }}>
+                🏬
+              </div>
+              <div className="stock-kpi-info">
+                <span className="stock-kpi-value">{directory.items.length}</span>
+                <span className="stock-kpi-label">Total Sucursales</span>
+              </div>
+            </div>
+            <div className="stock-kpi-card">
+              <div className="stock-kpi-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
+                🟢
+              </div>
+              <div className="stock-kpi-info">
+                <span className="stock-kpi-value">{directory.items.filter((b) => b.isActive).length}</span>
+                <span className="stock-kpi-label">Sucursales Activas</span>
+              </div>
+            </div>
+            <div className="stock-kpi-card">
+              <div className="stock-kpi-icon" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6' }}>
+                👥
+              </div>
+              <div className="stock-kpi-info">
+                <span className="stock-kpi-value">{totalStaffCount}</span>
+                <span className="stock-kpi-label">Personal en Turno</span>
+              </div>
+            </div>
+            <div className="stock-kpi-card">
+              <div className="stock-kpi-icon" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
+                ⏳
+              </div>
+              <div className="stock-kpi-info">
+                <span className="stock-kpi-value">{totalPendingSales}</span>
+                <span className="stock-kpi-label">Ventas Pendientes</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Search Toolbar */}
+          <div className="stock-filter-toolbar" style={{ marginTop: '1rem' }}>
+            <div className="stock-search-box" style={{ maxWidth: '380px' }}>
+              <span className="stock-search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Buscar por código o nombre..."
+                value={branchSearch}
+                onChange={(e) => setBranchSearch(e.target.value)}
+              />
+              {branchSearch && (
+                <button
+                  type="button"
+                  className="stock-search-clear"
+                  onClick={() => setBranchSearch('')}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              Mostrando {filteredBranches.length} de {directory.items.length} sucursales
+            </span>
+          </div>
+        </>
       )}
 
-      {directory.items.length > 0 && (
-        <div className="table-responsive">
-          <table className="db-table">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Nombre</th>
-                <th>Personal activo</th>
-                <th>Ventas pendientes</th>
-                <th>Estado</th>
-                {canManageBranches && <th>Acciones</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {directory.items.map((branch) => (
-                <tr key={branch.id}>
-                  <td>{branch.code}</td>
-                  <td>{branch.name}</td>
-                  <td>{branch.activeStaffCount}</td>
-                  <td>{branch.pendingSaleCount}</td>
-                  <td>{branch.isActive ? '🟢 Activa' : '🔴 Inactiva'}</td>
-                  {canManageBranches && (
-                    <td>
-                      <div className="admin-actions-cell">
-                        <button
-                          type="button"
-                          className="admin-action-btn secondary"
-                          onClick={() => handleEditOpen(branch)}
-                          title="Editar sucursal"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          className={`admin-action-btn ${branch.isActive ? 'danger' : 'primary'}`}
-                          onClick={() => handleToggleActive(branch)}
-                        >
-                          {branch.isActive ? 'Desactivar' : 'Activar'}
-                        </button>
-                      </div>
-                    </td>
-                  )}
+      {directory.status === 'ready' && directory.items.length === 0 && (
+        <div className="promo-empty-card" style={{ marginTop: '1.25rem' }}>
+          <div className="promo-empty-icon">🏬</div>
+          <div style={{ maxWidth: '440px' }}>
+            <h4 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem' }}>No hay sucursales registradas</h4>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
+              Crea tu primera sucursal para asignar personal, gestionar inventario local y procesar ventas.
+            </p>
+          </div>
+          {canManageBranches && (
+            <button type="button" className="catalog-action" style={{ marginTop: '0.5rem' }} onClick={handleCreateOpen}>
+              + Crear Primera Sucursal
+            </button>
+          )}
+        </div>
+      )}
+
+      {filteredBranches.length > 0 && (
+        <div className="botanical-section-card" style={{ marginTop: '1.25rem' }}>
+          <div className="botanical-section-header">
+            <span>🏬</span>
+            <h4>Ubicaciones Físicas ({filteredBranches.length})</h4>
+          </div>
+
+          <div className="table-responsive">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre de Sucursal</th>
+                  <th style={{ textAlign: 'center' }}>Personal Activo</th>
+                  <th style={{ textAlign: 'center' }}>Ventas Pendientes</th>
+                  <th style={{ textAlign: 'center' }}>Estado</th>
+                  {canManageBranches && <th style={{ textAlign: 'center' }}>Acciones</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredBranches.map((branch) => (
+                  <tr key={branch.id}>
+                    <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono, monospace)', color: 'var(--primary-color)' }}>
+                      {branch.code}
+                    </td>
+                    <td>
+                      <strong style={{ color: 'var(--text-primary)' }}>{branch.name}</strong>
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                      <span
+                        style={{
+                          background: 'rgba(59, 130, 246, 0.12)',
+                          color: '#3b82f6',
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '16px',
+                          fontSize: '0.8rem',
+                        }}
+                      >
+                        👥 {branch.activeStaffCount}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span
+                        style={{
+                          background: branch.pendingSaleCount > 0 ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-color)',
+                          color: branch.pendingSaleCount > 0 ? '#f59e0b' : 'var(--text-secondary)',
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '16px',
+                          fontSize: '0.8rem',
+                          fontWeight: branch.pendingSaleCount > 0 ? 700 : 500,
+                        }}
+                      >
+                        {branch.pendingSaleCount > 0 ? `⏳ ${branch.pendingSaleCount}` : '0'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span
+                        style={{
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '16px',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          background: branch.isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                          color: branch.isActive ? '#10b981' : '#ef4444',
+                          display: 'inline-block',
+                        }}
+                      >
+                        {branch.isActive ? '🟢 Activa' : '🔴 Inactiva'}
+                      </span>
+                    </td>
+                    {canManageBranches && (
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
+                          <button
+                            type="button"
+                            className="mini-action-btn primary"
+                            onClick={() => handleEditOpen(branch)}
+                            title="Editar sucursal"
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="mini-action-btn"
+                            style={{
+                              borderColor: branch.isActive ? 'rgba(239, 68, 68, 0.4)' : '#10b981',
+                              color: branch.isActive ? '#ef4444' : '#10b981',
+                            }}
+                            onClick={() => handleToggleActive(branch)}
+                          >
+                            {branch.isActive ? 'Pausar' : 'Activar'}
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -467,11 +619,30 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
     }
   }
 
-  // Comprobar la jerarquía de roles (ADMIN no puede modificar ADMIN ni OWNER)
+  const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all')
+
+  // Filtrado de personal
+  const filteredStaff = directory.items.filter((member) => {
+    if (filterStatus === 'active' && !member.isActive) return false
+    if (filterStatus === 'inactive' && member.isActive) return false
+    if (!search.trim()) return true
+    const q = search.trim().toLowerCase()
+    const matchName = member.fullName.toLowerCase().includes(q)
+    const matchRole =
+      (member.role?.displayName && member.role.displayName.toLowerCase().includes(q)) ||
+      (member.role?.name && member.role.name.toLowerCase().includes(q))
+    const matchBranch =
+      (member.branch?.name && member.branch.name.toLowerCase().includes(q)) ||
+      (member.branch?.code && member.branch.code.toLowerCase().includes(q))
+    return matchName || Boolean(matchRole) || Boolean(matchBranch)
+  })
+
+  // Refleja la jerarquía autoritativa: ADMIN no puede modificar OWNER.
   const isProtectedByHierarchy = (member: AdminStaffMember): boolean => {
     const callerRole = accessContext?.role?.name
     if (callerRole === 'ADMIN') {
-      return member.role?.name === 'ADMIN' || member.role?.name === 'OWNER'
+      return member.role?.name === 'OWNER'
     }
     return false
   }
@@ -484,127 +655,350 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
   const isRoleOptionAllowed = (role: string): boolean => {
     const callerRole = accessContext?.role?.name
     if (callerRole === 'ADMIN') {
-      return role !== 'ADMIN' && role !== 'OWNER'
+      return role !== 'OWNER'
     }
     return true
   }
 
+  const getRoleBadgeStyle = (roleName?: string) => {
+    switch (roleName) {
+      case 'OWNER':
+        return { background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }
+      case 'ADMIN':
+        return { background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)' }
+      case 'CASHIER':
+        return { background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }
+      case 'INVENTORY':
+        return { background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }
+      default:
+        return { background: 'var(--bg-color)', color: 'var(--text-primary)', border: '1px solid var(--surface-border)' }
+    }
+  }
+
   return (
     <section className="db-tab-content active" aria-busy={directory.status === 'loading' || directory.loadingMore}>
-      <h3>Personal y roles</h3>
-      <p className="real-data-copy">Directorio real de Supabase. Acciones protegidas por jerarquía.</p>
+      <div className="section-header-row">
+        <div>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>👥</span> Personal y Roles
+          </h3>
+          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Directorio institucional de Supabase. Acciones de asignación protegidas por jerarquía.
+          </p>
+        </div>
+      </div>
 
       <Feedback status={directory.status} error={directory.error} retry={directory.retry} />
 
-      {directory.status === 'ready' && directory.items.length === 0 && (
-        <p role="status">No hay personal disponible.</p>
+      {directory.status === 'ready' && (
+        <>
+          {/* KPI Metrics */}
+          <div className="stock-kpi-bar" style={{ marginTop: '1rem' }}>
+            <div className="stock-kpi-card">
+              <div className="stock-kpi-icon" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' }}>
+                👥
+              </div>
+              <div className="stock-kpi-info">
+                <span className="stock-kpi-value">{directory.items.length}</span>
+                <span className="stock-kpi-label">Total Personal</span>
+              </div>
+            </div>
+            <div className="stock-kpi-card">
+              <div className="stock-kpi-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
+                🟢
+              </div>
+              <div className="stock-kpi-info">
+                <span className="stock-kpi-value">{directory.items.filter((m) => m.isActive).length}</span>
+                <span className="stock-kpi-label">Personal Activo</span>
+              </div>
+            </div>
+            <div className="stock-kpi-card">
+              <div className="stock-kpi-icon" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
+                🔴
+              </div>
+              <div className="stock-kpi-info">
+                <span className="stock-kpi-value">{directory.items.filter((m) => !m.isActive).length}</span>
+                <span className="stock-kpi-label">Inactivos / Pausados</span>
+              </div>
+            </div>
+            <div className="stock-kpi-card">
+              <div className="stock-kpi-icon" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6' }}>
+                🏬
+              </div>
+              <div className="stock-kpi-info">
+                <span className="stock-kpi-value">{directory.items.filter((m) => m.branch !== null).length}</span>
+                <span className="stock-kpi-label">Con Sucursal Asignada</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Toolbar Search & Status Filter */}
+          <div className="stock-filter-toolbar" style={{ marginTop: '1rem' }}>
+            <div className="stock-search-box" style={{ maxWidth: '380px' }}>
+              <span className="stock-search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Buscar por nombre, rol o sucursal..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {search && (
+                <button
+                  type="button"
+                  className="stock-search-clear"
+                  onClick={() => setSearch('')}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="stock-status-chips">
+              <button
+                type="button"
+                className={`stock-filter-chip ${filterStatus === 'all' ? 'active' : ''}`}
+                onClick={() => setFilterStatus('all')}
+              >
+                Todos ({directory.items.length})
+              </button>
+              <button
+                type="button"
+                className={`stock-filter-chip ${filterStatus === 'active' ? 'active' : ''}`}
+                onClick={() => setFilterStatus('active')}
+              >
+                🟢 Activos ({directory.items.filter((m) => m.isActive).length})
+              </button>
+              <button
+                type="button"
+                className={`stock-filter-chip ${filterStatus === 'inactive' ? 'active' : ''}`}
+                onClick={() => setFilterStatus('inactive')}
+              >
+                🔴 Inactivos ({directory.items.filter((m) => !m.isActive).length})
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
-      {directory.items.length > 0 && (
-        <div className="table-responsive">
-          <table className="db-table">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Rol</th>
-                <th>Sucursal</th>
-                <th>Estado</th>
-                {(canManageUsers || canAssignRoles) && <th>Acciones</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {directory.items.map((member) => {
-                const disabledByHierarchy = isProtectedByHierarchy(member)
-                const disabledSelf = isSelf(member)
-                const disabledByMutation = isMutatingUser(member.id)
-                const cannotModify = disabledByHierarchy || disabledSelf || disabledByMutation
-                const inactiveAssignCheck = isAssignDisabledForInactive(member.isActive)
-                const isAssignDisabled = cannotModify || inactiveAssignCheck.disabled
+      {directory.items.length === 0 && directory.status === 'ready' && (
+        <div className="promo-empty-card" style={{ marginTop: '1.25rem' }}>
+          <div className="promo-empty-icon">👥</div>
+          <div style={{ maxWidth: '440px' }}>
+            <h4 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem' }}>No hay personal registrado en el directorio</h4>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
+              Los usuarios que se registren en la plataforma aparecerán aquí para asignarles rol y sucursal de trabajo.
+            </p>
+          </div>
+        </div>
+      )}
 
-                const activeCheck = isToggleActiveDisabled(
-                  accessContext?.userId ?? null,
-                  accessContext?.role?.name ?? null,
-                  member.id,
-                  member.role?.name ?? null,
-                  disabledByMutation
-                )
+      {filteredStaff.length > 0 && (
+        <div className="botanical-section-card" style={{ marginTop: '1.25rem' }}>
+          <div className="botanical-section-header">
+            <span>📋</span>
+            <h4>Directorio de Trabajadores ({filteredStaff.length})</h4>
+          </div>
 
-                return (
-                  <tr key={member.id}>
-                    <td>{member.fullName} {disabledSelf && <span className="role-badge-db admin" style={{ display: 'inline', fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}>Tú</span>}</td>
-                    <td>{member.role?.displayName ?? 'Sin rol'}</td>
-                    <td>{member.branch ? `${member.branch.code} · ${member.branch.name}` : 'Sin sucursal'}</td>
-                    <td>{member.isActive ? '🟢 Activo' : '🔴 Inactivo'}</td>
-                    {(canManageUsers || canAssignRoles) && (
+          <div className="table-responsive">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Trabajador</th>
+                  <th>Rol Institucional</th>
+                  <th>Sucursal Asignada</th>
+                  <th style={{ textAlign: 'center' }}>Estado</th>
+                  {(canManageUsers || canAssignRoles) && <th style={{ textAlign: 'center' }}>Acciones</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStaff.map((member) => {
+                  const disabledByHierarchy = isProtectedByHierarchy(member)
+                  const disabledSelf = isSelf(member)
+                  const disabledByMutation = isMutatingUser(member.id)
+                  const cannotModify = disabledByHierarchy || disabledSelf || disabledByMutation
+                  const inactiveAssignCheck = isAssignDisabledForInactive(member.isActive)
+                  const isAssignDisabled = cannotModify || inactiveAssignCheck.disabled
+
+                  const activeCheck = isToggleActiveDisabled(
+                    accessContext?.userId ?? null,
+                    accessContext?.role?.name ?? null,
+                    member.id,
+                    member.role?.name ?? null,
+                    disabledByMutation
+                  )
+
+                  const initial = member.fullName.charAt(0).toUpperCase()
+
+                  return (
+                    <tr key={member.id}>
                       <td>
-                        <div className="admin-actions-cell">
-                          {canManageUsers && (
-                            <button
-                              type="button"
-                              className="admin-action-btn secondary"
-                              onClick={() => handleBranchOpen(member)}
-                              disabled={isAssignDisabled}
-                              title={
-                                disabledByHierarchy
-                                  ? 'La jerarquía ADMIN/OWNER protege a este usuario'
-                                  : disabledSelf
-                                  ? 'No puedes reasignar tu propia sucursal'
-                                  : disabledByMutation
-                                  ? 'Operación en curso para este usuario'
-                                  : inactiveAssignCheck.disabled
-                                  ? inactiveAssignCheck.reason ?? ''
-                                  : 'Asignar sucursal'
-                              }
-                            >
-                              Sucursal
-                            </button>
-                          )}
-                          {canAssignRoles && (
-                            <button
-                              type="button"
-                              className="admin-action-btn secondary"
-                              onClick={() => handleRoleOpen(member)}
-                              disabled={isAssignDisabled}
-                              title={
-                                disabledByHierarchy
-                                  ? 'La jerarquía ADMIN/OWNER protege a este usuario'
-                                  : disabledSelf
-                                  ? 'No puedes cambiar tu propio rol'
-                                  : disabledByMutation
-                                  ? 'Operación en curso para este usuario'
-                                  : inactiveAssignCheck.disabled
-                                  ? inactiveAssignCheck.reason ?? ''
-                                  : 'Asignar rol'
-                              }
-                            >
-                              Rol
-                            </button>
-                          )}
-                          {canManageUsers && (
-                            <button
-                              type="button"
-                              className={`admin-action-btn ${member.isActive ? 'danger' : 'primary'}`}
-                              onClick={() => handleToggleActiveOpen(member)}
-                              disabled={activeCheck.disabled}
-                              title={
-                                activeCheck.disabled
-                                  ? activeCheck.reason ?? ''
-                                  : member.isActive
-                                  ? 'Desactivar trabajador'
-                                  : 'Activar trabajador'
-                              }
-                            >
-                              {member.isActive ? 'Desactivar' : 'Activar'}
-                            </button>
-                          )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <div
+                            style={{
+                              width: '34px',
+                              height: '34px',
+                              borderRadius: '50%',
+                              background: 'hsla(160, 87%, 30%, 0.12)',
+                              color: 'var(--primary-color)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 700,
+                              fontSize: '0.9rem',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {initial}
+                          </div>
+                          <div>
+                            <strong style={{ display: 'block', color: 'var(--text-primary)' }}>
+                              {member.fullName}
+                            </strong>
+                            {disabledSelf && (
+                              <span
+                                style={{
+                                  fontSize: '0.7rem',
+                                  color: 'var(--primary-color)',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                (Tu cuenta actual)
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                      <td>
+                        <span
+                          style={{
+                            padding: '0.2rem 0.6rem',
+                            borderRadius: '16px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            display: 'inline-block',
+                            ...getRoleBadgeStyle(member.role?.name),
+                          }}
+                        >
+                          {member.role?.displayName ?? 'Sin rol asignado'}
+                        </span>
+                      </td>
+                      <td>
+                        {member.branch ? (
+                          <div style={{ fontSize: '0.88rem' }}>
+                            <strong>{member.branch.name}</strong>{' '}
+                            <small style={{ color: 'var(--text-secondary)' }}>({member.branch.code})</small>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                            Sin sucursal
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span
+                          style={{
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '16px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            background: member.isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                            color: member.isActive ? '#10b981' : '#ef4444',
+                            display: 'inline-block',
+                          }}
+                        >
+                          {member.isActive ? '🟢 Activo' : '🔴 Inactivo'}
+                        </span>
+                      </td>
+                      {(canManageUsers || canAssignRoles) && (
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            {canManageUsers && (
+                              <button
+                                type="button"
+                                className="mini-action-btn"
+                                onClick={() => handleBranchOpen(member)}
+                                disabled={isAssignDisabled}
+                                title={
+                                  disabledByHierarchy
+                                    ? 'La jerarquía ADMIN/OWNER protege a este usuario'
+                                    : disabledSelf
+                                    ? 'No puedes reasignar tu propia sucursal'
+                                    : disabledByMutation
+                                    ? 'Operación en curso para este usuario'
+                                    : inactiveAssignCheck.disabled
+                                    ? inactiveAssignCheck.reason ?? ''
+                                    : 'Asignar sucursal'
+                                }
+                              >
+                                🏬 Sucursal
+                              </button>
+                            )}
+                            {canAssignRoles && (
+                              <button
+                                type="button"
+                                className="mini-action-btn primary"
+                                onClick={() => handleRoleOpen(member)}
+                                disabled={isAssignDisabled}
+                                title={
+                                  disabledByHierarchy
+                                    ? 'La jerarquía ADMIN/OWNER protege a este usuario'
+                                    : disabledSelf
+                                    ? 'No puedes cambiar tu propio rol'
+                                    : disabledByMutation
+                                    ? 'Operación en curso para este usuario'
+                                    : inactiveAssignCheck.disabled
+                                    ? inactiveAssignCheck.reason ?? ''
+                                    : 'Asignar rol'
+                                }
+                              >
+                                🏷️ Rol
+                              </button>
+                            )}
+                            {canManageUsers && (
+                              <button
+                                type="button"
+                                className="mini-action-btn"
+                                style={{
+                                  borderColor: member.isActive ? 'rgba(239, 68, 68, 0.4)' : '#10b981',
+                                  color: member.isActive ? '#ef4444' : '#10b981',
+                                }}
+                                onClick={() => handleToggleActiveOpen(member)}
+                                disabled={activeCheck.disabled}
+                                title={
+                                  activeCheck.disabled
+                                    ? activeCheck.reason ?? ''
+                                    : member.isActive
+                                    ? 'Desactivar trabajador'
+                                    : 'Activar trabajador'
+                                }
+                              >
+                                {member.isActive ? 'Pausar' : 'Activar'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {filteredStaff.length === 0 && directory.items.length > 0 && (
+        <div className="promo-empty-card" style={{ marginTop: '1.25rem' }}>
+          <div className="promo-empty-icon">🔍</div>
+          <div style={{ maxWidth: '440px' }}>
+            <h4 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem' }}>No se encontraron trabajadores con esta búsqueda</h4>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
+              Intenta con otro término o limpia los filtros para ver la lista completa.
+            </p>
+          </div>
+          <button type="button" className="catalog-action" style={{ marginTop: '0.5rem' }} onClick={() => { setSearch(''); setFilterStatus('all') }}>
+            Limpiar Filtros
+          </button>
         </div>
       )}
 

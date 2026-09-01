@@ -1,14 +1,18 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
-import { canEnterAdmin, canEnterCashier, getAuthorizedAdminModules, ADMIN_MODULE_RULES } from '../access/access-rules'
+import { canEnterAdmin, canEnterCashier, canViewCatalog, getAuthorizedAdminModules, getWorkspaceTitle, ADMIN_MODULE_RULES } from '../access/access-rules'
 import { getBranchState } from '../access/access-helpers'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import logo from '../../assets/isotipo-flor.svg'
 
-function PanelModuleIcon({ type }: { type: 'cashier' | 'admin' }) {
+function PanelModuleIcon({ type }: { type: 'catalog' | 'cashier' | 'admin' }) {
   return (
     <span className="panel-card-icon" aria-hidden="true">
-      {type === 'cashier' ? (
+      {type === 'catalog' ? (
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M12 21V9m0 0C8 9 6 7 6 3c4 0 6 2 6 6Zm0 4c4 0 6-2 6-6-4 0-6 2-6 6ZM5 21h14" />
+        </svg>
+      ) : type === 'cashier' ? (
         <svg viewBox="0 0 24 24" focusable="false">
           <path d="M4 5h2l1.5 9h9.8l1.7-6H7.2M9 19a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
         </svg>
@@ -115,6 +119,7 @@ export function PanelPage() {
   // 5. Sesión activa
   const showCashier = canEnterCashier(accessContext)
   const showAdmin = canEnterAdmin(accessContext)
+  const showCatalog = canViewCatalog(accessContext)
 
   // Comprobar si el usuario tiene permiso de Caja pero está bloqueado por sucursal
   const hasCashierPermission = accessContext ? accessContext.capabilities.includes('OPERATE_CASHIER') : false
@@ -123,7 +128,7 @@ export function PanelPage() {
 
   const authorizedAdminModules = accessContext ? getAuthorizedAdminModules(accessContext) : []
 
-  const hasAnyModule = showCashier || showAdmin || cashierBlockedByBranch
+  const hasAnyModule = showCatalog || showCashier || showAdmin || cashierBlockedByBranch
 
   const handleOpenCashier = () => {
     if (showCashier) {
@@ -137,6 +142,8 @@ export function PanelPage() {
     }
   }
 
+  const handleOpenCatalog = () => navigate('/catalogo')
+
   return (
     <main className="internal-page">
       <div className="internal-shell">
@@ -146,7 +153,7 @@ export function PanelPage() {
               {(accessContext?.profile?.fullName ?? '?')[0].toUpperCase()}
             </div>
             <div className="panel-user-details">
-              <p className="panel-welcome">Panel Vivero Dulcinea</p>
+              <p className="panel-welcome">{getWorkspaceTitle(accessContext)}</p>
               <h1 ref={headingRef} tabIndex={-1}>
                 {accessContext?.profile?.fullName ?? 'Usuario'}
               </h1>
@@ -197,6 +204,24 @@ export function PanelPage() {
               <h2>Módulos disponibles</h2>
             </div>
             <div className="panel-grid">
+              {showCatalog && (
+                <article className="panel-card">
+                  <div className="panel-card-header">
+                    <div className="panel-card-title">
+                      <PanelModuleIcon type="catalog" />
+                      <div>
+                        <span>Herramienta de trabajo</span>
+                        <h3>Catálogo</h3>
+                      </div>
+                    </div>
+                    <p>Consulta productos, precios efectivos y promociones vigentes certificadas por Supabase.</p>
+                  </div>
+                  <div className="panel-card-footer">
+                    <button type="button" className="panel-card-link-btn" onClick={handleOpenCatalog}>Abrir Catálogo</button>
+                  </div>
+                </article>
+              )}
+
               {/* Tarjeta Caja */}
               {(showCashier || cashierBlockedByBranch) && (
                 <article className={`panel-card ${cashierBlockedByBranch ? 'disabled' : ''}`}>

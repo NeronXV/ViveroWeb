@@ -6,19 +6,29 @@ const CATEGORY_ID = '72000000-0000-0000-0000-000000000001'
 
 function validPayload(): Record<string, unknown> {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     items: [{
       id: PRODUCT_ID,
       name: 'Aloe público',
       scientificName: 'Aloe vera',
       description: 'Planta resistente',
       category: { id: CATEGORY_ID, name: 'Suculentas' },
-      price: { amountCents: 12500, currency: 'MXN', unit: 'maceta' },
+      price: {
+        amountCents: 12500,
+        originalAmountCents: 15000,
+        discountPercent: 17,
+        currency: 'MXN',
+        unit: 'maceta',
+      },
       care: { wateringAdvice: 'Semanal', lightType: 'Sol', recommendedClimate: 'Seco' },
       image: {
         bucketName: 'catalog-images',
         storagePath: 'products/aloe/main.webp',
         altText: 'Aloe en maceta',
+      },
+      activePromotion: {
+        id: '74000000-0000-0000-0000-000000000001',
+        name: 'Oferta Primavera',
       },
       publicationStatus: 'LISTED',
     }],
@@ -36,26 +46,38 @@ function firstItem(payload: Record<string, unknown>): Record<string, unknown> {
 }
 
 describe('parsePublicCatalogResponse', () => {
-  it('acepta un payload V2 completo', () => {
+  it('acepta un payload V3 completo con promoción activa', () => {
     const result = parsePublicCatalogResponse(validPayload())
-    expect(result.schemaVersion).toBe(2)
+    expect(result.schemaVersion).toBe(3)
     expect(result.items[0].image).toEqual({
       bucketName: 'catalog-images',
       storagePath: 'products/aloe/main.webp',
       altText: 'Aloe en maceta',
     })
+    expect(result.items[0].price.originalAmountCents).toBe(15000)
+    expect(result.items[0].price.discountPercent).toBe(17)
+    expect(result.items[0].activePromotion).toEqual({
+      id: '74000000-0000-0000-0000-000000000001',
+      name: 'Oferta Primavera',
+    })
   })
 
-  it('acepta los NULL permitidos y una imagen ausente', () => {
+  it('acepta los NULL permitidos y una imagen/promoción ausente', () => {
     const payload = validPayload()
     const item = firstItem(payload)
     item.scientificName = null
     item.image = null
+    item.activePromotion = null
+    ;(item.price as Record<string, unknown>).originalAmountCents = null
+    ;(item.price as Record<string, unknown>).discountPercent = null
     ;(payload.page as Record<string, unknown>).hasMore = false
     ;(payload.page as Record<string, unknown>).nextCursor = null
     const result = parsePublicCatalogResponse(payload)
     expect(result.items[0].scientificName).toBeNull()
     expect(result.items[0].image).toBeNull()
+    expect(result.items[0].activePromotion).toBeNull()
+    expect(result.items[0].price.originalAmountCents).toBeNull()
+    expect(result.items[0].price.discountPercent).toBeNull()
   })
 
   it('acepta cada extensión de imagen autorizada sin distinguir mayúsculas', () => {

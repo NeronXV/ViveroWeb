@@ -201,3 +201,62 @@ export function setProductImagePrimary(
     signal
   )
 }
+
+export async function uploadProductImage(
+  productId: string,
+  file: Blob,
+  existingImageId?: string,
+  callerSignal?: AbortSignal,
+): Promise<{ imageId: string; storagePath: string }> {
+  const MAX_SIZE = 5 * 1024 * 1024 // 5 MiB
+  if (file.size > MAX_SIZE) {
+    throw new AdminServiceError('La fotografía supera el límite máximo de 5 MiB.', 'FILE_TOO_LARGE')
+  }
+
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/jpg']
+  if (file.type && !allowedTypes.includes(file.type.toLowerCase())) {
+    throw new AdminServiceError('Formato no compatible. Usa JPEG, PNG, WEBP o AVIF.', 'INVALID_FORMAT')
+  }
+
+  const imageId = existingImageId || crypto.randomUUID()
+  const storagePath = `${productId}/${imageId}.jpg`
+  const client = getSupabaseClient()
+
+  // 1. Subir archivo a bucket 'catalog-images'
+  const { error: uploadError } = await client.storage
+    .from('catalog-images')
+    .upload(storagePath, file, {
+      contentType: file.type || 'image/jpeg',
+      upsert: true,
+    })
+
+  if (uploadError) {
+    throw new AdminServiceError(
+      `Error al subir la imagen al almacenamiento: ${uploadError.message}`,
+      'STORAGE_ERROR'
+    )
+  }
+
+  // 2. Registrar en tabla product_images (upsert)
+  const { error: dbError } = await client
+    .from('product_images')
+    .upsert({
+      id: imageId,
+      product_id: productId,
+      storage_path: storagePath,
+      sort_order: 0,
+      is_primary: false,
+    })
+
+  if (dbError) {
+    throw new AdminServiceError(
+      `Error al registrar la imagen en la base de datos: ${dbError.message}`,
+      'DB_ERROR'
+    )
+  }
+
+  // 3. Establecer como imagen principal
+  await setProductImagePrimary(imageId, callerSignal)
+
+  return { imageId, storagePath }
+}

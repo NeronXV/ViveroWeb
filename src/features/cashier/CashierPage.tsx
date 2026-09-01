@@ -9,6 +9,8 @@ import { formatCents, parsePesosToCents } from './cashier-money'
 import { isNavigationLocked } from './cashier-payment-state'
 import type { CashierPaymentMethod } from './cashier-types'
 import { CashierPrintableTicket } from './CashierPrintableTicket'
+import { playCashierSuccessSound } from './cashier-sound'
+
 
 export function CashierPage() {
   useDocumentTitle('Caja')
@@ -184,7 +186,10 @@ export function CashierPage() {
     }
 
     const succeeded = await confirmPayment(paymentMethod, amountReceivedCents, finalReference)
-    if (succeeded) refreshSales()
+    if (succeeded) {
+      playCashierSuccessSound()
+      refreshSales()
+    }
   }
 
   // Cálculos de efectivo y cambio en centavos

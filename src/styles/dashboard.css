@@ -879,3 +879,366 @@ body.dark-theme .stock-card.adequate {
   border-color: var(--primary-color);
   transform: translateY(-1px);
 }
+
+/* --- BOTANICAL & INVENTORY PREMIUM UI --- */
+.botanical-section-card {
+  background: var(--surface-color);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.botanical-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.botanical-section-header h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.botanical-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.botanical-chip {
+  padding: 0.25rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid var(--surface-border);
+  background: var(--bg-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.botanical-chip:hover, .botanical-chip.active {
+  background: var(--accent-light, #e8f5e9);
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.stock-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.stock-status-badge.in-stock {
+  background: hsla(145, 65%, 40%, 0.12);
+  color: hsl(145, 70%, 32%);
+  border: 1px solid hsla(145, 65%, 40%, 0.3);
+}
+
+.stock-status-badge.low-stock {
+  background: hsla(38, 95%, 50%, 0.15);
+  color: hsl(32, 95%, 35%);
+  border: 1px solid hsla(38, 95%, 50%, 0.35);
+}
+
+.stock-status-badge.out-of-stock {
+  background: hsla(0, 85%, 55%, 0.12);
+  color: hsl(0, 85%, 45%);
+  border: 1px solid hsla(0, 85%, 55%, 0.3);
+}
+
+.inventory-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface-color);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+}
+
+.inventory-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.inventory-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.inventory-stat-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.inventory-stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stock-row-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.mini-action-btn {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-color);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.mini-action-btn:hover {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.mini-action-btn.primary {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.mini-action-btn.primary:hover {
+  opacity: 0.9;
+}
+
+/* ==========================================================================
+   KPI Metrics Bar & Filter Toolbar (Promociones e Inventario)
+   ========================================================================== */
+
+.stock-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.stock-kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  background: var(--surface-color);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.stock-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary-color);
+}
+
+.stock-kpi-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.stock-kpi-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.stock-kpi-value {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.2;
+  font-family: var(--font-heading);
+}
+
+.stock-kpi-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.stock-filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--surface-color);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 1.25rem;
+}
+
+.stock-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.stock-filter-chip {
+  padding: 0.4rem 0.9rem;
+  border-radius: 20px;
+  border: 1px solid var(--surface-border);
+  background: var(--bg-color);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stock-filter-chip:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--surface-color);
+}
+
+.stock-filter-chip.active {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px hsla(160, 87%, 30%, 0.25);
+}
+
+.promo-empty-card {
+  padding: 3.5rem 2rem;
+  text-align: center;
+  background: var(--surface-color);
+  border: 2px dashed var(--surface-border);
+  border-radius: var(--radius-lg);
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.promo-empty-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: hsla(160, 87%, 30%, 0.1);
+  color: var(--primary-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+/* ==========================================================================
+   Search Box Input Component (Toolbar)
+   ========================================================================== */
+
+.stock-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 400px;
+  background: var(--bg-color);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.75rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.stock-search-box:focus-within {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px hsla(160, 87%, 30%, 0.12);
+  background: var(--surface-color);
+}
+
+.stock-search-icon {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin-right: 0.5rem;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.stock-search-box input {
+  flex: 1;
+  width: 100%;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  padding: 0.5rem 0 !important;
+  font-size: 0.9rem !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  box-shadow: none !important;
+}
+
+.stock-search-box input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+.stock-search-clear {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.85rem;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stock-search-clear:hover {
+  color: var(--text-primary);
+  background: var(--surface-border);
+}

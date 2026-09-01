@@ -3,6 +3,7 @@ import type {
   PublicCatalogCursor,
   PublicCatalogImage,
   PublicCatalogProduct,
+  PublicCatalogPromotion,
   PublicCatalogResponse,
 } from './catalog-types'
 
@@ -76,19 +77,36 @@ function readImage(value: unknown): PublicCatalogImage | null {
   }
 }
 
+function readPromotion(value: unknown): PublicCatalogPromotion | null {
+  if (value === null) return null
+  if (!isRecord(value) || !hasExactKeys(value, ['id', 'name'])) {
+    throw new PublicCatalogValidationError('La promoción no tiene el formato esperado.')
+  }
+  return {
+    id: readUuid(value.id, 'activePromotion.id'),
+    name: readString(value.name, 'activePromotion.name'),
+  }
+}
+
 function readProduct(value: unknown, index: number): PublicCatalogProduct {
   const field = `items[${index}]`
   if (!isRecord(value) || !hasExactKeys(value, [
     'id', 'name', 'scientificName', 'description', 'category', 'price', 'care',
-    'image', 'publicationStatus',
+    'image', 'activePromotion', 'publicationStatus',
   ])) {
     throw new PublicCatalogValidationError(`El elemento ${field} no tiene el formato esperado.`)
   }
-  if (!isRecord(value.price) || !hasExactKeys(value.price, ['amountCents', 'currency', 'unit'])) {
+  if (!isRecord(value.price) || !hasExactKeys(value.price, ['amountCents', 'originalAmountCents', 'discountPercent', 'currency', 'unit'])) {
     throw new PublicCatalogValidationError(`El precio de ${field} no tiene el formato esperado.`)
   }
   if (!Number.isSafeInteger(value.price.amountCents) || (value.price.amountCents as number) < 0) {
     throw new PublicCatalogValidationError(`El importe de ${field} no está expresado en centavos enteros.`)
+  }
+  if (value.price.originalAmountCents !== null && (!Number.isSafeInteger(value.price.originalAmountCents) || (value.price.originalAmountCents as number) < 0)) {
+    throw new PublicCatalogValidationError(`El precio original de ${field} no es válido.`)
+  }
+  if (value.price.discountPercent !== null && (!Number.isInteger(value.price.discountPercent) || (value.price.discountPercent as number) < 0 || (value.price.discountPercent as number) > 100)) {
+    throw new PublicCatalogValidationError(`El porcentaje de descuento de ${field} no es válido.`)
   }
   if (value.price.currency !== 'MXN') {
     throw new PublicCatalogValidationError(`La moneda de ${field} no es compatible.`)
@@ -107,6 +125,8 @@ function readProduct(value: unknown, index: number): PublicCatalogProduct {
     category: readCategory(value.category, `${field}.category`),
     price: {
       amountCents: value.price.amountCents as number,
+      originalAmountCents: value.price.originalAmountCents as number | null,
+      discountPercent: value.price.discountPercent as number | null,
       currency: 'MXN',
       unit: readString(value.price.unit, `${field}.price.unit`),
     },
@@ -116,6 +136,7 @@ function readProduct(value: unknown, index: number): PublicCatalogProduct {
       recommendedClimate: readString(value.care.recommendedClimate, `${field}.care.recommendedClimate`, true),
     },
     image: readImage(value.image),
+    activePromotion: readPromotion(value.activePromotion),
     publicationStatus: 'LISTED',
   }
 }
@@ -143,7 +164,7 @@ export function parsePublicCatalogResponse(value: unknown): PublicCatalogRespons
   if (!isRecord(value) || !hasExactKeys(value, ['schemaVersion', 'items', 'categories', 'page'])) {
     throw new PublicCatalogValidationError('El catálogo no tiene el formato esperado.')
   }
-  if (value.schemaVersion !== 2) {
+  if (value.schemaVersion !== 3) {
     throw new PublicCatalogValidationError('La versión del catálogo no es compatible.')
   }
   if (!Array.isArray(value.items) || !Array.isArray(value.categories)) {
@@ -171,7 +192,7 @@ export function parsePublicCatalogResponse(value: unknown): PublicCatalogRespons
     throw new PublicCatalogValidationError('La respuesta contiene categorías duplicadas.')
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     items,
     categories,
     page: { limit: value.page.limit as number, hasMore: value.page.hasMore, nextCursor },

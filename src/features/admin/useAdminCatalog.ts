@@ -4,6 +4,7 @@ import {
   fetchAdminCategories,
   upsertProduct,
   upsertCategory,
+  uploadProductImage,
 } from './admin-catalog-service'
 import type {
   AdminCategory,
@@ -77,12 +78,13 @@ export function useAdminCatalog(enabled: boolean) {
     void load(search, categoryId, productStatus)
   }, [load, search, categoryId, productStatus])
 
-  const handleUpsertProduct = async (input: UpsertProductInput) => {
+  const handleUpsertProduct = async (input: UpsertProductInput): Promise<AdminProduct> => {
     setIsMutating(true)
     setMutationError(null)
     try {
-      await upsertProduct(input)
+      const result = await upsertProduct(input)
       refresh()
+      return result
     } catch (err) {
       const msg = err instanceof AdminServiceError ? err.message : 'Error al guardar el producto.'
       setMutationError(msg)
@@ -92,14 +94,44 @@ export function useAdminCatalog(enabled: boolean) {
     }
   }
 
-  const handleUpsertCategory = async (input: UpsertCategoryInput) => {
+  const handleUpsertCategory = async (input: UpsertCategoryInput): Promise<AdminCategory> => {
     setIsMutating(true)
     setMutationError(null)
     try {
-      await upsertCategory(input)
+      const result = await upsertCategory(input)
+      setCategories((prev) => {
+        const index = prev.findIndex((c) => c.id === result.id)
+        if (index >= 0) {
+          const updated = [...prev]
+          updated[index] = result
+          return updated
+        }
+        return [...prev, result]
+      })
       refresh()
+      return result
     } catch (err) {
       const msg = err instanceof AdminServiceError ? err.message : 'Error al guardar la categoría.'
+      setMutationError(msg)
+      throw err
+    } finally {
+      setIsMutating(false)
+    }
+  }
+
+  const handleUploadProductImage = async (
+    productId: string,
+    file: Blob,
+    existingImageId?: string
+  ): Promise<{ imageId: string; storagePath: string }> => {
+    setIsMutating(true)
+    setMutationError(null)
+    try {
+      const result = await uploadProductImage(productId, file, existingImageId)
+      refresh()
+      return result
+    } catch (err) {
+      const msg = err instanceof AdminServiceError ? err.message : 'Error al subir la fotografía.'
       setMutationError(msg)
       throw err
     } finally {
@@ -125,5 +157,6 @@ export function useAdminCatalog(enabled: boolean) {
     retry: refresh,
     upsertProduct: handleUpsertProduct,
     upsertCategory: handleUpsertCategory,
+    uploadProductImage: handleUploadProductImage,
   }
 }

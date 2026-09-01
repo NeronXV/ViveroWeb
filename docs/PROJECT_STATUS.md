@@ -14,6 +14,7 @@ Completar y validar el recorrido operativo del MVP antes de ampliar módulos, co
 - Panel interno protegido por capacidades.
 - Caja conectada a contratos reales de bandeja, detalle, claim, confirmación y recuperación.
 - Administración real de sucursales, personal, productos, clientes, inventario y reportes básicos.
+- Inicio interno identificado como panel de trabajador, gerencia o administración; los módulos siguen habilitándose exclusivamente por capacidades del backend.
 - Promociones y pedidos continúan como demostración explícita.
 - Último commit observado al crear este documento: `e1bc0b27f39d17516f0bddaec0f90a9ec554deff`.
 

@@ -9,23 +9,33 @@ export interface PublicCatalogImage {
   altText: string | null
 }
 
+export interface PublicCatalogPromotion {
+  id: string
+  name: string
+}
+
+export interface PublicCatalogPrice {
+  amountCents: number
+  originalAmountCents: number | null
+  discountPercent: number | null
+  currency: 'MXN'
+  unit: string
+}
+
 export interface PublicCatalogProduct {
   id: string
   name: string
   scientificName: string | null
   description: string
   category: PublicCatalogCategory
-  price: {
-    amountCents: number
-    currency: 'MXN'
-    unit: string
-  }
+  price: PublicCatalogPrice
   care: {
     wateringAdvice: string
     lightType: string
     recommendedClimate: string
   }
   image: PublicCatalogImage | null
+  activePromotion: PublicCatalogPromotion | null
   publicationStatus: 'LISTED'
 }
 
@@ -35,7 +45,7 @@ export interface PublicCatalogCursor {
 }
 
 export interface PublicCatalogResponse {
-  schemaVersion: 2
+  schemaVersion: 3
   items: PublicCatalogProduct[]
   categories: PublicCatalogCategory[]
   page: {
