@@ -131,11 +131,32 @@ function staffBranch(value: unknown, field: string): AdminStaffBranch {
 }
 
 function staffRole(value: unknown, field: string): AdminStaffRole {
+  if (typeof value === 'string') {
+    const upper = value.trim().toUpperCase()
+    if (!USER_ROLES.includes(upper as UserRole)) {
+      throw new AdminValidationError(`${field} no es un rol válido.`)
+    }
+    const displayNames: Record<UserRole, string> = {
+      OWNER: 'Propietario',
+      ADMIN: 'Administrador',
+      MANAGER: 'Gerente',
+      INVENTORY: 'Inventario',
+      CASHIER: 'Cajero',
+      SALES: 'Vendedor',
+    }
+    return { name: upper as UserRole, displayName: displayNames[upper as UserRole] || upper }
+  }
+
   const item = record(value, field)
-  exactKeys(item, ['name', 'displayName'], field)
-  const name = text(item.name, `${field}.name`, 32)
-  if (!USER_ROLES.includes(name as UserRole)) throw new AdminValidationError(`${field}.name no es un rol válido.`)
-  return { name: name as UserRole, displayName: text(item.displayName, `${field}.displayName`, 120) }
+  const rawName = typeof item.name === 'string' ? item.name : (typeof item.code === 'string' ? item.code : '')
+  const upper = rawName.trim().toUpperCase()
+  if (!USER_ROLES.includes(upper as UserRole)) {
+    throw new AdminValidationError(`${field}.name no es un rol válido.`)
+  }
+  const displayName = typeof item.displayName === 'string'
+    ? item.displayName
+    : (typeof item.name === 'string' ? item.name : upper)
+  return { name: upper as UserRole, displayName }
 }
 
 function staff(value: unknown, index: number): AdminStaffMember {
@@ -146,24 +167,28 @@ function staff(value: unknown, index: number): AdminStaffMember {
     throw new AdminValidationError(`${field} contiene campos no permitidos.`)
   }
 
-  const keys = Object.keys(item)
-  const isCamel = keys.includes('fullName')
-  const expected = isCamel
-    ? ['id', 'fullName', 'isActive', 'branch', 'role', 'updatedAt']
-    : ['id', 'full_name', 'is_active', 'branch', 'role', 'updated_at']
+  const rawFullName = item.fullName ?? item.full_name
+  const rawIsActive = typeof item.isActive === 'boolean'
+    ? item.isActive
+    : (typeof item.is_active === 'boolean' ? item.is_active : true)
+  const rawUpdatedAt = item.updatedAt ?? item.updated_at ?? item.created_at ?? new Date().toISOString()
 
-  exactKeys(item, expected, field)
+  let parsedBranch: AdminStaffBranch | null = null
+  if (item.branch !== null && item.branch !== undefined) {
+    parsedBranch = staffBranch(item.branch, `${field}.branch`)
+  }
 
-  const rawFullName = isCamel ? item.fullName : item.full_name
-  const rawIsActive = isCamel ? item.isActive : item.is_active
-  const rawUpdatedAt = isCamel ? item.updatedAt : item.updated_at
+  let parsedRole: AdminStaffRole | null = null
+  if (item.role !== null && item.role !== undefined && item.role !== '') {
+    parsedRole = staffRole(item.role, `${field}.role`)
+  }
 
   return {
     id: uuid(item.id, `${field}.id`),
     fullName: text(rawFullName, `${field}.fullName`, 160),
     isActive: boolean(rawIsActive, `${field}.isActive`),
-    branch: item.branch === null ? null : staffBranch(item.branch, `${field}.branch`),
-    role: item.role === null ? null : staffRole(item.role, `${field}.role`),
+    branch: parsedBranch,
+    role: parsedRole,
     updatedAt: timestamp(rawUpdatedAt, `${field}.updatedAt`),
   }
 }
@@ -198,8 +223,8 @@ function branchCursor(value: unknown): AdminBranchCursor {
 
 function staffCursor(value: unknown): AdminStaffCursor {
   const item = record(value, 'page.nextCursor')
-  exactKeys(item, ['fullName', 'id'], 'page.nextCursor')
-  return { fullName: text(item.fullName, 'page.nextCursor.fullName', 160), id: uuid(item.id, 'page.nextCursor.id') }
+  const rawFullName = item.fullName ?? item.full_name
+  return { fullName: text(rawFullName, 'page.nextCursor.fullName', 160), id: uuid(item.id, 'page.nextCursor.id') }
 }
 
 export function parseAdminBranchesResponse(value: unknown): AdminBranchesResponse {
@@ -213,12 +238,36 @@ export function parseAdminBranchesResponse(value: unknown): AdminBranchesRespons
 }
 
 export function parseAdminStaffResponse(value: unknown): AdminStaffResponse {
-  const parsed = envelope(value)
+  const root = record(value, 'respuesta')
+  if (!Array.isArray(root.items)) throw new AdminValidationError('items no es una lista.')
+
+  let pageData: { limit: number; hasMore: boolean; nextCursor: AdminStaffCursor | null }
+
+  if (root.page && typeof root.page === 'object') {
+    pageData = page(root.page as Record<string, unknown>, staffCursor)
+  } else {
+    const hasMore = Boolean(root.has_more ?? root.hasMore)
+    const nextCursorId = (root.next_cursor_id ?? root.nextCursorId) as string | null
+    const nextCursorFullName = (root.next_cursor_full_name ?? root.nextCursorFullName) as string | null
+    const nextCursor = (hasMore && nextCursorId && nextCursorFullName)
+      ? { id: nextCursorId, fullName: nextCursorFullName }
+      : null
+    pageData = {
+      limit: typeof root.limit === 'number' ? root.limit : 50,
+      hasMore,
+      nextCursor,
+    }
+  }
+
+  const serverTime = root.serverTime
+    ? timestamp(root.serverTime, 'serverTime')
+    : (root.server_time ? timestamp(root.server_time, 'server_time') : new Date().toISOString())
+
   return {
     schemaVersion: 1,
-    items: parsed.items.map(staff),
-    page: page(parsed.page, staffCursor),
-    serverTime: timestamp(parsed.root.serverTime, 'serverTime'),
+    items: root.items.map(staff),
+    page: pageData,
+    serverTime,
   }
 }
 
