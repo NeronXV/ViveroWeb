@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/useAuth'
 import { hasCapability } from '../access/access-helpers'
-import { USER_ROLES, type UserRole } from '../access/access-types'
-import { useAdminBranches, useAdminStaff } from './useAdminDirectories'
+import { type UserRole } from '../access/access-types'
+import { useAdminBranches, useAdminStaff, useAdminRoleOptions } from './useAdminDirectories'
 import {
   createBranch,
   updateBranch,
   setBranchActive,
   assignUserBranch,
-  assignUserRole,
+  setAdminStaffRole,
   fetchAdminBranches,
   setUserActive,
   AdminServiceError,
@@ -497,6 +497,7 @@ export function BranchDirectory({ active }: { active: boolean }) {
 export function StaffDirectory({ active, canAssignRoles }: { active: boolean; canAssignRoles: boolean }) {
   const { accessContext } = useAuth()
   const directory = useAdminStaff(active)
+  const roleOptions = useAdminRoleOptions(active)
 
   const canManageUsers = hasCapability(accessContext, 'MANAGE_USERS')
 
@@ -507,9 +508,10 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
   const [selectedStaff, setSelectedStaff] = useState<AdminStaffMember | null>(null)
   const [confirmingStaff, setConfirmingStaff] = useState<AdminStaffMember | null>(null)
 
-  // Combos
+  // Combos y confirmaciones
   const [branchId, setBranchId] = useState('')
   const [roleName, setRoleName] = useState('')
+  const [elevatedConfirmed, setElevatedConfirmed] = useState(false)
   const [branchesList, setBranchesList] = useState<AdminBranch[]>([])
   const [loadingBranches, setLoadingBranches] = useState(false)
 
@@ -517,6 +519,26 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
   const [isMutating, setIsMutating] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [ariaNotification, setAriaNotification] = useState<string | null>(null)
+
+  // Manejo accesible de tecla Escape para cerrar modales
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isMutating) {
+        if (isRoleModalOpen) {
+          setIsRoleModalOpen(false)
+          setSelectedStaff(null)
+        } else if (isBranchModalOpen) {
+          setIsBranchModalOpen(false)
+          setSelectedStaff(null)
+        } else if (isConfirmActiveOpen) {
+          setIsConfirmActiveOpen(false)
+          setConfirmingStaff(null)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isRoleModalOpen, isBranchModalOpen, isConfirmActiveOpen, isMutating])
 
   // Cargar sucursales para asignar
   useEffect(() => {
@@ -546,6 +568,7 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
   const handleRoleOpen = (staff: AdminStaffMember) => {
     setSelectedStaff(staff)
     setRoleName(staff.role?.name || '')
+    setElevatedConfirmed(false)
     setMutationError(null)
     setIsRoleModalOpen(true)
   }
@@ -569,14 +592,18 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
 
   const handleRoleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedStaff) return
+    if (!selectedStaff || !roleName || isRoleSaveDisabled) return
     setIsMutating(true)
     setMutationError(null)
     try {
-      await assignUserRole({ userId: selectedStaff.id, role: roleName as UserRole })
+      const result = await setAdminStaffRole({
+        userId: selectedStaff.id,
+        roleName: roleName as UserRole,
+      })
+      directory.updateStaffRole(selectedStaff.id, result.role, result.updatedAt)
+      setAriaNotification(`El rol de ${selectedStaff.fullName} ha sido actualizado a ${result.role.displayName}.`)
       setIsRoleModalOpen(false)
       setSelectedStaff(null)
-      directory.refresh()
     } catch (err) {
       setMutationError(err instanceof AdminServiceError ? err.message : 'Error al asignar rol.')
     } finally {
@@ -620,12 +647,17 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
   }
 
   const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'norole'>('all')
+
+  const activeStaffCount = directory.items.filter((m) => m.isActive).length
+  const inactiveStaffCount = directory.items.filter((m) => !m.isActive).length
+  const unassignedRoleCount = directory.items.filter((m) => !m.role).length
 
   // Filtrado de personal
   const filteredStaff = directory.items.filter((member) => {
     if (filterStatus === 'active' && !member.isActive) return false
     if (filterStatus === 'inactive' && member.isActive) return false
+    if (filterStatus === 'norole' && member.role !== null) return false
     if (!search.trim()) return true
     const q = search.trim().toLowerCase()
     const matchName = member.fullName.toLowerCase().includes(q)
@@ -652,13 +684,16 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
     return member.id === accessContext?.userId
   }
 
-  const isRoleOptionAllowed = (role: string): boolean => {
-    const callerRole = accessContext?.role?.name
-    if (callerRole === 'ADMIN') {
-      return role !== 'OWNER'
-    }
-    return true
-  }
+  const selectedOption = roleOptions.items.find((opt) => opt.name === roleName)
+  const requiresElevatedConfirmation = roleName === 'ADMIN' || roleName === 'OWNER'
+  const isCurrentRole = (selectedStaff?.role?.name ?? '') === roleName
+  const isRoleSaveDisabled =
+    isMutating ||
+    !roleName ||
+    isCurrentRole ||
+    Boolean(selectedStaff && !selectedStaff.isActive) ||
+    Boolean(selectedStaff && isSelf(selectedStaff)) ||
+    (requiresElevatedConfirmation && !elevatedConfirmed)
 
   const getRoleBadgeStyle = (roleName?: string) => {
     switch (roleName) {
@@ -666,12 +701,16 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
         return { background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.3)' }
       case 'ADMIN':
         return { background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)' }
+      case 'MANAGER':
+        return { background: 'rgba(14, 165, 233, 0.15)', color: '#0284c7', border: '1px solid rgba(14, 165, 233, 0.3)' }
       case 'CASHIER':
         return { background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }
       case 'INVENTORY':
         return { background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }
+      case 'SALES':
+        return { background: 'rgba(99, 102, 241, 0.15)', color: '#6366f1', border: '1px solid rgba(99, 102, 241, 0.3)' }
       default:
-        return { background: 'var(--bg-color)', color: 'var(--text-primary)', border: '1px solid var(--surface-border)' }
+        return { background: 'var(--bg-color)', color: 'var(--text-secondary)', border: '1px dashed var(--surface-border)' }
     }
   }
 
@@ -708,7 +747,7 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                 🟢
               </div>
               <div className="stock-kpi-info">
-                <span className="stock-kpi-value">{directory.items.filter((m) => m.isActive).length}</span>
+                <span className="stock-kpi-value">{activeStaffCount}</span>
                 <span className="stock-kpi-label">Personal Activo</span>
               </div>
             </div>
@@ -717,17 +756,17 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                 🔴
               </div>
               <div className="stock-kpi-info">
-                <span className="stock-kpi-value">{directory.items.filter((m) => !m.isActive).length}</span>
+                <span className="stock-kpi-value">{inactiveStaffCount}</span>
                 <span className="stock-kpi-label">Inactivos / Pausados</span>
               </div>
             </div>
             <div className="stock-kpi-card">
-              <div className="stock-kpi-icon" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6' }}>
-                🏬
+              <div className="stock-kpi-icon" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
+                🏷️
               </div>
               <div className="stock-kpi-info">
-                <span className="stock-kpi-value">{directory.items.filter((m) => m.branch !== null).length}</span>
-                <span className="stock-kpi-label">Con Sucursal Asignada</span>
+                <span className="stock-kpi-value">{unassignedRoleCount}</span>
+                <span className="stock-kpi-label">Sin Rol Asignado</span>
               </div>
             </div>
           </div>
@@ -766,14 +805,21 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
                 className={`stock-filter-chip ${filterStatus === 'active' ? 'active' : ''}`}
                 onClick={() => setFilterStatus('active')}
               >
-                🟢 Activos ({directory.items.filter((m) => m.isActive).length})
+                🟢 Activos ({activeStaffCount})
               </button>
               <button
                 type="button"
                 className={`stock-filter-chip ${filterStatus === 'inactive' ? 'active' : ''}`}
                 onClick={() => setFilterStatus('inactive')}
               >
-                🔴 Inactivos ({directory.items.filter((m) => !m.isActive).length})
+                🔴 Inactivos ({inactiveStaffCount})
+              </button>
+              <button
+                type="button"
+                className={`stock-filter-chip ${filterStatus === 'norole' ? 'active' : ''}`}
+                onClick={() => setFilterStatus('norole')}
+              >
+                🏷️ Sin Rol ({unassignedRoleCount})
               </button>
             </div>
           </div>
@@ -1072,59 +1118,222 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
 
       {/* Modal Asignar Rol */}
       {isRoleModalOpen && selectedStaff && (
-        <div className="admin-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="role-modal-title">
-          <div className="admin-modal-content">
+        <div
+          className="admin-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="role-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isMutating) {
+              setIsRoleModalOpen(false)
+              setSelectedStaff(null)
+            }
+          }}
+        >
+          <div className="admin-modal-content" aria-busy={isMutating}>
             <div className="admin-modal-header">
-              <h3 id="role-modal-title">Asignar Rol</h3>
-              <button type="button" className="admin-modal-close" onClick={() => setIsRoleModalOpen(false)}>
+              <h3 id="role-modal-title">Asignar Rol Administrativo</h3>
+              <button
+                type="button"
+                className="admin-modal-close"
+                onClick={() => {
+                  if (!isMutating) {
+                    setIsRoleModalOpen(false)
+                    setSelectedStaff(null)
+                  }
+                }}
+                disabled={isMutating}
+                aria-label="Cerrar modal"
+              >
                 &times;
               </button>
             </div>
-            <p style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
-              Miembro: <strong>{selectedStaff.fullName}</strong>
-            </p>
-            {mutationError && <div className="admin-dialog-error" role="alert">{mutationError}</div>}
-            <form onSubmit={handleRoleSubmit}>
-              <div className="admin-form-group">
-                <label htmlFor="role-select">Rol Administrativo</label>
-                <select
-                  id="role-select"
-                  value={roleName}
-                  onChange={(e) => setRoleName(e.target.value)}
-                  disabled={isMutating}
-                >
-                  <option value="" disabled>Selecciona un rol</option>
-                  {USER_ROLES.filter(isRoleOptionAllowed).map((r) => (
-                    <option value={r} key={r}>
-                      {r === 'OWNER'
-                        ? 'Propietario (OWNER)'
-                        : r === 'ADMIN'
-                        ? 'Administrador (ADMIN)'
-                        : r === 'MANAGER'
-                        ? 'Gerente (MANAGER)'
-                        : r === 'INVENTORY'
-                        ? 'Inventario (INVENTORY)'
-                        : r === 'CASHIER'
-                        ? 'Cajero (CASHIER)'
-                        : 'Vendedor (SALES)'}
-                    </option>
-                  ))}
-                </select>
+
+            {/* Resumen del trabajador */}
+            <div className="admin-modal-user-summary">
+              <div
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
+                  background: 'hsla(160, 87%, 30%, 0.12)',
+                  color: 'var(--primary-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  flexShrink: 0,
+                }}
+              >
+                {selectedStaff.fullName.charAt(0).toUpperCase()}
               </div>
-              <div className="admin-modal-footer">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ display: 'block', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {selectedStaff.fullName}
+                </strong>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  {selectedStaff.branch ? `${selectedStaff.branch.name} (${selectedStaff.branch.code})` : 'Sin sucursal asignada'}
+                </span>
+              </div>
+              <span
+                style={{
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '16px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  background: selectedStaff.isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: selectedStaff.isActive ? '#10b981' : '#ef4444',
+                  flexShrink: 0,
+                }}
+              >
+                {selectedStaff.isActive ? 'Activo' : 'Inactivo'}
+              </span>
+            </div>
+
+            {/* Comparación visual entre rol actual y nuevo */}
+            <div className="admin-role-comparison">
+              <div className="admin-role-comparison-step">
+                <span>Rol Actual</span>
+                <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                  {selectedStaff.role ? selectedStaff.role.displayName : 'Sin rol asignado'}
+                </strong>
+              </div>
+              <span className="admin-role-comparison-arrow" aria-hidden="true">→</span>
+              <div className="admin-role-comparison-step" style={{ textAlign: 'right' }}>
+                <span>Nuevo Rol</span>
+                <strong style={{ fontSize: '0.9rem', color: selectedOption ? 'var(--primary-color)' : 'var(--text-secondary)' }}>
+                  {selectedOption ? selectedOption.displayName : 'Sin seleccionar'}
+                </strong>
+              </div>
+            </div>
+
+            {mutationError && (
+              <div className="admin-dialog-error" role="alert">
+                {mutationError}
+              </div>
+            )}
+
+            {/* Estados de carga o error de las opciones autorizadas */}
+            {roleOptions.status === 'loading' && (
+              <p role="status" aria-live="polite" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                Cargando roles autorizados por el servidor…
+              </p>
+            )}
+
+            {roleOptions.status === 'error' && (
+              <div className="admin-dialog-error" role="alert">
+                <p style={{ margin: '0 0 0.5rem' }}>{roleOptions.error}</p>
                 <button
                   type="button"
                   className="retry-btn-secondary"
-                  onClick={() => setIsRoleModalOpen(false)}
-                  disabled={isMutating}
+                  onClick={roleOptions.retry}
+                  style={{ fontSize: '0.8rem', padding: '0.3rem 0.6rem' }}
                 >
-                  Cancelar
-                </button>
-                <button type="submit" className="catalog-action" disabled={isMutating || roleName === ''}>
-                  {isMutating ? 'Guardando…' : 'Asignar'}
+                  Reintentar carga de roles
                 </button>
               </div>
-            </form>
+            )}
+
+            {roleOptions.status === 'ready' && (
+              <form onSubmit={handleRoleSubmit}>
+                <div className="admin-form-group">
+                  <label htmlFor="role-select">
+                    Seleccionar Rol Institucional
+                  </label>
+                  <select
+                    id="role-select"
+                    value={roleName}
+                    onChange={(e) => {
+                      setRoleName(e.target.value)
+                      setElevatedConfirmed(false)
+                      setMutationError(null)
+                    }}
+                    disabled={isMutating}
+                    required
+                  >
+                    <option value="" disabled>Selecciona un rol de la lista autorizada</option>
+                    {roleOptions.items.map((opt) => (
+                      <option value={opt.name} key={opt.name}>
+                        {opt.displayName} ({opt.name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Detalles del rol seleccionado: identificador técnico y capacidades */}
+                {selectedOption && (
+                  <div className="admin-role-capabilities-box">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                      <span className="admin-role-capabilities-label" style={{ margin: 0 }}>
+                        Capacidades Principales
+                      </span>
+                      <span className="admin-tech-id">
+                        ID: {selectedOption.name}
+                      </span>
+                    </div>
+                    {selectedOption.capabilities.length > 0 ? (
+                      <div className="admin-role-capabilities-list">
+                        {selectedOption.capabilities.map((cap) => (
+                          <span key={cap} className="admin-role-capability-chip">
+                            {cap}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                        Sin capacidades operativas directas asignadas.
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Confirmación adicional para roles elevados (ADMIN u OWNER) */}
+                {requiresElevatedConfirmation && (
+                  <div className="admin-elevated-warning" role="alert">
+                    <p>
+                      <strong>⚠️ Nivel de acceso administrativo elevado:</strong> El rol <strong>{selectedOption?.displayName}</strong> ({selectedOption?.name}) confiere amplias atribuciones sobre la plataforma y seguridad institucional.
+                    </p>
+                    <label className="admin-confirm-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={elevatedConfirmed}
+                        onChange={(e) => setElevatedConfirmed(e.target.checked)}
+                        disabled={isMutating}
+                      />
+                      <span>Confirmo que deseo asignar estos privilegios administrativos elevados a este trabajador.</span>
+                    </label>
+                  </div>
+                )}
+
+                {isCurrentRole && roleName !== '' && (
+                  <p style={{ margin: '0.75rem 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                    El trabajador ya cuenta con este rol asignado actualmente.
+                  </p>
+                )}
+
+                <div className="admin-modal-footer">
+                  <button
+                    type="button"
+                    className="retry-btn-secondary"
+                    onClick={() => {
+                      setIsRoleModalOpen(false)
+                      setSelectedStaff(null)
+                    }}
+                    disabled={isMutating}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="catalog-action"
+                    disabled={isRoleSaveDisabled}
+                  >
+                    {isMutating ? 'Guardando…' : 'Asignar Rol'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

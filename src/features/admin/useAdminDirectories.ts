@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AdminServiceError, fetchAdminBranches, fetchAdminStaff } from './admin-service'
-import type { AdminBranch, AdminBranchCursor, AdminStaffCursor, AdminStaffMember } from './admin-types'
+import {
+  AdminServiceError,
+  fetchAdminBranches,
+  fetchAdminStaff,
+  fetchAdminRoleOptions,
+} from './admin-service'
+import type {
+  AdminBranch,
+  AdminBranchCursor,
+  AdminStaffCursor,
+  AdminStaffMember,
+  AdminStaffRole,
+  AdminRoleOption,
+} from './admin-types'
 
 interface DirectoryState<T, C> {
   items: T[]
@@ -56,7 +68,6 @@ export function useAdminBranches(enabled: boolean) {
   }
 }
 
-
 export function useAdminStaff(enabled: boolean) {
   const [state, setState] = useState<DirectoryState<AdminStaffMember, AdminStaffCursor>>(initialState)
   const controllerRef = useRef<AbortController | null>(null)
@@ -82,6 +93,17 @@ export function useAdminStaff(enabled: boolean) {
     }
   }, [])
 
+  const updateStaffRole = useCallback((userId: string, role: AdminStaffRole, updatedAt: string) => {
+    setState((current) => ({
+      ...current,
+      items: current.items.map((member) =>
+        member.id === userId
+          ? { ...member, role, updatedAt }
+          : member
+      ),
+    }))
+  }, [])
+
   useEffect(() => {
     if (enabled) void load()
     return () => controllerRef.current?.abort()
@@ -92,5 +114,59 @@ export function useAdminStaff(enabled: boolean) {
     retry: () => void load(),
     refresh: () => void load(),
     loadMore: () => state.hasMore && !state.loadingMore && void load(true, state.cursor),
+    updateStaffRole,
+  }
+}
+
+interface RoleOptionsState {
+  items: AdminRoleOption[]
+  actorRole: 'ADMIN' | 'OWNER' | null
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  error: string | null
+}
+
+const initialRoleOptionsState: RoleOptionsState = {
+  items: [],
+  actorRole: null,
+  status: 'idle',
+  error: null,
+}
+
+export function useAdminRoleOptions(enabled: boolean) {
+  const [state, setState] = useState<RoleOptionsState>(initialRoleOptionsState)
+  const controllerRef = useRef<AbortController | null>(null)
+
+  const load = useCallback(async () => {
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+    setState((current) => ({ ...current, status: 'loading', error: null }))
+    try {
+      const response = await fetchAdminRoleOptions(controller.signal)
+      setState({
+        items: response.items,
+        actorRole: response.actorRole,
+        status: 'ready',
+        error: null,
+      })
+    } catch (error) {
+      if (controller.signal.aborted) return
+      setState((current) => ({
+        ...current,
+        status: 'error',
+        error: message(error),
+      }))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (enabled) void load()
+    return () => controllerRef.current?.abort()
+  }, [enabled, load])
+
+  return {
+    ...state,
+    retry: () => void load(),
+    refresh: () => void load(),
   }
 }

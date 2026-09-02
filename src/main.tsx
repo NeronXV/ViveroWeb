@@ -4,6 +4,7 @@ import { RouterProvider } from 'react-router-dom'
 import { DemoStoreProvider } from './app/providers/DemoStore'
 import { router } from './app/router'
 import { AuthProvider } from './features/auth/AuthProvider'
+import { PublicCartProvider } from './features/public-orders/PublicCartProvider'
 import './styles/base.css'
 import './styles/components.css'
 import './styles/store.css'
@@ -11,4 +12,4 @@ import './styles/interactive.css'
 import './styles/dashboard.css'
 import './styles/app.css'
 
-createRoot(document.getElementById('root')!).render(<StrictMode><AuthProvider><DemoStoreProvider><RouterProvider router={router} /></DemoStoreProvider></AuthProvider></StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode><AuthProvider><DemoStoreProvider><PublicCartProvider><RouterProvider router={router} /></PublicCartProvider></DemoStoreProvider></AuthProvider></StrictMode>)

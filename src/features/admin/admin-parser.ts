@@ -13,6 +13,10 @@ import type {
   UpdateBranchInput,
   AssignUserBranchInput,
   AssignUserRoleInput,
+  AdminRoleOption,
+  AdminRoleOptionsResponse,
+  SetAdminStaffRoleInput,
+  SetAdminStaffRoleResult,
   AdminDailySaleReportItem,
   AdminTopProductReportItem,
   AdminInventoryBalancesResponse,
@@ -315,6 +319,97 @@ export function validateAssignUserRoleInput(userId: unknown, role: unknown): Ass
   return {
     userId: uuid(userId, 'userId'),
     role: roleStr as UserRole,
+  }
+}
+
+export function validateSetAdminStaffRoleInput(userId: unknown, roleName: unknown): SetAdminStaffRoleInput {
+  if (roleName === null || roleName === '' || roleName === 'NONE') {
+    throw new AdminValidationError('Debes seleccionar un rol válido.')
+  }
+  const roleStr = text(roleName, 'roleName', 32)
+  if (!USER_ROLES.includes(roleStr as UserRole)) {
+    throw new AdminValidationError('El rol proporcionado no es válido.')
+  }
+  return {
+    userId: uuid(userId, 'userId'),
+    roleName: roleStr as UserRole,
+  }
+}
+
+export function parseAdminRoleOptionsResponse(value: unknown): AdminRoleOptionsResponse {
+  const root = record(value, 'respuesta de opciones de rol')
+  exactKeys(root, ['schemaVersion', 'actorRole', 'items', 'serverTime'], 'respuesta de opciones de rol')
+  if (root.schemaVersion !== 1) {
+    throw new AdminValidationError('La versión del contrato de opciones de rol no es compatible.')
+  }
+  if (root.actorRole !== 'ADMIN' && root.actorRole !== 'OWNER') {
+    throw new AdminValidationError('actorRole no contiene un rol válido.')
+  }
+  if (!Array.isArray(root.items)) {
+    throw new AdminValidationError('items debe ser una lista de opciones de rol.')
+  }
+
+  const items: AdminRoleOption[] = root.items.map((entry, index) => {
+    const field = `items[${index}]`
+    const item = record(entry, field)
+    exactKeys(item, ['name', 'displayName', 'capabilities'], field)
+
+    const rawName = text(item.name, `${field}.name`, 32)
+    if (!USER_ROLES.includes(rawName as UserRole)) {
+      throw new AdminValidationError(`${field}.name no es un rol válido.`)
+    }
+
+    const displayName = text(item.displayName, `${field}.displayName`, 120)
+
+    if (!Array.isArray(item.capabilities)) {
+      throw new AdminValidationError(`${field}.capabilities debe ser una lista.`)
+    }
+
+    const capabilities = item.capabilities.map((cap, capIdx) =>
+      text(cap, `${field}.capabilities[${capIdx}]`, 64)
+    )
+
+    return {
+      name: rawName as UserRole,
+      displayName,
+      capabilities,
+    }
+  })
+
+  return {
+    schemaVersion: 1,
+    actorRole: root.actorRole,
+    items,
+    serverTime: timestamp(root.serverTime, 'serverTime'),
+  }
+}
+
+export function parseSetAdminStaffRoleResult(value: unknown): SetAdminStaffRoleResult {
+  const root = record(value, 'resultado de asignación de rol')
+  exactKeys(root, ['schemaVersion', 'userId', 'role', 'updatedAt', 'serverTime'], 'resultado de asignación de rol')
+  if (root.schemaVersion !== 1) {
+    throw new AdminValidationError('La versión del contrato de asignación no es compatible.')
+  }
+
+  const roleObj = record(root.role, 'role')
+  exactKeys(roleObj, ['name', 'displayName'], 'role')
+
+  const rawName = text(roleObj.name, 'role.name', 32)
+  if (!USER_ROLES.includes(rawName as UserRole)) {
+    throw new AdminValidationError('role.name no es un rol válido.')
+  }
+
+  const displayName = text(roleObj.displayName, 'role.displayName', 120)
+
+  return {
+    schemaVersion: 1,
+    userId: uuid(root.userId, 'userId'),
+    role: {
+      name: rawName as UserRole,
+      displayName,
+    },
+    updatedAt: timestamp(root.updatedAt, 'updatedAt'),
+    serverTime: timestamp(root.serverTime, 'serverTime'),
   }
 }
 

@@ -13,7 +13,7 @@ export function formatPriceCents(amountCents: number): string {
   return `${sign}$${wholeNumberFormatter.format(whole)}.${String(cents).padStart(2, '0')}`
 }
 
-export function CatalogProductCard({ product }: { product: PublicCatalogProduct }) {
+export function CatalogProductCard({ product, onAdd }: { product: PublicCatalogProduct; onAdd: (product: PublicCatalogProduct) => void }) {
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null)
   const resolvedImageUrl = resolvePublicCatalogImageUrl(product.image)
   const catalogImageUrl = resolvedImageUrl === failedImageUrl ? null : resolvedImageUrl
@@ -73,6 +73,9 @@ export function CatalogProductCard({ product }: { product: PublicCatalogProduct 
               <small>{product.price.currency} / {product.price.unit}</small>
             </span>
           </div>
+          <button type="button" className="add-to-cart-btn" onClick={() => onAdd(product)}>
+            🛒 Agregar
+          </button>
         </div>
       </div>
     </article>

@@ -2,10 +2,13 @@ import { getSupabaseClient } from '../../lib/supabase/client'
 import {
   parseAdminBranchesResponse,
   parseAdminStaffResponse,
+  parseAdminRoleOptionsResponse,
+  parseSetAdminStaffRoleResult,
   parseBranchRowResponse,
   parseVoidResponse,
   validateAssignUserBranchInput,
   validateAssignUserRoleInput,
+  validateSetAdminStaffRoleInput,
   validateCreateBranchInput,
   validateUpdateBranchInput,
   validateSetUserActiveInput,
@@ -24,6 +27,9 @@ import type {
   AdminBranchesResponse,
   AdminStaffCursor,
   AdminStaffResponse,
+  AdminRoleOptionsResponse,
+  SetAdminStaffRoleInput,
+  SetAdminStaffRoleResult,
   AssignUserBranchInput,
   AssignUserRoleInput,
   BranchRow,
@@ -51,6 +57,8 @@ async function adminRequest<T>(
   rpc:
     | 'get_admin_branches'
     | 'get_admin_staff'
+    | 'get_admin_role_options'
+    | 'set_admin_staff_role'
     | 'create_branch'
     | 'update_branch'
     | 'set_branch_active'
@@ -76,10 +84,31 @@ async function adminRequest<T>(
     if (error) {
       const code = error.message
       if (error.code === 'PGRST202' || error.code === '42883') {
+        if (rpc === 'get_admin_role_options' || rpc === 'set_admin_staff_role') {
+          throw new AdminServiceError(
+            'El contrato de administración de roles todavía no está disponible en este entorno.',
+            'ROLE_CONTRACT_UNAVAILABLE',
+          )
+        }
         throw new AdminServiceError(
           'El flujo de inventario todavía no está disponible en este entorno. Falta aplicar su contrato de servidor.',
           'INVENTORY_CONTRACT_UNAVAILABLE',
         )
+      }
+      if (code === 'ROLE_ASSIGNMENT_UNAUTHORIZED') {
+        throw new AdminServiceError('No tienes permiso para asignar roles.', code)
+      }
+      if (code === 'ROLE_ASSIGNMENT_INVALID') {
+        throw new AdminServiceError('El rol seleccionado no es válido.', code)
+      }
+      if (code === 'ROLE_TARGET_UNAVAILABLE') {
+        throw new AdminServiceError('El usuario no existe o está inactivo. Actualiza el directorio.', code)
+      }
+      if (code === 'ROLE_OWNER_RESTRICTED') {
+        throw new AdminServiceError('Un Administrador no puede promover ni modificar Propietarios.', code)
+      }
+      if (code === 'ROLE_LAST_OWNER_REQUIRED') {
+        throw new AdminServiceError('Debe conservarse al menos un Propietario.', code)
       }
       if (code === 'ADMIN_UNAUTHORIZED' || code === 'User management is not allowed') {
         throw new AdminServiceError('Acceso denegado. No tienes permisos suficientes para realizar esta acción administrativa.', code)
@@ -241,6 +270,23 @@ export async function assignUserRole(
     p_user_id: validated.userId,
     p_role_name: validated.role,
   }, parseVoidResponse, signal)
+}
+
+export function fetchAdminRoleOptions(
+  signal?: AbortSignal,
+): Promise<AdminRoleOptionsResponse> {
+  return adminRequest('get_admin_role_options', {}, parseAdminRoleOptionsResponse, signal)
+}
+
+export async function setAdminStaffRole(
+  input: SetAdminStaffRoleInput,
+  signal?: AbortSignal,
+): Promise<SetAdminStaffRoleResult> {
+  const validated = validateSetAdminStaffRoleInput(input.userId, input.roleName)
+  return adminRequest('set_admin_staff_role', {
+    p_user_id: validated.userId,
+    p_role_name: validated.roleName,
+  }, parseSetAdminStaffRoleResult, signal)
 }
 
 export function fetchDailySalesReport(

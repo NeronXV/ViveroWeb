@@ -7,7 +7,7 @@ Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El c
 - Caja Web está congelada funcionalmente en `c99fd10882f42639904c8d1d67a9722274f543c1` y consume el contrato backend local `79681695ad493718b4f11195d421de3719343555`. Incorpora actualización automática local por polling seguro cada 10 segundos sin usar Realtime; el botón de actualización manual permanece activo.
 - Caja, Administración y el Panel de Acceso Interno son integraciones locales reales.
 - Administración esencial incorpora directorios reales de sucursales y personal (incluyendo asignación de rol y sucursal, y activación/desactivación de trabajadores vía `set_user_active` sin claves administrativas ni creación de cuentas auth en el navegador), catálogo administrativo real local de productos y categorías, administración de clientes real local, mutaciones protegidas, recepción idempotente, conteo e historial de inventario y reportes básicos sobre contratos autoritativos de ViveroApp.
-- Las promociones y los pedidos continúan siendo exclusivamente de demostración.
+- Los pedidos del catálogo público se persisten en Supabase con precios recalculados por el servidor y seguimiento por sucursal; el pago en línea todavía no está implementado.
 - Pasan 205 pruebas unitarias, lint y build.
 - Permanecen pendientes la ejecución de las 23 migraciones desde cero, las 306 aserciones pgTAP, los escenarios integrales de prueba, las pruebas integrales de roles en Web y la prueba real Android -> Caja -> confirmación de pago. No existe autorización de despliegue en staging o producción.
 
@@ -56,7 +56,7 @@ Inicia el proyecto local desde el repositorio backend correspondiente y usa su U
 - `/login`: inicio de sesión y consulta del contexto de acceso real.
 - `/panel`: entrada interna centralizada basada en capacidades efectivas.
 - `/caja`: Caja real protegida por sesión, capacidad y sucursal activa.
-- `/admin`: Administración mixta protegida por capacidades; sucursales, personal, productos, clientes, inventario y reportes son reales, mientras las promociones siguen identificadas como demo.
+- `/admin`: Administración protegida por capacidades; sucursales, personal, productos, clientes, inventario, reportes y pedidos web usan contratos reales de Supabase.
 
 ## Estado y autoridad de acceso
 

@@ -329,6 +329,271 @@
   transform: translateY(-2px);
 }
 
+.web-order-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.web-order-form .cart-items {
+  flex: 0 0 auto;
+  padding: 1.5rem 1.75rem 1rem;
+  overflow-y: visible;
+}
+
+.web-order-form .cart-footer {
+  flex: 0 0 auto;
+  padding: 1.25rem 1.75rem 2rem;
+  background-color: var(--surface-color);
+  border-top: 1px solid var(--surface-border);
+}
+
+.web-order-fields {
+  display: grid;
+  gap: 0.85rem;
+  margin: 1rem 0;
+}
+
+.web-order-fields label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.web-order-fields small,
+.web-order-help {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.web-order-fields input,
+.web-order-fields select,
+.web-order-fields textarea {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.7rem;
+  background: var(--bg-color);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.web-order-error {
+  color: #b42318;
+}
+
+/* --- DIGITAL TICKET COMPONENT --- */
+.web-order-ticket {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1.25rem 2.5rem;
+  text-align: center;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ticket-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 50px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.order-ticket-card {
+  width: 100%;
+  margin-top: 1.25rem;
+  background: var(--bg-color);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.2rem;
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+.order-ticket-header {
+  text-align: center;
+}
+
+.order-ticket-number {
+  font-family: var(--font-mono, monospace);
+  font-size: 1.15rem;
+  color: var(--primary-color);
+  letter-spacing: 0.04em;
+}
+
+.copy-folio-btn {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.copy-folio-btn:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.order-ticket-divider {
+  height: 1px;
+  border-top: 1px dashed var(--surface-border);
+  margin: 0.85rem 0;
+}
+
+.order-ticket-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.order-ticket-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  gap: 0.75rem;
+}
+
+.order-ticket-row span {
+  color: var(--text-secondary);
+}
+
+.order-ticket-row strong {
+  color: var(--text-primary);
+  text-align: right;
+  word-break: break-word;
+}
+
+.order-ticket-row.total {
+  font-size: 0.95rem;
+  padding-top: 0.2rem;
+}
+
+.ticket-total-value {
+  color: var(--primary-color) !important;
+  font-size: 1.15rem !important;
+  font-weight: 800;
+}
+
+.order-ticket-email-note {
+  width: 100%;
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  text-align: left;
+  line-height: 1.4;
+}
+
+body.dark-theme .order-ticket-email-note {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.order-ticket-instructions {
+  width: 100%;
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-color) 85%, var(--bg-color));
+  border: 1px solid var(--surface-border);
+  text-align: left;
+}
+
+.order-ticket-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+.web-order-confirmation {
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+.web-order-confirmation-icon {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.web-order-confirmation h4,
+.web-order-confirmation p {
+  margin: 0;
+}
+
+
+.web-order-status {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+}
+
+.web-order-status.status-pending { color: #a15c00; background: #fff4d6; }
+.web-order-status.status-confirmed { color: #1d4ed8; background: #dbeafe; }
+.web-order-status.status-ready { color: #047857; background: #d1fae5; }
+.web-order-status.status-completed { color: #166534; background: #dcfce7; }
+.web-order-status.status-cancelled { color: #b42318; background: #fee4e2; }
+
+.web-order-admin-detail {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.web-order-admin-detail > p {
+  margin: 0;
+}
+
+.web-order-admin-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.web-order-admin-item:last-child { border-bottom: 0; }
+
+.web-order-admin-item div,
+.web-order-admin-item small {
+  display: grid;
+  gap: 0.2rem;
+}
+
 /* --- RESPONSIVE STORE --- */
 @media (max-width: 992px) {
   .hero-container {

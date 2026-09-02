@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   parseAdminBranchesResponse,
   parseAdminStaffResponse,
+  parseAdminRoleOptionsResponse,
+  parseSetAdminStaffRoleResult,
   parseBranchRowResponse,
   parseVoidResponse,
   validateAssignUserBranchInput,
   validateAssignUserRoleInput,
+  validateSetAdminStaffRoleInput,
   validateCreateBranchInput,
   validateUpdateBranchInput,
   parseAdminDailySalesReport,
@@ -365,5 +368,189 @@ describe('contrato de inventario administrativo real', () => {
     expect(() => parseInventoryHistory({
       schemaVersion: 1, branchId: BRANCH_ID, items: [], hasMore: true, nextCursor: null,
     })).toThrow()
+  })
+})
+
+describe('contrato de opciones de rol autorizadas (get_admin_role_options)', () => {
+  const adminOptionsPayload = {
+    schemaVersion: 1,
+    actorRole: 'ADMIN',
+    items: [
+      { name: 'SALES', displayName: 'Vendedor', capabilities: ['SELL_PRODUCTS', 'VIEW_CATALOG'] },
+      { name: 'CASHIER', displayName: 'Cajero', capabilities: ['PROCESS_PAYMENTS', 'OPEN_REGISTER'] },
+      { name: 'INVENTORY', displayName: 'Inventario', capabilities: ['RECEIVE_STOCK', 'AUDIT_STOCK'] },
+      { name: 'MANAGER', displayName: 'Gerente', capabilities: ['MANAGE_ORDERS', 'VIEW_REPORTS'] },
+      { name: 'ADMIN', displayName: 'Administrador', capabilities: ['MANAGE_BRANCHES', 'MANAGE_USERS'] },
+    ],
+    serverTime: '2026-08-29T10:00:00Z',
+  }
+
+  const ownerOptionsPayload = {
+    schemaVersion: 1,
+    actorRole: 'OWNER',
+    items: [
+      { name: 'SALES', displayName: 'Vendedor', capabilities: ['SELL_PRODUCTS'] },
+      { name: 'CASHIER', displayName: 'Cajero', capabilities: ['PROCESS_PAYMENTS'] },
+      { name: 'INVENTORY', displayName: 'Inventario', capabilities: ['RECEIVE_STOCK'] },
+      { name: 'MANAGER', displayName: 'Gerente', capabilities: ['MANAGE_ORDERS'] },
+      { name: 'ADMIN', displayName: 'Administrador', capabilities: ['MANAGE_USERS'] },
+      { name: 'OWNER', displayName: 'Propietario', capabilities: ['FULL_CONTROL'] },
+    ],
+    serverTime: '2026-08-29T10:00:00Z',
+  }
+
+  it('acepta la respuesta V1 para ADMIN con 5 roles y sin OWNER', () => {
+    const result = parseAdminRoleOptionsResponse(adminOptionsPayload)
+    expect(result.schemaVersion).toBe(1)
+    expect(result.actorRole).toBe('ADMIN')
+    expect(result.items).toHaveLength(5)
+    expect(result.items.some((i) => i.name === 'OWNER')).toBe(false)
+    expect(result.items[0]).toEqual({
+      name: 'SALES',
+      displayName: 'Vendedor',
+      capabilities: ['SELL_PRODUCTS', 'VIEW_CATALOG'],
+    })
+  })
+
+  it('acepta la respuesta V1 para OWNER con los 6 roles incluyendo OWNER', () => {
+    const result = parseAdminRoleOptionsResponse(ownerOptionsPayload)
+    expect(result.schemaVersion).toBe(1)
+    expect(result.actorRole).toBe('OWNER')
+    expect(result.items).toHaveLength(6)
+    expect(result.items.some((i) => i.name === 'OWNER')).toBe(true)
+    expect(result.items[5]).toEqual({
+      name: 'OWNER',
+      displayName: 'Propietario',
+      capabilities: ['FULL_CONTROL'],
+    })
+  })
+
+  it('rechaza versiones incompatibles o distintas de schemaVersion 1', () => {
+    expect(() => parseAdminRoleOptionsResponse({ ...adminOptionsPayload, schemaVersion: 2 })).toThrow()
+    expect(() => parseAdminRoleOptionsResponse({ ...adminOptionsPayload, schemaVersion: 0 })).toThrow()
+  })
+
+  it('rechaza claves inesperadas o faltantes en la raíz y en los items', () => {
+    expect(() => parseAdminRoleOptionsResponse({ ...adminOptionsPayload, extraField: true })).toThrow()
+
+    const itemWithExtra = {
+      ...adminOptionsPayload,
+      items: [{ ...adminOptionsPayload.items[0], unknownKey: 'leak' }],
+    }
+    expect(() => parseAdminRoleOptionsResponse(itemWithExtra)).toThrow()
+
+    const itemMissingCaps = {
+      ...adminOptionsPayload,
+      items: [{ name: 'SALES', displayName: 'Vendedor' }],
+    }
+    expect(() => parseAdminRoleOptionsResponse(itemMissingCaps)).toThrow()
+  })
+
+  it('rechaza un actorRole inválido', () => {
+    expect(() => parseAdminRoleOptionsResponse({ ...adminOptionsPayload, actorRole: 'SUPERUSER' })).toThrow()
+    expect(() => parseAdminRoleOptionsResponse({ ...adminOptionsPayload, actorRole: 'MANAGER' })).toThrow()
+  })
+
+  it('rechaza nombres de roles no reconocidos en items', () => {
+    const invalidRole = {
+      ...adminOptionsPayload,
+      items: [{ name: 'SUPERADMIN', displayName: 'Super', capabilities: [] }],
+    }
+    expect(() => parseAdminRoleOptionsResponse(invalidRole)).toThrow()
+  })
+
+  it('rechaza capacidades que no sean listas o fechas sin zona horaria', () => {
+    const badCaps = {
+      ...adminOptionsPayload,
+      items: [{ name: 'SALES', displayName: 'Vendedor', capabilities: 'not-array' }],
+    }
+    expect(() => parseAdminRoleOptionsResponse(badCaps)).toThrow()
+
+    const badDate = {
+      ...adminOptionsPayload,
+      serverTime: '2026-08-29 10:00:00',
+    }
+    expect(() => parseAdminRoleOptionsResponse(badDate)).toThrow()
+  })
+})
+
+describe('contrato de mutación set_admin_staff_role', () => {
+  const mutationPayload = {
+    schemaVersion: 1,
+    userId: USER_ID,
+    role: {
+      name: 'MANAGER',
+      displayName: 'Gerente',
+    },
+    updatedAt: '2026-08-29T10:00:00Z',
+    serverTime: '2026-08-29T10:00:01Z',
+  }
+
+  describe('validateSetAdminStaffRoleInput', () => {
+    it('acepta entrada válida con UUID y UserRole válido', () => {
+      const result = validateSetAdminStaffRoleInput(USER_ID, 'MANAGER')
+      expect(result).toEqual({ userId: USER_ID, roleName: 'MANAGER' })
+    })
+
+    it('rechaza IDs no UUID', () => {
+      expect(() => validateSetAdminStaffRoleInput('not-a-uuid', 'CASHIER')).toThrow()
+    })
+
+    it('rechaza roles null, vacíos, NONE o no autorizados', () => {
+      expect(() => validateSetAdminStaffRoleInput(USER_ID, null)).toThrow()
+      expect(() => validateSetAdminStaffRoleInput(USER_ID, '')).toThrow()
+      expect(() => validateSetAdminStaffRoleInput(USER_ID, 'NONE')).toThrow()
+      expect(() => validateSetAdminStaffRoleInput(USER_ID, 'SUPERADMIN')).toThrow()
+    })
+  })
+
+  describe('parseSetAdminStaffRoleResult', () => {
+    it('acepta el resultado V1 exacto con rol actualizado', () => {
+      const result = parseSetAdminStaffRoleResult(mutationPayload)
+      expect(result).toEqual({
+        schemaVersion: 1,
+        userId: USER_ID,
+        role: {
+          name: 'MANAGER',
+          displayName: 'Gerente',
+        },
+        updatedAt: '2026-08-29T10:00:00Z',
+        serverTime: '2026-08-29T10:00:01Z',
+      })
+    })
+
+    it('rechaza versiones distintas de 1', () => {
+      expect(() => parseSetAdminStaffRoleResult({ ...mutationPayload, schemaVersion: 2 })).toThrow()
+    })
+
+    it('rechaza claves extra o faltantes', () => {
+      expect(() => parseSetAdminStaffRoleResult({ ...mutationPayload, extra: 123 })).toThrow()
+      expect(() => parseSetAdminStaffRoleResult({
+        ...mutationPayload,
+        role: { name: 'MANAGER', displayName: 'Gerente', extra: true },
+      })).toThrow()
+    })
+
+    it('rechaza roles desconocidos o UUIDs inválidos', () => {
+      expect(() => parseSetAdminStaffRoleResult({
+        ...mutationPayload,
+        role: { name: 'ROOT', displayName: 'Root' },
+      })).toThrow()
+      expect(() => parseSetAdminStaffRoleResult({
+        ...mutationPayload,
+        userId: 'invalid-id',
+      })).toThrow()
+    })
+
+    it('rechaza fechas sin zona horaria', () => {
+      expect(() => parseSetAdminStaffRoleResult({
+        ...mutationPayload,
+        updatedAt: '2026-08-29 10:00:00',
+      })).toThrow()
+      expect(() => parseSetAdminStaffRoleResult({
+        ...mutationPayload,
+        serverTime: '2026-08-29 10:00:00',
+      })).toThrow()
+    })
   })
 })

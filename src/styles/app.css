@@ -1020,6 +1020,126 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   font-size: 0.9rem;
 }
 
+.admin-modal-user-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-color);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1.25rem;
+}
+
+.admin-role-comparison {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-color);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1.25rem;
+}
+
+.admin-role-comparison-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-role-comparison-step span {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.admin-role-comparison-arrow {
+  font-size: 1.3rem;
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+.admin-tech-id {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-secondary);
+  margin-left: 0.4rem;
+}
+
+.admin-role-capabilities-box {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-color);
+  border: 1px dashed var(--surface-border);
+}
+
+.admin-role-capabilities-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.4rem;
+}
+
+.admin-role-capabilities-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.admin-role-capability-chip {
+  font-size: 0.72rem;
+  font-family: var(--font-mono, monospace);
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  background: hsla(160, 87%, 30%, 0.08);
+  color: var(--primary-color);
+  border: 1px solid hsla(160, 87%, 30%, 0.2);
+  font-weight: 600;
+}
+
+.admin-elevated-warning {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #92400e;
+}
+
+.admin-elevated-warning p {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.admin-confirm-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.admin-confirm-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-height: unset;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--primary-color);
+}
+
 /* Panel de Acceso Interno */
 .panel-layout {
   display: grid;

@@ -1,6 +1,6 @@
 # Estado actual del proyecto
 
-Última revisión documental: 2026-08-31.
+Última revisión documental: 2026-09-01.
 
 ## Objetivo actual
 
@@ -15,7 +15,7 @@ Completar y validar el recorrido operativo del MVP antes de ampliar módulos, co
 - Caja conectada a contratos reales de bandeja, detalle, claim, confirmación y recuperación.
 - Administración real de sucursales, personal, productos, clientes, inventario y reportes básicos.
 - Inicio interno identificado como panel de trabajador, gerencia o administración; los módulos siguen habilitándose exclusivamente por capacidades del backend.
-- Promociones y pedidos continúan como demostración explícita.
+- Pedidos web conectados a un contrato real de Supabase: carrito público, precios autoritativos, contacto, sucursal, seguimiento administrativo y estados auditados. El pago en línea continúa fuera de alcance.
 - Último commit observado al crear este documento: `e1bc0b27f39d17516f0bddaec0f90a9ec554deff`.
 
 ## Siguiente resultado demostrable
@@ -43,7 +43,7 @@ Participar en una prueba local completa:
 - Cobertura exhaustiva de estados poco probables.
 - Refactors no requeridos por el recorrido.
 - Optimización sin problema medido.
-- Promociones, pedidos y reportes avanzados.
+- Promociones, pago en línea y reportes avanzados.
 - Endurecimiento empresarial adicional.
 
 ## Mantenimiento

@@ -1242,3 +1242,245 @@ body.dark-theme .stock-card.adequate {
   color: var(--text-primary);
   background: var(--surface-border);
 }
+
+/* ==========================================================================
+   PREMIUM ADMIN TABLES (SaaS Style)
+   ========================================================================== */
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-md);
+  margin-top: 0.5rem;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.admin-table thead th {
+  background: color-mix(in srgb, var(--surface-color) 92%, var(--bg-color));
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.95rem 1.15rem;
+  border-bottom: 1px solid var(--surface-border);
+  white-space: nowrap;
+}
+
+.admin-table thead th:first-child {
+  border-top-left-radius: var(--radius-md);
+}
+
+.admin-table thead th:last-child {
+  border-top-right-radius: var(--radius-md);
+}
+
+.admin-table tbody tr {
+  transition: background-color 0.18s ease;
+}
+
+.admin-table tbody tr:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 4%, transparent);
+}
+
+.admin-table tbody td {
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Theme Toggle Button for Admin Header */
+.theme-toggle-btn-admin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--surface-border);
+  background: color-mix(in srgb, var(--surface-color) 90%, var(--bg-color));
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.theme-toggle-btn-admin:hover {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px hsla(160, 87%, 30%, 0.25);
+}
+
+/* ==========================================================================
+   DARK THEME SPECIFIC POLISH (SaaS Dashboard Aesthetic)
+   ========================================================================== */
+
+body.dark-theme .dashboard-panel {
+  background-color: #111827;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
+}
+
+body.dark-theme .dashboard-header {
+  background: linear-gradient(120deg, #131d2e, #111827);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-theme .dashboard-sidebar {
+  background-color: #0c121e;
+  border-right-color: rgba(255, 255, 255, 0.06);
+}
+
+body.dark-theme .db-nav-item {
+  color: #94a3b8;
+}
+
+body.dark-theme .db-nav-item:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #f8fafc;
+}
+
+body.dark-theme .db-nav-item.active {
+  background-color: #10b981;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+body.dark-theme .botanical-section-card {
+  background: #151d2c;
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-theme .stock-kpi-card {
+  background: linear-gradient(145deg, #151d2c, #131a28);
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-theme .stock-kpi-card:hover {
+  border-color: #10b981;
+  box-shadow: 0 12px 28px -4px rgba(16, 185, 129, 0.15);
+}
+
+body.dark-theme .stock-filter-toolbar {
+  background: #151d2c;
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+body.dark-theme .stock-filter-chip {
+  background: #0c121e;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+body.dark-theme .stock-filter-chip:hover {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: #10b981;
+}
+
+body.dark-theme .stock-filter-chip.active {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35);
+}
+
+body.dark-theme .stock-search-box {
+  background: #0c121e;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-theme .stock-search-box input {
+  color: #f8fafc !important;
+}
+
+body.dark-theme .admin-table thead th {
+  background: #0f1726;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+body.dark-theme .admin-table tbody td {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+}
+
+body.dark-theme .admin-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.035);
+}
+
+body.dark-theme .mini-action-btn {
+  background: #1e293b;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+body.dark-theme .mini-action-btn:hover:not(:disabled) {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+}
+
+body.dark-theme .admin-modal-content {
+  background-color: #131c2c;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85);
+}
+
+body.dark-theme .admin-modal-user-summary,
+body.dark-theme .admin-role-comparison {
+  background: #0c121e;
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+body.dark-theme .admin-role-capabilities-box {
+  background: #0c121e;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-theme .admin-tech-id {
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+body.dark-theme .admin-role-capability-chip {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+body.dark-theme .admin-form-group select,
+body.dark-theme .admin-form-group input {
+  background-color: #0c121e;
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.dark-theme .logout-btn {
+  background: #151d2c;
+  color: #94a3b8;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-theme .logout-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.25);
+}

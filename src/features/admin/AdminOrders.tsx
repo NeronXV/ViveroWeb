@@ -1,336 +1,113 @@
-import { useMemo, useState } from 'react'
-import { useDemoStore } from '../../app/providers/DemoStore'
-import type { DemoOrder } from '../../types/domain'
+import { useEffect, useMemo, useState } from 'react'
+import { formatPriceCents } from '../public-catalog/CatalogProductCard'
+import { loadAdminWebOrders, setAdminWebOrderStatus, WebOrderServiceError } from '../public-orders/web-order-service'
+import type { AdminWebOrder, WebOrderStatus } from '../public-orders/web-order-types'
+
+const STATUS_LABELS: Record<WebOrderStatus, string> = {
+  PENDING: 'Pendiente',
+  CONFIRMED: 'Confirmado',
+  READY: 'Listo para recoger',
+  COMPLETED: 'Completado',
+  CANCELLED: 'Cancelado',
+}
+
+const NEXT_STATUSES: Record<WebOrderStatus, WebOrderStatus[]> = {
+  PENDING: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: ['READY', 'CANCELLED'],
+  READY: ['COMPLETED', 'CANCELLED'],
+  COMPLETED: [],
+  CANCELLED: [],
+}
 
 export function AdminOrders({ active }: { active: boolean }) {
-  const { orders } = useDemoStore()
+  const [orders, setOrders] = useState<AdminWebOrder[]>([])
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [selectedOrder, setSelectedOrder] = useState<DemoOrder | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<AdminWebOrder | null>(null)
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  // Filtrado de pedidos
-  const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      if (!search.trim()) return true
-      const query = search.trim().toLowerCase()
-      const matchId = order.id.toLowerCase().includes(query)
-      const matchItems = order.items.some((item) => item.name.toLowerCase().includes(query))
-      return matchId || matchItems
+  useEffect(() => {
+    if (!active) return
+    const controller = new AbortController()
+    setStatus('loading')
+    setError('')
+    loadAdminWebOrders(controller.signal).then((response) => {
+      setOrders(response.items)
+      setStatus('ready')
+    }).catch((reason: unknown) => {
+      if (reason instanceof DOMException && reason.name === 'AbortError') return
+      setError(reason instanceof Error ? reason.message : 'No fue posible cargar los pedidos.')
+      setStatus('error')
     })
+    return () => controller.abort()
+  }, [active, refreshKey])
+
+  const filteredOrders = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return orders
+    return orders.filter((order) => order.orderNumber.toLowerCase().includes(query)
+      || order.customer.name.toLowerCase().includes(query)
+      || order.items.some((item) => item.name.toLowerCase().includes(query)))
   }, [orders, search])
 
-  // KPIs
-  const totalRevenue = useMemo(() => {
-    return orders.reduce((sum, order) => sum + order.total, 0)
-  }, [orders])
+  const pendingCount = orders.filter((order) => order.status === 'PENDING').length
+  const activeTotalCents = orders.filter((order) => order.status !== 'CANCELLED').reduce((sum, order) => sum + order.totalCents, 0)
+  const itemCount = orders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0)
 
-  const totalItemsSold = useMemo(() => {
-    return orders.reduce(
-      (sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
-      0
-    )
-  }, [orders])
-
-  const averageTicket = useMemo(() => {
-    return orders.length > 0 ? totalRevenue / orders.length : 0
-  }, [orders, totalRevenue])
+  const changeStatus = async (order: AdminWebOrder, nextStatus: WebOrderStatus) => {
+    if (updatingId) return
+    setUpdatingId(order.id)
+    setError('')
+    try {
+      const result = await setAdminWebOrderStatus(order.id, nextStatus)
+      setOrders((current) => current.map((candidate) => candidate.id === order.id
+        ? { ...candidate, status: result.status, updatedAt: result.updatedAt }
+        : candidate))
+      setSelectedOrder((current) => current?.id === order.id
+        ? { ...current, status: result.status, updatedAt: result.updatedAt }
+        : current)
+    } catch (reason) {
+      setError(reason instanceof WebOrderServiceError ? reason.message : 'No fue posible actualizar el pedido.')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
 
   if (!active) return null
 
-  return (
-    <section className="db-tab-content active" aria-labelledby="orders-title">
-      {/* Header */}
-      <div className="section-header-row">
-        <div>
-          <h3 id="orders-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>🧾</span> Gestión y Registro de Pedidos
-          </h3>
-          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Control y seguimiento de órdenes generadas desde la tienda pública.
-          </p>
-        </div>
+  return <section className="db-tab-content active" aria-labelledby="orders-title" aria-busy={status === 'loading'}>
+    <div className="section-header-row"><div><h3 id="orders-title" style={{ margin: 0 }}>🧾 Pedidos reales de la tienda web</h3><p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Solicitudes persistidas en Supabase con precios confirmados por el servidor.</p></div><button type="button" className="retry-btn-secondary" onClick={() => setRefreshKey((value) => value + 1)} disabled={status === 'loading'}>Actualizar</button></div>
+
+    <div className="stock-kpi-bar" style={{ marginTop: '1rem' }}>
+      <div className="stock-kpi-card"><div className="stock-kpi-icon">📦</div><div className="stock-kpi-info"><span className="stock-kpi-value">{orders.length}</span><span className="stock-kpi-label">Pedidos recibidos</span></div></div>
+      <div className="stock-kpi-card"><div className="stock-kpi-icon">⏳</div><div className="stock-kpi-info"><span className="stock-kpi-value">{pendingCount}</span><span className="stock-kpi-label">Por confirmar</span></div></div>
+      <div className="stock-kpi-card"><div className="stock-kpi-icon">🌿</div><div className="stock-kpi-info"><span className="stock-kpi-value">{itemCount}</span><span className="stock-kpi-label">Artículos solicitados</span></div></div>
+      <div className="stock-kpi-card"><div className="stock-kpi-icon">💰</div><div className="stock-kpi-info"><span className="stock-kpi-value">{formatPriceCents(activeTotalCents)}</span><span className="stock-kpi-label">Valor no cancelado</span></div></div>
+    </div>
+
+    <div className="stock-filter-toolbar" style={{ marginTop: '1rem' }}><div className="stock-search-box" style={{ maxWidth: '420px' }}><span className="stock-search-icon">🔍</span><input type="search" placeholder="Buscar por folio, cliente o producto" value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button type="button" className="stock-search-clear" onClick={() => setSearch('')} aria-label="Limpiar búsqueda">✕</button>}</div></div>
+
+    {error && <div className="admin-page-error" role="alert">{error}</div>}
+    {status === 'loading' && <p role="status">Cargando pedidos reales…</p>}
+    {status === 'error' && <button type="button" className="catalog-action" onClick={() => setRefreshKey((value) => value + 1)}>Reintentar</button>}
+
+    {status === 'ready' && filteredOrders.length === 0 && <div className="promo-empty-card" style={{ marginTop: '1.25rem' }}><div className="promo-empty-icon">🧾</div><div><h4>{search ? 'No hay coincidencias' : 'Aún no hay pedidos web'}</h4><p>{search ? 'Prueba con otro término.' : 'Los pedidos enviados desde el catálogo público aparecerán aquí.'}</p></div></div>}
+
+    {filteredOrders.length > 0 && <div className="botanical-section-card" style={{ marginTop: '1.25rem' }}><div className="table-responsive"><table className="admin-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Sucursal</th><th>Fecha</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{filteredOrders.map((order) => <tr key={order.id}><td><strong>{order.orderNumber}</strong></td><td>{order.customer.name}</td><td>{order.branch.name}</td><td>{new Date(order.createdAt).toLocaleString('es-MX')}</td><td><strong>{formatPriceCents(order.totalCents)}</strong></td><td><span className={`web-order-status status-${order.status.toLowerCase()}`}>{STATUS_LABELS[order.status]}</span></td><td><button type="button" className="mini-action-btn primary" onClick={() => setSelectedOrder(order)}>Ver detalle</button></td></tr>)}</tbody></table></div></div>}
+
+    {selectedOrder && <div className="admin-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="order-detail-title"><div className="admin-modal-content" style={{ maxWidth: '620px' }}><div className="admin-modal-header"><h3 id="order-detail-title">{selectedOrder.orderNumber}</h3><button type="button" className="admin-modal-close" onClick={() => setSelectedOrder(null)} aria-label="Cerrar detalle">×</button></div>
+      <div className="web-order-admin-detail">
+        <p><strong>Cliente:</strong> {selectedOrder.customer.name}</p>
+        <p><strong>Contacto:</strong> {[selectedOrder.customer.phone, selectedOrder.customer.email].filter(Boolean).join(' · ')}</p>
+        <p><strong>Sucursal:</strong> {selectedOrder.branch.name} ({selectedOrder.branch.code})</p>
+        {selectedOrder.notes && <p><strong>Notas:</strong> {selectedOrder.notes}</p>}
+        <div className="botanical-section-card">{selectedOrder.items.map((item) => <div className="web-order-admin-item" key={item.productId}><div><strong>{item.name}</strong><small>{item.code} · {item.quantity} × {formatPriceCents(item.unitPriceCents)}</small>{item.promotionName && <small>Promoción: {item.promotionName}</small>}</div><strong>{formatPriceCents(item.lineTotalCents)}</strong></div>)}</div>
+        {selectedOrder.discountCents > 0 && <p><strong>Descuento:</strong> −{formatPriceCents(selectedOrder.discountCents)}</p>}
+        <div className="cart-total-row"><span>Total confirmado:</span><span>{formatPriceCents(selectedOrder.totalCents)}</span></div>
+        {NEXT_STATUSES[selectedOrder.status].length > 0 && <div className="admin-modal-footer">{NEXT_STATUSES[selectedOrder.status].map((nextStatus) => <button type="button" key={nextStatus} className={nextStatus === 'CANCELLED' ? 'retry-btn-secondary' : 'catalog-action'} disabled={updatingId === selectedOrder.id} onClick={() => changeStatus(selectedOrder, nextStatus)}>{updatingId === selectedOrder.id ? 'Guardando…' : STATUS_LABELS[nextStatus]}</button>)}</div>}
       </div>
-
-      {/* KPI Stats Bar */}
-      <div className="stock-kpi-bar" style={{ marginTop: '1rem' }}>
-        <div className="stock-kpi-card">
-          <div className="stock-kpi-icon" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' }}>
-            📦
-          </div>
-          <div className="stock-kpi-info">
-            <span className="stock-kpi-value">{orders.length}</span>
-            <span className="stock-kpi-label">Total Pedidos</span>
-          </div>
-        </div>
-
-        <div className="stock-kpi-card">
-          <div className="stock-kpi-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
-            💰
-          </div>
-          <div className="stock-kpi-info">
-            <span className="stock-kpi-value">
-              ${totalRevenue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-            <span className="stock-kpi-label">Recaudación Total</span>
-          </div>
-        </div>
-
-        <div className="stock-kpi-card">
-          <div className="stock-kpi-icon" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
-            🌿
-          </div>
-          <div className="stock-kpi-info">
-            <span className="stock-kpi-value">{totalItemsSold}</span>
-            <span className="stock-kpi-label">Plantas / Artículos</span>
-          </div>
-        </div>
-
-        <div className="stock-kpi-card">
-          <div className="stock-kpi-icon" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6' }}>
-            📈
-          </div>
-          <div className="stock-kpi-info">
-            <span className="stock-kpi-value">
-              ${averageTicket.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-            <span className="stock-kpi-label">Ticket Promedio</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Toolbar / Search */}
-      <div className="stock-filter-toolbar" style={{ marginTop: '1rem' }}>
-        <div className="stock-search-box" style={{ maxWidth: '380px' }}>
-          <span className="stock-search-icon">🔍</span>
-          <input
-            type="text"
-            placeholder="Buscar por ID de pedido o planta..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              type="button"
-              className="stock-search-clear"
-              onClick={() => setSearch('')}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          Mostrando {filteredOrders.length} de {orders.length} pedidos
-        </span>
-      </div>
-
-      {/* Tabla de Pedidos en Tarjeta Botánica */}
-      {filteredOrders.length > 0 ? (
-        <div className="botanical-section-card" style={{ marginTop: '1.25rem' }}>
-          <div className="botanical-section-header">
-            <span>📋</span>
-            <h4>Listado de Órdenes Recientes</h4>
-          </div>
-
-          <div className="table-responsive">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID Pedido</th>
-                  <th>Fecha y Hora</th>
-                  <th>Artículos Solicitados</th>
-                  <th style={{ textAlign: 'right' }}>Total</th>
-                  <th style={{ textAlign: 'center' }}>Estado</th>
-                  <th style={{ textAlign: 'center' }}>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono, monospace)', color: 'var(--primary-color)' }}>
-                      #{order.id.slice(0, 8)}
-                    </td>
-                    <td>
-                      {new Date(order.createdAt).toLocaleString('es-MX', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                        {order.items.map((item, idx) => (
-                          <span
-                            key={idx}
-                            style={{
-                              background: 'var(--bg-color)',
-                              padding: '0.15rem 0.5rem',
-                              borderRadius: 'var(--radius-sm)',
-                              fontSize: '0.78rem',
-                              border: '1px solid var(--surface-border)',
-                            }}
-                          >
-                            {item.name} <strong style={{ color: 'var(--primary-color)' }}>×{item.quantity}</strong>
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#10b981' }}>
-                      ${order.total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span
-                        style={{
-                          background: 'rgba(16, 185, 129, 0.15)',
-                          color: '#10b981',
-                          padding: '0.2rem 0.6rem',
-                          borderRadius: '20px',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          display: 'inline-block',
-                        }}
-                      >
-                        🟢 {order.status}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        type="button"
-                        className="mini-action-btn primary"
-                        onClick={() => setSelectedOrder(order)}
-                      >
-                        🔍 Detalle
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <div className="promo-empty-card" style={{ marginTop: '1.25rem' }}>
-          <div className="promo-empty-icon">🧾</div>
-          <div style={{ maxWidth: '460px' }}>
-            <h4 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem' }}>
-              {search ? 'No se encontraron pedidos con esta búsqueda' : 'No hay pedidos registrados por el momento'}
-            </h4>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: 1.5 }}>
-              {search
-                ? 'Intenta con otro término o limpia el buscador para ver todas las órdenes.'
-                : 'Cuando los clientes agreguen plantas al carrito y completen su compra en la tienda web, aparecerán aquí con su detalle de artículos y total.'}
-            </p>
-          </div>
-          {search && (
-            <button
-              type="button"
-              className="catalog-action"
-              style={{ marginTop: '0.5rem' }}
-              onClick={() => setSearch('')}
-            >
-              Limpiar Búsqueda
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Modal: Detalle de Pedido */}
-      {selectedOrder && (
-        <div
-          className="admin-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="order-detail-title"
-        >
-          <div className="admin-modal-content" style={{ maxWidth: '540px' }}>
-            <div className="admin-modal-header">
-              <h3 id="order-detail-title">
-                🧾 Detalle de Pedido #{selectedOrder.id.slice(0, 8)}
-              </h3>
-              <button
-                type="button"
-                className="admin-modal-close"
-                onClick={() => setSelectedOrder(null)}
-              >
-                &times;
-              </button>
-            </div>
-
-            <div style={{ padding: '0.5rem 0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', fontSize: '0.9rem' }}>
-                <div>
-                  <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.75rem' }}>Fecha:</span>
-                  <strong>{new Date(selectedOrder.createdAt).toLocaleString('es-MX')}</strong>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.75rem' }}>Estado:</span>
-                  <span style={{ color: '#10b981', fontWeight: 600 }}>🟢 {selectedOrder.status}</span>
-                </div>
-              </div>
-
-              <div className="botanical-section-card">
-                <div className="botanical-section-header">
-                  <span>🌿</span>
-                  <h4>Artículos Comprados</h4>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {selectedOrder.items.map((item, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '0.4rem 0',
-                        borderBottom: index < selectedOrder.items.length - 1 ? '1px solid var(--surface-border)' : 'none',
-                      }}
-                    >
-                      <div>
-                        <strong>{item.name}</strong>
-                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                          ${item.unitPrice.toFixed(2)} c/u × {item.quantity}
-                        </span>
-                      </div>
-                      <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        ${(item.unitPrice * item.quantity).toFixed(2)} MXN
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: 'var(--bg-color)',
-                  padding: '1rem',
-                  borderRadius: 'var(--radius-md)',
-                  marginTop: '1rem',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  border: '1px solid var(--surface-border)',
-                }}
-              >
-                <span style={{ fontWeight: 600, fontSize: '1rem' }}>Total del Pedido:</span>
-                <strong style={{ fontSize: '1.25rem', color: '#10b981' }}>
-                  ${selectedOrder.total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
-                </strong>
-              </div>
-            </div>
-
-            <div className="admin-modal-footer">
-              <button
-                type="button"
-                className="catalog-action"
-                onClick={() => setSelectedOrder(null)}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
-  )
+    </div></div>}
+  </section>
 }

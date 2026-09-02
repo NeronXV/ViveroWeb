@@ -24,6 +24,7 @@ Estado: **parcialmente implementada**.
 - Clientes básicos.
 - Recepción, conteo e historial de inventario.
 - Reportes básicos.
+- Pedidos reales desde el catálogo público con seguimiento por sucursal.
 
 Criterio de salida: un responsable prepara una sucursal y su catálogo para operar un piloto.
 
@@ -50,7 +51,7 @@ Estado: **pendiente**.
 Estado: **pospuesta**.
 
 - Promociones reales.
-- Pedidos.
+- Pago en línea y entrega de pedidos.
 - Reportes avanzados.
 - Fidelidad.
 - Escalabilidad y endurecimiento adicional.

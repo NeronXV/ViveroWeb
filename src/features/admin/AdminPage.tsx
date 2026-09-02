@@ -14,6 +14,7 @@ import { AdminCatalog } from './AdminCatalog'
 import { AdminCustomers } from './AdminCustomers'
 import { AdminPromotions } from './AdminPromotions'
 import { AdminOrders } from './AdminOrders'
+import { useDemoStore } from '../../app/providers/DemoStore'
 
 export function AdminPage() {
   const { accessContext, refreshAccessContext } = useAuth()
@@ -33,6 +34,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const [tab, setTab] = useState<AdminModuleId>(() => requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab)
   const [preselectedStockProductId, setPreselectedStockProductId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
+  const { darkTheme, toggleTheme } = useDemoStore()
   const { signOut } = useAuth()
   const navigate = useNavigate()
 
@@ -118,6 +120,15 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
             </div>
           </div>
           <div className="dashboard-header-actions">
+            <button
+              type="button"
+              className="theme-toggle-btn-admin"
+              onClick={toggleTheme}
+              aria-label={darkTheme ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+              title={darkTheme ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            >
+              {darkTheme ? '☀️ Modo Claro' : '🌙 Modo Oscuro'}
+            </button>
             <span className="role-badge-db admin">Mixto</span>
             <Link className="logout-btn" to="/panel">Volver al panel</Link>
             <button type="button" className="logout-btn" onClick={onRefreshAccess}>Actualizar acceso</button>

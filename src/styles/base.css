@@ -28,22 +28,22 @@
   --transition-spring: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Dark Theme Variables */
+/* Dark Theme Variables - Sleek Modern SaaS Palette */
 body.dark-theme {
-  --bg-color: hsl(160, 20%, 8%);
-  --bg-pattern: hsla(160, 87%, 34%, 0.02);
-  --surface-color: hsla(160, 20%, 12%, 0.75);
-  --surface-border: hsla(160, 20%, 90%, 0.08);
-  --text-primary: hsl(35, 20%, 95%);
-  --text-secondary: hsl(160, 10%, 75%);
-  --primary-color: hsl(160, 87%, 34%);
-  --primary-light: hsl(160, 87%, 48%);
-  --accent-color: hsl(35, 80%, 55%);
-  --accent-hover: hsl(35, 85%, 48%);
-  --accent-light: hsla(35, 80%, 55%, 0.1);
-  --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
-  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+  --bg-color: hsl(222, 47%, 9%);
+  --bg-pattern: hsla(160, 87%, 34%, 0.025);
+  --surface-color: hsl(222, 40%, 13%);
+  --surface-border: rgba(255, 255, 255, 0.08);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --primary-color: #10b981;
+  --primary-light: #34d399;
+  --accent-color: #f59e0b;
+  --accent-hover: #d97706;
+  --accent-light: rgba(245, 158, 11, 0.14);
+  --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.45), 0 4px 6px -2px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.55), 0 10px 10px -5px rgba(0, 0, 0, 0.35);
 }
 
 /* --- RESET & BASIC STYLES --- */

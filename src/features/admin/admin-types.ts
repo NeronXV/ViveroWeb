@@ -85,6 +85,32 @@ export interface AssignUserRoleInput {
   role: UserRole
 }
 
+export interface AdminRoleOption {
+  name: UserRole
+  displayName: string
+  capabilities: string[]
+}
+
+export interface AdminRoleOptionsResponse {
+  schemaVersion: 1
+  actorRole: 'ADMIN' | 'OWNER'
+  items: AdminRoleOption[]
+  serverTime: string
+}
+
+export interface SetAdminStaffRoleInput {
+  userId: string
+  roleName: UserRole
+}
+
+export interface SetAdminStaffRoleResult {
+  schemaVersion: 1
+  userId: string
+  role: AdminStaffRole
+  updatedAt: string
+  serverTime: string
+}
+
 export interface AdminDailySaleReportItem {
   branchId: string
   branchName: string

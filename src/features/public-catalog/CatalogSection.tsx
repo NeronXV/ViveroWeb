@@ -1,9 +1,12 @@
 import { useDeferredValue, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useOutletContext, useSearchParams } from 'react-router-dom'
+import { usePublicCart } from '../public-orders/PublicCartProvider'
 import { CatalogProductCard } from './CatalogProductCard'
 import { usePublicCatalog } from './usePublicCatalog'
 
 export function CatalogSection({ showSearch = false }: { showSearch?: boolean }) {
+  const { addProduct } = usePublicCart()
+  const { openCart } = useOutletContext<{ openCart: () => void }>()
   const [searchParams] = useSearchParams()
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [query, setQuery] = useState(showSearch ? (searchParams.get('q') ?? '').slice(0, 80) : '')
@@ -20,7 +23,7 @@ export function CatalogSection({ showSearch = false }: { showSearch?: boolean })
       {catalog.status === 'loading' && <div className="catalog-feedback" role="status" aria-live="polite"><p>Cargando catálogo…</p></div>}
       {catalog.status === 'error' && <div className="catalog-feedback catalog-error" role="alert"><p>No pudimos cargar el catálogo. Intenta nuevamente.</p><button className="catalog-action" onClick={catalog.retry}>Reintentar</button></div>}
       {catalog.status === 'ready' && catalog.items.length === 0 && <div className="catalog-feedback empty-state" role="status"><p>{hasActiveFilter ? 'No hay resultados para esta búsqueda o categoría.' : 'El catálogo está vacío por el momento.'}</p></div>}
-      {catalog.items.length > 0 && <div className="catalog-grid">{catalog.items.map((product) => <CatalogProductCard key={product.id} product={product} />)}</div>}
+      {catalog.items.length > 0 && <div className="catalog-grid">{catalog.items.map((product) => <CatalogProductCard key={product.id} product={product} onAdd={(selected) => { addProduct(selected); openCart() }} />)}</div>}
       {catalog.status === 'ready' && catalog.items.length > 0 && <div className="catalog-pagination" aria-live="polite">
         {catalog.hasMore && !catalog.pageError && <button className="catalog-action" onClick={catalog.loadMore} disabled={catalog.isLoadingMore}>{catalog.isLoadingMore ? 'Cargando más…' : 'Cargar más'}</button>}
         {catalog.pageError && <><p>No pudimos cargar más productos.</p><button className="catalog-action" onClick={catalog.loadMore}>Reintentar carga</button></>}
