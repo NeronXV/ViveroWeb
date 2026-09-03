@@ -18,7 +18,6 @@ export function SiteHeader({ onOpenCart }: { onOpenCart: () => void }) {
         <div className="nav-actions">
           <button className="theme-toggle-btn" onClick={toggleTheme} aria-label={darkTheme ? 'Usar tema claro' : 'Usar tema oscuro'}>{darkTheme ? '☀' : '☾'}</button>
           <button className="cart-toggle-btn" onClick={onOpenCart} aria-label={`Ver carrito, ${itemCount} artículos`}>🛒<span className="cart-count">{itemCount}</span></button>
-          <NavLink className="admin-toggle-btn" to="/login" aria-label="Acceso a demostraciones internas">🔐</NavLink>
         </div>
       </div>
     </header>
