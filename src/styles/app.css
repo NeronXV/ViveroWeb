@@ -4,7 +4,9 @@
 }
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible {
   outline: none;
 }
 button, a, input, select, textarea { font: inherit; }
@@ -59,7 +61,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .internal-page { min-height: 100vh; background: var(--bg-color); padding: 2rem; color: var(--text-primary); }
 .auth-page { display: grid; place-items: center; }
 .login-card { width: min(760px, 100%); background: var(--surface-color); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: clamp(1.5rem, 5vw, 3rem); }
-.login-card h1 { margin: 2rem 0 .75rem; font-size: clamp(2rem, 5vw, 3rem); color: var(--primary-color); }
+.login-card h1 { margin: 2rem 0 .75rem; font-size: clamp(2rem, 5vw, 3rem); color: var(--primary-color); outline: none; }
 .auth-form { display: grid; gap: 1rem; margin: 1.5rem 0; }
 .auth-form .form-group { display: grid; gap: .45rem; }
 .auth-form input {
