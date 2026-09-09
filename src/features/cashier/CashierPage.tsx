@@ -1,3 +1,5 @@
+import { CounterSaleComposer } from './CounterSaleComposer'
+import { hasCapability } from '../access/access-helpers'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
@@ -26,6 +28,10 @@ export function CashierPage() {
     }
   }
 
+  const [creatingSale, setCreatingSale] = useState(false)
+  const canCreateSale = hasCapability(accessContext, 'CREATE_SALES') && hasCapability(accessContext, 'VIEW_CATALOG') && Boolean(accessContext?.branch?.isActive)
+  const showComposer = creatingSale && canCreateSale
+  useEffect(() => { setCreatingSale(false) }, [userId, accessContext?.branch?.id])
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
 
   // 1. Obtener el detalle de la venta seleccionada
@@ -240,7 +246,15 @@ export function CashierPage() {
           </div>
         </div>
 
-        <div className="cashier-layout">
+        {canCreateSale && userId && accessContext?.branch && <>
+          {!creatingSale && <div className="counter-launch"><button type="button" className="catalog-action"
+            disabled={Boolean(selectedSaleId) || Boolean(attempt) || actionInProgress}
+            onClick={() => setCreatingSale(true)}>Nueva venta de mostrador</button>
+            <p>{selectedSaleId || attempt ? 'Termina o cierra el ticket actual para preparar otra venta.' : 'Atiende aquí a quien llega directamente a Caja.'}</p></div>}
+          {creatingSale && <CounterSaleComposer key={userId + accessContext.branch.id} userId={userId} branchId={accessContext.branch.id}
+            onClose={() => setCreatingSale(false)} onCreated={saleId => { setCreatingSale(false); setSelectedSaleId(saleId); refreshSales() }} />}
+        </>}
+        <div className={showComposer ? 'counter-hidden' : 'cashier-layout'}>
           {/* Columna Izquierda: Bandeja de Ventas Pendientes */}
           <section className="cashier-products" aria-labelledby="queue-title">
             <div className="section-header-row">
@@ -673,7 +687,7 @@ export function CashierPage() {
           </aside>
         </div>
       </div>
-    <CashierOperations key={userId} locked={isCriticalPaymentActive} />
+    {!showComposer && <CashierOperations key={userId} locked={isCriticalPaymentActive} />}
 </main>
   )
 }
