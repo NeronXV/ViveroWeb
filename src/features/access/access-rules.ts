@@ -20,7 +20,7 @@ export const ADMIN_ENTRY_CAPABILITIES = [
   'MANAGE_SETTINGS',
 ] as const
 
-export type AdminModuleId = 'editorial' | 'sucursales' | 'inventario' | 'stock' | 'compras' | 'promociones' | 'ventas' | 'pedidos' | 'personal' | 'clientes'
+export type AdminModuleId = 'editorial' | 'boletin' | 'sucursales' | 'inventario' | 'stock' | 'compras' | 'promociones' | 'ventas' | 'pedidos' | 'personal' | 'clientes'
 
 export interface AdminModuleRule {
   id: AdminModuleId
@@ -30,6 +30,7 @@ export interface AdminModuleRule {
 }
 
 export const ADMIN_MODULE_RULES: readonly AdminModuleRule[] = [
+  { id: 'boletin', label: 'Boletín', anyCapability: ['MANAGE_SETTINGS'] },
   { id: 'editorial', label: '📝 Editorial', anyCapability: [], pendingBackendPermission: true },
   { id: 'sucursales', label: '🏬 Sucursales', anyCapability: ['MANAGE_BRANCHES', 'MANAGE_USERS'] },
   { id: 'inventario', label: '🌿 Catálogo y Plantas', anyCapability: ['MANAGE_PRODUCTS'] },

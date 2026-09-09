@@ -63,6 +63,7 @@ export interface AdminWebOrder {
   status: WebOrderStatus
   createdAt: string
   updatedAt: string
+  checkout?: { saleId: string; folio: string; status: string; totalCents: number } | null
   items: AdminWebOrderItem[]
 }
 

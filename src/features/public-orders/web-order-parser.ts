@@ -103,6 +103,7 @@ function adminOrder(value: unknown): AdminWebOrder {
     status: status(row.status),
     createdAt: string(row.createdAt, 'La fecha de creación')!,
     updatedAt: string(row.updatedAt, 'La fecha de actualización')!,
+    checkout: row.checkout == null ? null : parseWebOrderCheckout(row.checkout),
     items: row.items.map(adminItem),
   }
 }
@@ -134,4 +135,12 @@ export function parseWebOrderStatusResult(value: unknown): WebOrderStatusResult 
     updatedAt: string(root.updatedAt, 'La actualización')!,
     idempotentReplay: boolean(root.idempotentReplay, 'La confirmación segura'),
   }
+}
+
+export function parseWebOrderCheckout(value: unknown) {
+  const row = record(value, 'El cobro')
+  const saleStatus = string(row.status, 'El estado')!
+  if (!['SENT_TO_CASHIER', 'PAID', 'CANCELLED', 'DELIVERED'].includes(saleStatus)) throw new Error('Estado de venta incompatible.')
+  return { saleId: uuid(row.saleId, 'La venta'), folio: string(row.folio, 'El folio')!,
+    status: saleStatus, totalCents: integer(row.totalCents, 'El total') }
 }

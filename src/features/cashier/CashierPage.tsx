@@ -8,6 +8,7 @@ import { useCashierPaymentAttempt } from './useCashierPaymentAttempt'
 import { formatCents, parsePesosToCents } from './cashier-money'
 import { isNavigationLocked } from './cashier-payment-state'
 import type { CashierPaymentMethod } from './cashier-types'
+import { CashierOperations } from './CashierOperations'
 import { CashierPrintableTicket } from './CashierPrintableTicket'
 import { playCashierSuccessSound } from './cashier-sound'
 
@@ -672,6 +673,7 @@ export function CashierPage() {
           </aside>
         </div>
       </div>
-    </main>
+    <CashierOperations key={userId} locked={isCriticalPaymentActive} />
+</main>
   )
 }

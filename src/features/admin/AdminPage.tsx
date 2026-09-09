@@ -13,6 +13,8 @@ import { useAdminBranches } from './useAdminDirectories'
 import { AdminCatalog } from './AdminCatalog'
 import { AdminCustomers } from './AdminCustomers'
 import { AdminPromotions } from './AdminPromotions'
+import { StaffInvitation } from './StaffInvitation'
+import { AdminNewsletter } from '../newsletter/AdminNewsletter'
 import { AdminOrders } from './AdminOrders'
 import { PurchasesDashboard } from './purchases'
 import { useDemoStore } from '../../app/providers/DemoStore'
@@ -117,7 +119,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
             <div>
               <p className="dashboard-kicker">Administración interna</p>
               <h2 ref={headingRef} tabIndex={-1}>Panel Vivero Dulcinea</h2>
-              <p className="demo-copy">Módulos reales y demostrativos claramente identificados.</p>
+              <p className="demo-copy">Gestión de productos, pedidos y operación de sucursal.</p>
             </div>
           </div>
           <div className="dashboard-header-actions">
@@ -130,7 +132,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
             >
               {darkTheme ? '☀️ Modo Claro' : '🌙 Modo Oscuro'}
             </button>
-            <span className="role-badge-db admin">Mixto</span>
+            <span className="role-badge-db admin">Operación</span>
             <Link className="logout-btn" to="/panel">Volver al panel</Link>
             <button type="button" className="logout-btn" onClick={onRefreshAccess}>Actualizar acceso</button>
             <button type="button" className="logout-btn" onClick={handleSignOut}>Cerrar sesión</button>
@@ -211,7 +213,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               {tab === 'ventas' && authorizedTabs.includes('ventas') && (
                 <section className="db-tab-content active">
                   <div className="section-header-row">
-                    <h3>Ventas y Reportes Reales</h3>
+                    <h3>Ventas y reportes</h3><p>Importes cobrados antes de devoluciones. Consulta los ajustes por devolución en los cortes de Caja.</p>
                     <button type="button" className="refresh-btn-secondary" onClick={refreshReports} disabled={isReportsLoading}>
                       {isReportsLoading ? 'Cargando...' : '↻ Actualizar'}
                     </button>
@@ -367,11 +369,12 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
                 </section>
               )}
 
+              {tab === 'boletin' && authorizedTabs.includes('boletin') && <AdminNewsletter />}
               {tab === 'pedidos' && authorizedTabs.includes('pedidos') && (
                 <AdminOrders active={tab === 'pedidos'} />
               )}
 
-              {tab === 'personal' && authorizedTabs.includes('personal') && <StaffDirectory active canAssignRoles={canAssignRoles} />}
+              {tab === 'personal' && authorizedTabs.includes('personal') && <>{hasCapability(context, 'MANAGE_USERS') && <StaffInvitation />}<StaffDirectory active canAssignRoles={canAssignRoles} /></>}
               {tab === 'clientes' && authorizedTabs.includes('clientes') && <AdminCustomers active={tab === 'clientes'} />}
             </div>
           </section>

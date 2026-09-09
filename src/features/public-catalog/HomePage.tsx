@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useDemoStore } from '../../app/providers/DemoStore'
 import { heroImage } from '../../data/mock/plants'
 import { CareChat } from './CareChat'
 import { CareQuiz } from './CareQuiz'
 import { CatalogSection } from './CatalogSection'
 
 export function HomePage() {
-  const { editorial } = useDemoStore()
+  const editorial = { title: 'Trae la naturaleza a tu hogar', description: 'Explora las plantas de Vivero Dulcinea y prepara tu pedido.',
+    announcement: 'Pide en línea y paga al recoger en sucursal' }
   const [searchParams] = useSearchParams()
   const [query, setQuery] = useState(() => (searchParams.get('q') ?? '').slice(0, 80))
 

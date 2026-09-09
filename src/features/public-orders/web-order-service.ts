@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../../lib/supabase/client'
 import {
   parseAdminWebOrders,
+  parseWebOrderCheckout,
   parsePublicOrderOptions,
   parseSubmitWebOrderResult,
   parseWebOrderStatusResult,
@@ -24,7 +25,7 @@ export class WebOrderServiceError extends Error {
 }
 
 async function request<T>(
-  rpc: 'get_public_web_order_options' | 'submit_web_order' | 'get_admin_web_orders' | 'set_admin_web_order_status',
+  rpc: 'get_public_web_order_options' | 'submit_web_order' | 'get_admin_web_orders' | 'set_admin_web_order_status' | 'send_web_order_to_cashier',
   parameters: Record<string, unknown>,
   parser: (value: unknown) => T,
   callerSignal?: AbortSignal,
@@ -36,6 +37,8 @@ async function request<T>(
     const { data, error } = await getSupabaseClient().rpc(rpc, parameters).abortSignal(signal)
     if (error) {
       const code = error.message
+      if (code === 'WEB_ORDER_PAYMENT_REQUIRED') throw new WebOrderServiceError('Primero cobra la venta en Caja; después podrás completar la entrega.', code)
+      if (code === 'WEB_ORDER_ALREADY_IN_CASHIER') throw new WebOrderServiceError('El pedido ya está en Caja. No se puede cancelar desde esta pantalla.', code)
       if (error.code === 'PGRST202' || error.code === '42883') throw new WebOrderServiceError('El servicio de pedidos todavía no está habilitado en este entorno.', 'CONTRACT_UNAVAILABLE')
       if (code === 'WEB_ORDER_RATE_LIMITED') throw new WebOrderServiceError('Ya recibimos varios pedidos con este contacto. Espera unos minutos antes de intentar nuevamente.', code)
       if (code === 'WEB_ORDER_BRANCH_UNAVAILABLE') throw new WebOrderServiceError('La sucursal seleccionada ya no está disponible.', code)
@@ -94,4 +97,8 @@ export function setAdminWebOrderStatus(
     p_status: nextStatus,
     p_observation: null,
   }, parseWebOrderStatusResult, signal)
+}
+
+export function sendWebOrderToCashier(orderId: string) {
+  return request('send_web_order_to_cashier', { p_order_id: orderId }, parseWebOrderCheckout)
 }

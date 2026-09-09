@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatPriceCents } from '../public-catalog/CatalogProductCard'
-import { loadAdminWebOrders, setAdminWebOrderStatus, WebOrderServiceError } from '../public-orders/web-order-service'
+import { loadAdminWebOrders, setAdminWebOrderStatus, sendWebOrderToCashier, WebOrderServiceError } from '../public-orders/web-order-service'
 import type { AdminWebOrder, WebOrderStatus } from '../public-orders/web-order-types'
 
 const STATUS_LABELS: Record<WebOrderStatus, string> = {
@@ -35,6 +35,7 @@ export function AdminOrders({ active }: { active: boolean }) {
     setError('')
     loadAdminWebOrders(controller.signal).then((response) => {
       setOrders(response.items)
+      setSelectedOrder((current) => current ? response.items.find((item) => item.id === current.id) ?? null : null)
       setStatus('ready')
     }).catch((reason: unknown) => {
       if (reason instanceof DOMException && reason.name === 'AbortError') return
@@ -75,6 +76,19 @@ export function AdminOrders({ active }: { active: boolean }) {
     }
   }
 
+  const sendToCashier = async (order: AdminWebOrder) => {
+    if (updatingId) return
+    setUpdatingId(order.id)
+    setError('')
+    try {
+      const checkout = await sendWebOrderToCashier(order.id)
+      setOrders((current) => current.map((item) => item.id === order.id ? { ...item, checkout } : item))
+      setSelectedOrder((current) => current?.id === order.id ? { ...current, checkout } : current)
+    } catch (reason) {
+      setError(reason instanceof WebOrderServiceError ? reason.message : 'No fue posible enviar a Caja.')
+    } finally { setUpdatingId(null) }
+  }
+
   if (!active) return null
 
   return <section className="db-tab-content active" aria-labelledby="orders-title" aria-busy={status === 'loading'}>
@@ -99,6 +113,9 @@ export function AdminOrders({ active }: { active: boolean }) {
 
     {selectedOrder && <div className="admin-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="order-detail-title"><div className="admin-modal-content" style={{ maxWidth: '620px' }}><div className="admin-modal-header"><h3 id="order-detail-title">{selectedOrder.orderNumber}</h3><button type="button" className="admin-modal-close" onClick={() => setSelectedOrder(null)} aria-label="Cerrar detalle">×</button></div>
       <div className="web-order-admin-detail">
+        {error && <p role="alert">{error}</p>}
+        {selectedOrder.checkout && <p role="status"><strong>Folio en Caja: {selectedOrder.checkout.folio}</strong> · {['PAID', 'DELIVERED'].includes(selectedOrder.checkout.status) ? 'Cobrado' : selectedOrder.checkout.status === 'CANCELLED' ? 'Cancelado' : 'Pendiente de cobro'}. Actualiza la lista después de cobrar.</p>}
+        {!selectedOrder.checkout && ['CONFIRMED', 'READY'].includes(selectedOrder.status) && <button type="button" className="catalog-action" disabled={updatingId !== null} onClick={() => sendToCashier(selectedOrder)}>Enviar a Caja para cobro presencial</button>}
         <p><strong>Cliente:</strong> {selectedOrder.customer.name}</p>
         <p><strong>Contacto:</strong> {[selectedOrder.customer.phone, selectedOrder.customer.email].filter(Boolean).join(' · ')}</p>
         <p><strong>Sucursal:</strong> {selectedOrder.branch.name} ({selectedOrder.branch.code})</p>
@@ -106,7 +123,7 @@ export function AdminOrders({ active }: { active: boolean }) {
         <div className="botanical-section-card">{selectedOrder.items.map((item) => <div className="web-order-admin-item" key={item.productId}><div><strong>{item.name}</strong><small>{item.code} · {item.quantity} × {formatPriceCents(item.unitPriceCents)}</small>{item.promotionName && <small>Promoción: {item.promotionName}</small>}</div><strong>{formatPriceCents(item.lineTotalCents)}</strong></div>)}</div>
         {selectedOrder.discountCents > 0 && <p><strong>Descuento:</strong> −{formatPriceCents(selectedOrder.discountCents)}</p>}
         <div className="cart-total-row"><span>Total confirmado:</span><span>{formatPriceCents(selectedOrder.totalCents)}</span></div>
-        {NEXT_STATUSES[selectedOrder.status].length > 0 && <div className="admin-modal-footer">{NEXT_STATUSES[selectedOrder.status].map((nextStatus) => <button type="button" key={nextStatus} className={nextStatus === 'CANCELLED' ? 'retry-btn-secondary' : 'catalog-action'} disabled={updatingId === selectedOrder.id} onClick={() => changeStatus(selectedOrder, nextStatus)}>{updatingId === selectedOrder.id ? 'Guardando…' : STATUS_LABELS[nextStatus]}</button>)}</div>}
+        {NEXT_STATUSES[selectedOrder.status].length > 0 && <div className="admin-modal-footer">{NEXT_STATUSES[selectedOrder.status].filter((nextStatus) => nextStatus !== 'CANCELLED' || !['PAID', 'DELIVERED'].includes(selectedOrder.checkout?.status ?? '')).map((nextStatus) => <button type="button" key={nextStatus} className={nextStatus === 'CANCELLED' ? 'retry-btn-secondary' : 'catalog-action'} disabled={updatingId !== null || (nextStatus === 'COMPLETED' && !['PAID', 'DELIVERED'].includes(selectedOrder.checkout?.status ?? ''))} onClick={() => changeStatus(selectedOrder, nextStatus)}>{updatingId === selectedOrder.id ? 'Guardando…' : STATUS_LABELS[nextStatus]}</button>)}</div>}
       </div>
     </div></div>}
   </section>

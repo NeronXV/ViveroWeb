@@ -1,26 +1,32 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useDemoStore } from '../../app/providers/DemoStore'
-import type { CareLevel } from '../../types/domain'
-import { ProductCard } from './ProductCard'
-
-type Answers = { light?: CareLevel; water?: 'alta' | 'baja'; pets?: boolean }
-const steps = [
-  { key: 'light' as const, question: '¿Cuál es el nivel de luz del espacio?', options: [{ label: '☀ Luz directa / Alta', value: 'alta' }, { label: '◐ Luz indirecta / Media', value: 'media' }, { label: '☾ Poca luz / Sombra', value: 'baja' }] },
-  { key: 'water' as const, question: '¿Con qué frecuencia puedes regar?', options: [{ label: '💧 Frecuente', value: 'alta' }, { label: '🌵 Moderado / Bajo', value: 'baja' }] },
-  { key: 'pets' as const, question: '¿Necesitas una planta segura para mascotas?', options: [{ label: '🐾 Sí, debe ser pet-friendly', value: true }, { label: '🌿 No es necesario', value: false }] },
-]
+import { useState } from 'react'
+import { useCareCatalog } from './useCareCatalog'
+import { recommendPlants } from './care-catalog'
+import { CatalogProductCard } from './CatalogProductCard'
+import { usePublicCart } from '../public-orders/PublicCartProvider'
 
 export function CareQuiz() {
-  const { plants } = useDemoStore()
-  const navigate = useNavigate()
-  const [step, setStep] = useState(0)
-  const [answers, setAnswers] = useState<Answers>({})
+  const catalog = useCareCatalog()
+  const { addProduct } = usePublicCart()
+  const [light, setLight] = useState('indirect')
+  const [climate, setClimate] = useState('any')
   const [done, setDone] = useState(false)
-  const current = steps[step]
-  const recommendation = useMemo(() => plants.find((plant) => plant.light === answers.light && plant.water === answers.water && (!answers.pets || plant.pets)) ?? plants.find((plant) => plant.light === answers.light && (!answers.pets || plant.pets)) ?? plants[0], [answers, plants])
-  const selected = answers[current.key]
-  const reset = () => { setAnswers({}); setStep(0); setDone(false) }
-  if (done) return <section className="quiz-section" id="care-quiz"><div className="quiz-container"><div className="section-header"><h2>Tu planta recomendada</h2><p>Resultado orientativo con datos de demostración</p></div><div className="quiz-card quiz-result-container"><ProductCard plant={recommendation} actionLabel="Ver catálogo real" onAdd={() => navigate('/catalogo')} /><button className="quiz-btn quiz-btn-secondary" onClick={reset}>Volver a realizar el test</button></div></div></section>
-  return <section className="quiz-section" id="care-quiz" aria-labelledby="quiz-title"><div className="quiz-container"><div className="section-header"><h2 id="quiz-title">Asistente de Recomendación</h2><p>Responde 3 sencillas preguntas para encontrar tu planta ideal</p></div><div className="quiz-card"><div className="progress-bar-container" aria-hidden="true"><div className="progress-bar" style={{ width: `${(step / steps.length) * 100}%` }} /></div><fieldset className="quiz-step active"><legend className="quiz-question">{current.question}</legend><div className="quiz-options">{current.options.map((option) => <button key={String(option.value)} className={`quiz-option ${selected === option.value ? 'selected' : ''}`} aria-pressed={selected === option.value} onClick={() => setAnswers((value) => ({ ...value, [current.key]: option.value }))}><span className="quiz-option-text">{option.label}</span></button>)}</div></fieldset><div className="quiz-nav"><button className="quiz-btn quiz-btn-secondary" onClick={() => setStep((value) => value - 1)} disabled={step === 0}>Atrás</button><button className="quiz-btn quiz-btn-primary" disabled={selected === undefined} onClick={() => step === steps.length - 1 ? setDone(true) : setStep((value) => value + 1)}>{step === steps.length - 1 ? 'Ver recomendación' : 'Siguiente'}</button></div></div></div></section>
+  const matches = recommendPlants(catalog.products, light, climate)
+  return <section className="quiz-section" id="care-quiz" aria-labelledby="quiz-title"><div className="quiz-container">
+    <h2 id="quiz-title">Encuentra una planta para tu espacio</h2>
+    <p>Recomendaciones según los cuidados registrados en nuestro catálogo actual.</p>
+    <div className="quiz-card">
+      <label>Luz del espacio<select value={light} onChange={(event) => { setLight(event.target.value); setDone(false) }}>
+        <option value="sun">Sol directo</option><option value="indirect">Luz indirecta o semisombra</option><option value="shade">Sombra</option>
+      </select></label>
+      <label>Clima<select value={climate} onChange={(event) => { setClimate(event.target.value); setDone(false) }}>
+        <option value="any">Cualquiera</option><option value="calido">Cálido</option><option value="templado">Templado</option><option value="seco">Seco</option>
+      </select></label>
+      {catalog.status === 'loading' && <p role="status">Consultando plantas…</p>}
+      {catalog.status === 'error' && <p role="alert">No pudimos consultar el catálogo. <button onClick={catalog.retry}>Reintentar</button></p>}
+      <button className="quiz-btn quiz-btn-primary" disabled={catalog.status !== 'ready'} onClick={() => setDone(true)}>Ver recomendaciones</button>
+    </div>
+    {done && <div className="catalog-grid">{matches.length ? matches.map((product) =>
+      <CatalogProductCard key={product.id} product={product} onAdd={addProduct} />) :
+      <p role="status">No hay coincidencias con cuidados registrados para esa combinación. Consulta al vivero; no sustituimos la búsqueda con productos de ejemplo.</p>}</div>}
+  </div></section>
 }

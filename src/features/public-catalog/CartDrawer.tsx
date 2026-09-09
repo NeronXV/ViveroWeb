@@ -179,7 +179,7 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
 
           {submittedDetails?.customerEmail && (
             <div className="order-ticket-email-note">
-              ✉️ Te enviamos la confirmación y los detalles de pago a <strong>{submittedDetails.customerEmail}</strong>.
+              Correo de contacto: <strong>{submittedDetails.customerEmail}</strong>. Conserva este folio; el pago se realiza presencialmente en Caja.
             </div>
           )}
 

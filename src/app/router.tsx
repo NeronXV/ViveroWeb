@@ -1,5 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { createBrowserRouter } from 'react-router-dom'
+import { NewsletterConfirmation } from '../features/newsletter/NewsletterConfirmation'
+import { PasswordRecoveryPage } from '../features/auth/PasswordRecoveryPage'
 import { App } from './App'
 import { PublicLayout } from '../components/layout/PublicLayout'
 import { RequireAccessContext, RequireAdminAccess, RequireCashierAccess, RequireSession } from '../features/access/AccessGuards'
@@ -33,4 +35,4 @@ function ProtectedPanelRoute() {
   return <RequireSession returnTo="/panel"><LazyRoute><PanelPage /></LazyRoute></RequireSession>
 }
 
-export const router = createBrowserRouter([{ element: <App />, children: [{ element: <PublicLayout />, children: [{ index: true, element: <LazyRoute><HomePage /></LazyRoute> }, { path: 'catalogo', element: <LazyRoute><CatalogPage /></LazyRoute> }] }, { path: 'login', element: <LazyRoute><LoginPage /></LazyRoute> }, { path: 'caja', element: <ProtectedCashierRoute /> }, { path: 'admin', element: <ProtectedAdminRoute /> }, { path: 'panel', element: <ProtectedPanelRoute /> }, { path: '*', element: <NotFound /> }] }])
+export const router = createBrowserRouter([{ element: <App />, children: [{ element: <PublicLayout />, children: [{ index: true, element: <LazyRoute><HomePage /></LazyRoute> }, { path: 'catalogo', element: <LazyRoute><CatalogPage /></LazyRoute> }] }, { path: 'boletin', element: <NewsletterConfirmation /> }, { path: 'recuperar', element: <PasswordRecoveryPage /> }, { path: 'login', element: <LazyRoute><LoginPage /></LazyRoute> }, { path: 'caja', element: <ProtectedCashierRoute /> }, { path: 'admin', element: <ProtectedAdminRoute /> }, { path: 'panel', element: <ProtectedPanelRoute /> }, { path: '*', element: <NotFound /> }] }])

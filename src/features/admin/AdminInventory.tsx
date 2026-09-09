@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { AdminServiceError, fetchInventoryHistory, reconcileInventoryCount, recordInventoryReception } from './admin-service'
 import type { InventoryMovement } from './admin-types'
+import { InventoryActivation } from './InventoryActivation'
 import { useAdminInventory } from './useAdminInventory'
 
 export function AdminInventory({
@@ -173,6 +174,7 @@ export function AdminInventory({
 
   return (
     <section className="db-tab-content active" aria-busy={inventory.status === 'loading' || saving}>
+      <InventoryActivation />
       {/* Cabecera Principal */}
       <div className="section-header-row">
         <div>

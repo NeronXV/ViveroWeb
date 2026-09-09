@@ -328,6 +328,7 @@ export async function confirmSalePayment(
       if (code === 'SALE_STATUS_INVALID') {
         throw new CashierServiceError('El estado de la venta no es válido para procesar cobro.', code)
       }
+      if (code === 'INVENTORY_INSUFFICIENT') throw new CashierServiceError('No hay existencias suficientes. Solicita revisar el inventario antes de registrar el cobro.', code)
       if (code === 'SALE_TOTAL_INVALID') {
         throw new CashierServiceError('El total de la venta no es válido.', code)
       }
