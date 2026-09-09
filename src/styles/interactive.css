@@ -324,3 +324,55 @@
     padding: 2rem;
   }
 }
+
+
+/* Consultas de cuidados con fichas reales. */
+.care-light-options { border: 0; padding: 0; margin: 0; min-width: 0; text-align: left; }
+.care-light-options legend { font-size: 1.25rem; font-weight: 700; margin-bottom: 1.4rem; }
+.care-light-options .quiz-options { gap: 1rem; }
+.care-light-choice { position: relative; display: flex; flex-direction: column; gap: .65rem; padding: 1.25rem; text-align: left; }
+.care-light-choice input { position: absolute; right: 1rem; top: 1rem; width: 18px; height: 18px; accent-color: var(--primary-color); }
+.care-light-choice:focus-within { outline: 3px solid var(--primary-color); outline-offset: 3px; }
+.care-option-icon { font-size: 2rem; color: var(--primary-color); line-height: 1; }
+.care-light-choice small { font-size: .85rem; line-height: 1.5; color: var(--text-secondary); }
+.care-climate-field { display: grid; gap: .65rem; text-align: left; margin-bottom: 1.5rem; }
+.care-climate-field label { font-weight: 600; }
+.care-climate-field select { width: 100%; min-height: 48px; border: 1px solid var(--surface-border); border-radius: var(--radius-sm); padding: .8rem 1rem; background: var(--surface-color); color: var(--text-primary); font: inherit; }
+.care-climate-field select:focus-visible, .care-suggestions button:focus-visible, .care-assistant button:focus-visible { outline: 3px solid var(--primary-light); outline-offset: 3px; }
+.care-results { margin-top: 2rem; text-align: left; }
+.care-results h3 { margin-bottom: 1rem; }
+.care-assistant .chat-container { gap: 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr); }
+.care-assistant .chat-info { padding: 2.25rem; }
+.care-assistant .chat-info h3 { font-size: clamp(1.75rem, 3vw, 2.2rem); }
+.care-topics { display: grid; gap: .85rem; font-size: .9rem; }
+.care-assistant .chat-box { min-width: 0; height: 440px; }
+.care-assistant .chat-messages { min-height: 0; padding: 1.5rem; }
+.care-welcome { margin: auto 0; text-align: center; }
+.care-welcome-icon { display: inline-grid; place-items: center; width: 56px; height: 56px; background: var(--accent-light); color: var(--primary-color); border-radius: 50%; font-size: 2rem; margin-bottom: .8rem; }
+.care-welcome h4 { font-size: 1.35rem; margin-bottom: .5rem; }
+.care-welcome p { color: var(--text-secondary); line-height: 1.6; }
+.care-suggestions { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.care-suggestions button { padding: .55rem .9rem; border: 1px solid var(--surface-border); border-radius: 24px; color: var(--primary-color); background: var(--surface-color); font: inherit; cursor: pointer; }
+.care-suggestions button:hover { border-color: var(--primary-color); background: var(--accent-light); }
+.care-exchange { display: flex; flex-direction: column; gap: .75rem; }
+.care-assistant .message { max-width: 95%; overflow-wrap: anywhere; flex-shrink: 0; }
+.care-assistant .chat-input-area { padding: 1rem; gap: .65rem; }
+.care-assistant .chat-input-area input { min-width: 0; width: 0; }
+.care-assistant .send-chat-btn { width: auto; min-height: 46px; height: auto; padding: .7rem 1rem; border-radius: 28px; flex-shrink: 0; font: inherit; font-weight: 600; }
+.care-assistant button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 760px) {
+  .care-assistant .chat-container { grid-template-columns: minmax(0, 1fr); }
+  .care-assistant .chat-info { padding: 1.5rem; }
+  .care-assistant .chat-info p { margin-bottom: 1rem; }
+  .care-topics { display: flex; flex-wrap: wrap; gap: .75rem; }
+  .quiz-card { padding: 1.5rem; }
+}
+@media (max-width: 480px) {
+  .quiz-section, .care-assistant { padding: 3rem 1rem; }
+  .care-light-options .quiz-options { grid-template-columns: 1fr; }
+  .care-light-choice { padding: 1rem; gap: .35rem; }
+  .care-option-icon { font-size: 1.5rem; }
+  .care-assistant .chat-input-area { flex-wrap: wrap; }
+  .care-assistant .chat-input-area input { flex-basis: 100%; width: 100%; }
+  .care-assistant .send-chat-btn { width: 100%; }
+}
