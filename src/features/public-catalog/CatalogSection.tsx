@@ -1,20 +1,49 @@
-import { useDeferredValue, useState } from 'react'
+import { useDeferredValue, useEffect, useState } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { usePublicCart } from '../public-orders/PublicCartProvider'
 import { CatalogProductCard } from './CatalogProductCard'
 import { usePublicCatalog } from './usePublicCatalog'
 
-export function CatalogSection({ showSearch = false }: { showSearch?: boolean }) {
+export interface CatalogSectionProps {
+  showSearch?: boolean
+  searchQuery?: string
+  onSearchChange?: (query: string) => void
+}
+
+export function CatalogSection({
+  showSearch = false,
+  searchQuery,
+  onSearchChange,
+}: CatalogSectionProps) {
   const { addProduct } = usePublicCart()
   const { openCart } = useOutletContext<{ openCart: () => void }>()
   const [searchParams] = useSearchParams()
   const [categoryId, setCategoryId] = useState<string | null>(null)
-  const [query, setQuery] = useState(showSearch ? (searchParams.get('q') ?? '').slice(0, 80) : '')
+
+  const isControlled = typeof searchQuery === 'string'
+  const [internalQuery, setInternalQuery] = useState(showSearch ? (searchParams.get('q') ?? '').slice(0, 80) : '')
+
+  useEffect(() => {
+    if (!isControlled && showSearch) {
+      setInternalQuery((searchParams.get('q') ?? '').slice(0, 80))
+    }
+  }, [isControlled, searchParams, showSearch])
+
+  const query = isControlled ? searchQuery : internalQuery
   const deferredQuery = useDeferredValue(query)
   const catalog = usePublicCatalog(deferredQuery, categoryId)
   const hasActiveFilter = deferredQuery.trim() !== '' || categoryId !== null
+
+  const handleQueryChange = (val: string) => {
+    if (isControlled) {
+      onSearchChange?.(val)
+    } else {
+      setInternalQuery(val)
+    }
+  }
+
   return <section className="store" id="catalogo" aria-labelledby="catalog-title"><div className="section-header"><h2 id="catalog-title">Nuestra Colección</h2><p>Filtrado por las categorías más deseadas de la temporada</p></div>
-    {showSearch && <div className="catalog-page-search"><label htmlFor="catalog-page-query">Buscar en el catálogo</label><input id="catalog-page-query" type="search" maxLength={80} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Monstera, suculenta…" /></div>}
+    {showSearch && <div className="catalog-page-search"><label htmlFor="catalog-page-query">Buscar en el catálogo</label><input id="catalog-page-query" type="search" maxLength={80} value={query} onChange={(event) => handleQueryChange(event.target.value)} placeholder="Monstera, suculenta…" /></div>}
     <div className="filter-container" aria-label="Filtrar por categoría">
       <button className={`filter-btn ${categoryId === null ? 'active' : ''}`} aria-pressed={categoryId === null} onClick={() => setCategoryId(null)}>Todas</button>
       {catalog.categories.map((category) => <button key={category.id} className={`filter-btn ${categoryId === category.id ? 'active' : ''}`} aria-pressed={categoryId === category.id} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}

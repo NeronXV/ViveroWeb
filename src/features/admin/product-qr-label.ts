@@ -38,6 +38,15 @@ export function buildProductQrLabels(
   return Array.from({ length: quantity }, () => label)
 }
 
+export function buildProductQrLabelBatch(
+  entries: ReadonlyArray<{ product: Pick<AdminProduct, 'commonName' | 'internalCode'>; quantity: number }>,
+): ProductQrLabel[] {
+  if (entries.length === 0 || entries.reduce((sum, entry) => sum + entry.quantity, 0) > 1000) {
+    throw new Error('Selecciona productos y no excedas 1000 etiquetas por impresión.')
+  }
+  return entries.flatMap(({ product, quantity }) => buildProductQrLabels(product, quantity))
+}
+
 function appendBits(target: number[], value: number, length: number) {
   for (let index = length - 1; index >= 0; index -= 1) {
     target.push((value >>> index) & 1)

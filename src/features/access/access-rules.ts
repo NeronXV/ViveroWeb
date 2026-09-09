@@ -20,7 +20,7 @@ export const ADMIN_ENTRY_CAPABILITIES = [
   'MANAGE_SETTINGS',
 ] as const
 
-export type AdminModuleId = 'editorial' | 'sucursales' | 'inventario' | 'stock' | 'promociones' | 'ventas' | 'pedidos' | 'personal' | 'clientes'
+export type AdminModuleId = 'editorial' | 'sucursales' | 'inventario' | 'stock' | 'compras' | 'promociones' | 'ventas' | 'pedidos' | 'personal' | 'clientes'
 
 export interface AdminModuleRule {
   id: AdminModuleId
@@ -34,6 +34,7 @@ export const ADMIN_MODULE_RULES: readonly AdminModuleRule[] = [
   { id: 'sucursales', label: '🏬 Sucursales', anyCapability: ['MANAGE_BRANCHES', 'MANAGE_USERS'] },
   { id: 'inventario', label: '🌿 Catálogo y Plantas', anyCapability: ['MANAGE_PRODUCTS'] },
   { id: 'stock', label: '📈 Existencias y Stock', anyCapability: ['MANAGE_INVENTORY'] },
+  { id: 'compras', label: '📦 Compras y proveedores', anyCapability: ['MANAGE_INVENTORY'] },
   { id: 'promociones', label: '🏷 Promociones', anyCapability: ['MANAGE_DISCOUNTS'] },
   { id: 'ventas', label: '📊 Ventas y reportes', anyCapability: ['VIEW_BRANCH_SALES', 'VIEW_ALL_SALES', 'VIEW_REPORTS'] },
   { id: 'pedidos', label: '🧾 Pedidos', anyCapability: ['VIEW_BRANCH_SALES', 'VIEW_ALL_SALES'] },

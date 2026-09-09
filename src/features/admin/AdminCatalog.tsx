@@ -57,7 +57,14 @@ export function AdminCatalog({
   // Editing targets
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null)
   const [editingCategory, setEditingCategory] = useState<AdminCategory | null>(null)
-  const [labelProduct, setLabelProduct] = useState<AdminProduct | null>(null)
+  const [labelProducts, setLabelProducts] = useState<AdminProduct[] | null>(null)
+  const [selectedLabelProducts, setSelectedLabelProducts] = useState<AdminProduct[]>([])
+  const printableProducts = catalog.products.filter((product) => isValidLabelInternalCode(product.internalCode))
+  const toggleLabelProduct = (product: AdminProduct) => {
+    setSelectedLabelProducts((selected) => selected.some((item) => item.id === product.id)
+      ? selected.filter((item) => item.id !== product.id)
+      : [...selected, product])
+  }
 
   // Image Upload Fields
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -449,6 +456,31 @@ export function AdminCatalog({
         </div>
       )}
 
+      {canManageProducts && (
+        <div className="product-label-bulk-toolbar">
+          <span role="status">{selectedLabelProducts.length} productos seleccionados para etiquetas</span>
+          <button type="button" className="admin-action-btn secondary"
+            disabled={catalog.status !== 'ready' || printableProducts.length === 0}
+            onClick={() => setSelectedLabelProducts((selected) => [
+              ...selected.filter((item) => !printableProducts.some((product) => product.id === item.id)),
+              ...printableProducts,
+            ])}>
+            Seleccionar todos los resultados visibles
+          </button>
+          <button type="button" className="admin-action-btn secondary"
+            disabled={selectedLabelProducts.length === 0} onClick={() => setSelectedLabelProducts([])}>
+            Limpiar selección
+          </button>
+          <button type="button" className="catalog-action"
+            disabled={selectedLabelProducts.length === 0 || catalog.status !== 'ready'}
+            onClick={() => setLabelProducts(selectedLabelProducts.map((selected) =>
+              catalog.products.find((product) => product.id === selected.id) ?? selected))}>
+            Imprimir varias etiquetas
+          </button>
+          <small>La selección se conserva al buscar o cambiar de categoría. Revisa los productos y sus cantidades antes de imprimir.</small>
+        </div>
+      )}
+
       <Feedback status={catalog.status} error={catalog.error} retry={catalog.retry} />
 
       {catalog.status === 'ready' && catalog.products.length === 0 && (
@@ -460,6 +492,7 @@ export function AdminCatalog({
           <table className="db-table">
             <thead>
               <tr>
+                {canManageProducts && <th>Etiquetas</th>}
                 <th>Código</th>
                 <th>Nombre Común</th>
                 <th>Nombre Científico</th>
@@ -474,6 +507,14 @@ export function AdminCatalog({
             <tbody>
               {catalog.products.map((product) => (
                 <tr key={product.id}>
+                  {canManageProducts && (
+                    <td>
+                      <input type="checkbox" aria-label={'Seleccionar etiquetas de ' + product.commonName}
+                        checked={selectedLabelProducts.some((item) => item.id === product.id)}
+                        disabled={!isValidLabelInternalCode(product.internalCode)}
+                        onChange={() => toggleLabelProduct(product)} />
+                    </td>
+                  )}
                   <td style={{ fontWeight: 'bold' }}>{product.internalCode}</td>
                   <td>
                     <div>{product.commonName}</div>
@@ -502,7 +543,7 @@ export function AdminCatalog({
                         <button
                           type="button"
                           className="admin-action-btn primary"
-                          onClick={() => setLabelProduct(product)}
+                          onClick={() => setLabelProducts([product])}
                           disabled={!isValidLabelInternalCode(product.internalCode)}
                           title={!isValidLabelInternalCode(product.internalCode) ? 'El código interno no es válido para una etiqueta QR' : undefined}
                         >
@@ -518,7 +559,7 @@ export function AdminCatalog({
         </div>
       )}
 
-      {labelProduct && <ProductQrLabelDialog product={labelProduct} onClose={() => setLabelProduct(null)} />}
+      {canManageProducts && labelProducts && <ProductQrLabelDialog products={labelProducts} onClose={() => setLabelProducts(null)} />}
 
       {/* Modal: Create/Edit Product */}
       {isProductModalOpen && (
