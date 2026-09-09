@@ -38,7 +38,7 @@ export function HomePage() {
             </form>
           </div>
           <div className="hero-image-wrapper">
-            <img src={heroImage} alt="Invernadero moderno con abundantes plantas verdes" className="hero-img" />
+            <img src={heroImage} alt="Planta de hojas verdes sostenida frente a la vegetación del Vivero Dulcinea" className="hero-img" />
           </div>
         </div>
       </section>
