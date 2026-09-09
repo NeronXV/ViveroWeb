@@ -350,7 +350,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .sales-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, 60mm);
   gap: 1rem;
   margin-top: 1rem;
 }
@@ -1474,7 +1474,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .product-label-print-root {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, 60mm);
   gap: 0.75rem;
   max-height: 50vh;
   overflow-y: auto;
@@ -1485,44 +1485,63 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 
 .product-qr-label {
+  box-sizing: border-box;
+  width: 60mm;
   min-width: 0;
-  min-height: 125px;
+  min-height: 35mm;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 92px;
+  grid-template-columns: minmax(0, 1fr) 26mm;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.7rem;
-  border: 1px solid #b8b8b8;
-  border-radius: 4px;
-  background: white;
-  color: #111;
+  gap: 2mm;
+  padding: 3mm;
+  border: 0.2mm solid #a5ada8;
+  border-radius: 1.5mm;
+  background: #fff;
+  color: #172b22;
   break-inside: avoid;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 .product-label-copy {
   min-width: 0;
-  display: grid;
-  gap: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.5mm;
+}
+
+.product-label-logo {
+  display: block;
+  width: 10mm;
+  height: 8.8mm;
+  object-fit: contain;
+  object-position: left center;
 }
 
 .product-label-copy strong {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  line-height: 1.2;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9pt;
+  font-weight: 700;
+  line-height: 1.15;
   overflow-wrap: anywhere;
 }
 
 .product-label-copy span {
+  max-width: 100%;
+  padding-top: 1mm;
+  border-top: 0.2mm solid #b9c9be;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 7.5pt;
+  line-height: 1.25;
+  font-weight: 600;
+  color: #111;
   overflow-wrap: anywhere;
 }
 
 .product-label-qr {
   display: block;
-  width: 92px;
-  height: 92px;
+  width: 26mm;
+  height: 26mm;
 }
 
 /* Ticket interno generado sólo desde el resultado canónico de pago. */

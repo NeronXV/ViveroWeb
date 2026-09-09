@@ -1,3 +1,4 @@
+import { ProductQrLabelCard } from '../ProductQrLabelCard'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { centsToPesos, centsToFormattedMxn, pesosToCents, calculateExpectedTotalCents, validatePurchaseLines, sanitizeFileName } from './purchases-parser'
 import { confirmSupplierPurchase, createSupplierPurchaseDraft, fetchSupplierPurchaseDetail, resolveSupplierPurchaseItem, setSupplierPresentation } from './purchases-service'
@@ -7,7 +8,7 @@ import { SupplierPresentationModal } from './SupplierPresentationModal'
 import { AdminProductCreateModal } from './AdminProductCreateModal'
 import { fetchAdminProducts } from '../admin-catalog-service'
 import type { AdminProduct } from '../admin-catalog-types'
-import { buildProductQrLabels, createQrMatrix, isValidLabelInternalCode } from '../product-qr-label'
+import { buildProductQrLabels, isValidLabelInternalCode } from '../product-qr-label'
 import type {
   PaymentTerms,
   PurchaseSourceItem,
@@ -1144,35 +1145,9 @@ export function PurchaseDraftWizard({
           {/* Vista previa de etiquetas QR del lote seleccionado */}
           {activeLabelBatch && (
             <div className="product-label-print-root" aria-label={`Vista previa de ${activeLabelBatch.count} etiquetas`}>
-              {activeLabelBatch.qrLabels.map((label, idx) => {
-                const matrix = createQrMatrix(label.qrContent)
-                const quietZone = 4
-                const size = matrix.length + quietZone * 2
-                const path = matrix
-                  .flatMap((row, y) =>
-                    row.flatMap((dark, x) => (dark ? [`M${x + quietZone} ${y + quietZone}h1v1h-1z`] : []))
-                  )
-                  .join('')
-
-                return (
-                  <article className="product-qr-label" key={`${label.internalCode}-${idx}`}>
-                    <div className="product-label-copy">
-                      <strong>{label.commonName}</strong>
-                      <span>{label.internalCode}</span>
-                    </div>
-                    <svg
-                      className="product-label-qr"
-                      viewBox={`0 0 ${size} ${size}`}
-                      role="img"
-                      aria-label={`Código QR del código interno ${label.internalCode}`}
-                      shapeRendering="crispEdges"
-                    >
-                      <rect width={size} height={size} fill="#fff" />
-                      <path d={path} fill="#000" />
-                    </svg>
-                  </article>
-                )
-              })}
+              {activeLabelBatch.qrLabels.map((label, idx) => (
+                <ProductQrLabelCard label={label} key={label.internalCode + '-' + idx} />
+              ))}
             </div>
           )}
 

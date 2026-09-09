@@ -1,23 +1,8 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ProductQrLabelCard } from './ProductQrLabelCard'
 import type { AdminProduct } from './admin-catalog-types'
-import { buildProductQrLabelBatch, createQrMatrix, isValidLabelInternalCode } from './product-qr-label'
-
-const QrSvg = memo(function QrSvg({ content }: { content: string }) {
-  const matrix = createQrMatrix(content)
-  const quietZone = 4
-  const size = matrix.length + quietZone * 2
-  const path = matrix.flatMap((row, y) => row.flatMap((dark, x) => (
-    dark ? [`M${x + quietZone} ${y + quietZone}h1v1h-1z`] : []
-  ))).join('')
-
-  return (
-    <svg className="product-label-qr" viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`Código QR del código interno ${content}`} shapeRendering="crispEdges">
-      <rect width={size} height={size} fill="#fff" />
-      <path d={path} fill="#000" />
-    </svg>
-  )
-})
+import { buildProductQrLabelBatch, isValidLabelInternalCode } from './product-qr-label'
 
 export function ProductQrLabelDialog({ products, onClose }: { products: AdminProduct[]; onClose: () => void }) {
   const [quantities, setQuantities] = useState<Record<string, string>>(
@@ -121,13 +106,7 @@ export function ProductQrLabelDialog({ products, onClose }: { products: AdminPro
 
         <div className="product-label-print-root" aria-label={`Vista previa de ${labels.length} etiquetas`}>
           {labels.map((label, index) => (
-            <article className="product-qr-label" key={`${label.internalCode}-${index}`}>
-              <div className="product-label-copy">
-                <strong>{label.commonName}</strong>
-                <span>{label.internalCode}</span>
-              </div>
-              <QrSvg content={label.qrContent} />
-            </article>
+            <ProductQrLabelCard label={label} key={label.internalCode + '-' + index} />
           ))}
         </div>
 

@@ -19,3 +19,11 @@ Comprueba una hoja y su lectura antes de imprimir todo el lote en papel adhesivo
 
 Esta opción no modifica productos ni inventario. La impresión desde recepciones
 conserva su flujo actual.
+
+
+El diseño incluye el isotipo original de Vivero Dulcinea arriba del nombre,
+el código interno debajo y el QR a la derecha. Catálogo, lotes y recepciones
+comparten la misma etiqueta. El QR conserva un margen blanco de cuatro módulos;
+el logo queda fuera de ese margen. La vista previa usa las mismas medidas
+de impresión. Los nombres largos se ajustan en varias líneas y pueden aumentar
+la altura de la etiqueta para no cortar información.
