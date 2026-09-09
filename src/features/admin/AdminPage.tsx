@@ -14,6 +14,7 @@ import { AdminCatalog } from './AdminCatalog'
 import { AdminCustomers } from './AdminCustomers'
 import { AdminPromotions } from './AdminPromotions'
 import { AdminOrders } from './AdminOrders'
+import { PurchasesDashboard } from './purchases'
 import { useDemoStore } from '../../app/providers/DemoStore'
 
 export function AdminPage() {
@@ -192,6 +193,14 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
                   initialProductId={preselectedStockProductId}
                   onClearInitialProductId={() => setPreselectedStockProductId(null)}
                   onManageProducts={authorizedTabs.includes('inventario') ? () => selectTab('inventario') : undefined}
+                />
+              )}
+
+              {tab === 'compras' && authorizedTabs.includes('compras') && (
+                <PurchasesDashboard
+                  active={tab === 'compras'}
+                  branch={context.branch}
+                  onNavigateToCatalog={authorizedTabs.includes('inventario') ? () => selectTab('inventario') : undefined}
                 />
               )}
 
