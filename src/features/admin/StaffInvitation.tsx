@@ -14,10 +14,10 @@ export function StaffInvitation() {
     } catch { setError('No se confirmó la invitación. Revisa si la cuenta ya existe y si el correo está configurado.') }
     finally { setBusy(false) }
   }
-  return <details className="botanical-section-card"><summary>Invitar nuevo trabajador</summary>
+  return <details className="botanical-section-card dashboard-operation-card"><summary>Invitar nuevo trabajador</summary>
     <p>Recibirá un enlace para crear su contraseña. La invitación no concede permisos ni sucursal.</p>
-    <form onSubmit={submit}><fieldset disabled={busy}><label>Nombre<input name="name" minLength={2} maxLength={160} required /></label>
+    <form className="dashboard-form dashboard-operation-form" onSubmit={submit}><fieldset disabled={busy}><label>Nombre<input name="name" minLength={2} maxLength={160} required /></label>
       <label>Correo<input name="email" type="email" maxLength={254} required /></label><button className="catalog-action">Enviar invitación</button>
-    </fieldset></form><p role="status">{notice}</p>{error && <p role="alert">{error}</p>}
+    </fieldset></form>{notice && <p className="form-notice" role="status">{notice}</p>}{error && <p role="alert">{error}</p>}
   </details>
 }

@@ -127,7 +127,10 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .ticket-row > div { display: flex; align-items: center; gap: .6rem; }
 .ticket-total { display: flex; justify-content: space-between; padding: 1.4rem 0; font-size: 1.2rem; }
 .dashboard-panel.embedded { position: static; width: min(1500px, 100%); height: calc(100vh - 4rem); margin: 0 auto; transform: none; border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-lg); }
-.dashboard-sidebar button.db-nav-item { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.dashboard-sidebar button.db-nav-item { width: 100%; border: 0; text-align: left; cursor: pointer; }
+.dashboard-sidebar button.db-nav-item:not(.active) { background: transparent; }
+.dashboard-sidebar button.db-nav-item:hover:not(:disabled):not(.active) { background: var(--surface-border); }
+.dashboard-sidebar button.db-nav-item:focus-visible { outline: 3px solid var(--primary-light); outline-offset: 2px; }
 .dashboard-sidebar button.db-nav-item:disabled { cursor: not-allowed; opacity: .62; }
 .module-lock-reason { display: block; margin-top: .25rem; color: var(--text-secondary); font-size: .7rem; font-weight: 500; white-space: normal; }
 .role-assignment-placeholder { margin-top: 1.5rem; padding: 1rem; border: 1px dashed var(--surface-border); border-radius: var(--radius-sm); }
@@ -1732,4 +1735,31 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .cashier-ticket-print-portal {
   display: none;
+}
+
+
+/* Presentación de operaciones administrativas sin afectar formularios existentes. */
+.dashboard-operation-form { margin: 1.5rem 0; }
+.dashboard-operation-form fieldset { min-width: 0; border: 1px solid var(--surface-border); border-radius: var(--radius-md); background: var(--surface-color); padding: 1.5rem; display: grid; gap: 1.25rem; }
+.dashboard-operation-form legend { padding: 0 .5rem; font-weight: 700; color: var(--text-primary); }
+.dashboard-operation-form label { display: grid; gap: .55rem; font-size: .95rem; font-weight: 600; min-width: 0; }
+.dashboard-operation-form input, .dashboard-operation-form textarea { width: 100%; min-width: 0; font: inherit; font-weight: 400; }
+.dashboard-operation-form button { justify-self: start; }
+.dashboard-operation-form fieldset:disabled { opacity: .65; }
+.dashboard-operation-card { margin-bottom: 1.5rem; }
+.dashboard-operation-card summary { cursor: pointer; font-weight: 700; color: var(--primary-color); padding: .35rem 0; }
+.dashboard-operation-card summary:focus-visible { outline: 3px solid var(--primary-light); outline-offset: 4px; }
+.dashboard-operation-card > p { margin: .85rem 0; line-height: 1.6; }
+.dashboard-confirmation { display: flex; gap: .7rem; align-items: flex-start; line-height: 1.5; margin: 1.25rem 0; }
+.dashboard-confirmation input { margin-top: .3rem; accent-color: var(--primary-color); flex-shrink: 0; width: 18px; height: 18px; }
+.dashboard-campaign-card { margin-top: 1.25rem; display: grid; gap: .85rem; overflow-wrap: anywhere; }
+.dashboard-campaign-card button { justify-self: start; }
+.dashboard-content .section-header-row > div { min-width: 0; }
+.dashboard-content .section-header-row .tab-desc { margin: .4rem 0 0; }
+@media (max-width: 900px) {
+  .dashboard-sidebar li { flex: 0 0 auto; max-width: 240px; }
+}
+@media (max-width: 600px) {
+  .dashboard-operation-form fieldset { padding: 1rem; }
+  .dashboard-operation-form button, .dashboard-campaign-card button { width: 100%; }
 }

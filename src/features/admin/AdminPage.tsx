@@ -213,7 +213,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               {tab === 'ventas' && authorizedTabs.includes('ventas') && (
                 <section className="db-tab-content active">
                   <div className="section-header-row">
-                    <h3>Ventas y reportes</h3><p>Importes cobrados antes de devoluciones. Consulta los ajustes por devolución en los cortes de Caja.</p>
+                    <div><h3>Ventas y reportes</h3><p className="tab-desc">Importes cobrados antes de devoluciones. Consulta los ajustes por devolución en los cortes de Caja.</p></div>
                     <button type="button" className="refresh-btn-secondary" onClick={refreshReports} disabled={isReportsLoading}>
                       {isReportsLoading ? 'Cargando...' : '↻ Actualizar'}
                     </button>
