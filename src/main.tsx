@@ -11,5 +11,6 @@ import './styles/store.css'
 import './styles/interactive.css'
 import './styles/dashboard.css'
 import './styles/app.css'
+import './styles/admin-editorial.css'
 
 createRoot(document.getElementById('root')!).render(<StrictMode><AuthProvider><DemoStoreProvider><PublicCartProvider><RouterProvider router={router} /></PublicCartProvider></DemoStoreProvider></AuthProvider></StrictMode>)

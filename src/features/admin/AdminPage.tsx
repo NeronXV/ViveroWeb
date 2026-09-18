@@ -18,6 +18,7 @@ import { AdminNewsletter } from '../newsletter/AdminNewsletter'
 import { AdminOrders } from './AdminOrders'
 import { PurchasesDashboard } from './purchases'
 import { useDemoStore } from '../../app/providers/DemoStore'
+import logo from '../../assets/isotipo-flor.svg'
 
 export function AdminPage() {
   const { accessContext, refreshAccessContext } = useAuth()
@@ -111,7 +112,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const totalDiscountsReal = dailySales.reduce((sum, item) => sum + item.discountCents, 0) / 100
 
   return (
-    <main className="internal-page">
+    <main className="internal-page admin-workspace">
       <div className="dashboard-panel open embedded">
         <div className="dashboard-header">
           <div className="dashboard-title-area">
@@ -130,9 +131,9 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               aria-label={darkTheme ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
               title={darkTheme ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             >
-              {darkTheme ? '☀️ Modo Claro' : '🌙 Modo Oscuro'}
+              {darkTheme ? 'Modo claro' : 'Modo oscuro'}
             </button>
-            <span className="role-badge-db admin">Operación</span>
+            <span className="role-badge-db admin">{context.role?.displayName ?? 'Administración'}</span>
             <Link className="logout-btn" to="/panel">Volver al panel</Link>
             <button type="button" className="logout-btn" onClick={onRefreshAccess}>Actualizar acceso</button>
             <button type="button" className="logout-btn" onClick={handleSignOut}>Cerrar sesión</button>
@@ -141,6 +142,11 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
 
         <div className="dashboard-body">
           <aside className="dashboard-sidebar">
+            <Link to="/panel" className="admin-sidebar-brand">
+              <img src={logo} alt="" />
+              <span>Vivero Dulcinea<small>Administración</small></span>
+            </Link>
+            <p className="admin-nav-caption">Tu vivero, en orden</p>
             <nav aria-label="Módulos administrativos">
               <ul role="tablist" aria-orientation="vertical">
                 {ADMIN_MODULE_RULES.map((item) => {
@@ -162,7 +168,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
                         tabIndex={authorized && tab === item.id ? 0 : -1}
                         title={!authorized ? explanation : undefined}
                       >
-                        {item.label}
+                        <span className="admin-nav-label">{item.label.replace(/^[^\p{L}\p{N}]+/u, '')}</span>
                         {!authorized && <span className="module-lock-reason">{explanation}</span>}
                       </button>
                     </li>
@@ -170,9 +176,18 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
                 })}
               </ul>
             </nav>
+            <div className="admin-sidebar-context">
+              <span>Sucursal</span>
+              <strong>{context.branch?.name ?? 'Sin sucursal asignada'}</strong>
+              <Link to="/">Ver sitio del vivero ↗</Link>
+            </div>
           </aside>
 
           <section className="dashboard-content">
+            <div className="admin-content-context">
+              <span>Administración / {ADMIN_MODULE_RULES.find((item) => item.id === tab)?.label.replace(/^[^\p{L}\p{N}]+/u, '')}</span>
+              <span>Vivero Dulcinea</span>
+            </div>
             {notice && <p className="form-notice" aria-live="polite">{notice}</p>}
             <div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} tabIndex={0}>
 
