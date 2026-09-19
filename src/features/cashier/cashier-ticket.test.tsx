@@ -100,4 +100,27 @@ describe('ticket interno de Caja', () => {
     expect(classList.add).toHaveBeenCalledWith('print-cashier-ticket')
     expect(classList.remove).toHaveBeenCalledWith('print-cashier-ticket')
   })
+
+  it('marca las reimpresiones y escapa nombres sin exponer identificadores internos', () => {
+    const payment = result()
+    payment.items![0].productName = '<script>alert(1)</script> Piñón'
+    const html = renderToStaticMarkup(<CashierPrintableTicket result={payment} reprint />)
+    expect(html).toContain('REIMPRESIÓN')
+    expect(html).toContain('Reimprimir ticket')
+    expect(html).toContain('58 mm')
+    expect(html).toContain('Piñón')
+    expect(html).not.toContain('<script>')
+    expect(html).not.toContain(payment.items![0].id)
+    expect(html).toContain('150.00')
+    expect(html).toContain('15.00')
+  })
+
+  it('selecciona sólo un comprobante y limpia el modo de impresión aunque falle', () => {
+    const body = { classList: { add: vi.fn(), remove: vi.fn() } }
+    const ticket = { classList: { add: vi.fn(), remove: vi.fn() } }
+    expect(() => requestCashierTicketPrint(() => { throw new Error('printer') }, body, ticket)).toThrow('printer')
+    expect(ticket.classList.add).toHaveBeenCalledWith('cashier-ticket-selected')
+    expect(ticket.classList.remove).toHaveBeenCalledWith('cashier-ticket-selected')
+    expect(body.classList.remove).toHaveBeenCalledWith('print-cashier-ticket')
+  })
 })

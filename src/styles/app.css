@@ -1633,7 +1633,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .cashier-ticket-print-item > b {
   grid-column: 2;
-  grid-row: 3;
+  grid-row: 2;
   text-align: right;
 }
 
@@ -1655,8 +1655,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 
 @page cashier-ticket {
-  size: 80mm 200mm;
-  margin: 4mm;
+  size: 58mm 200mm;
+  margin: 3mm;
 }
 
 @media print {
@@ -1712,26 +1712,28 @@ button:disabled { cursor: not-allowed; opacity: .55; }
     height: 26mm;
   }
 
-  body.print-cashier-ticket > *:not(.cashier-ticket-print-portal) {
+  body.print-cashier-ticket > *:not(.cashier-ticket-selected) {
     display: none !important;
   }
 
-  body.print-cashier-ticket .cashier-ticket-print-portal {
+  body.print-cashier-ticket .cashier-ticket-selected {
     display: block !important;
   }
 
-  body.print-cashier-ticket .cashier-ticket-print-portal {
+  body.print-cashier-ticket .cashier-ticket-selected {
     page: cashier-ticket;
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: 72mm;
+    position: static;
+    width: 52mm;
     margin: 0;
     padding: 0;
     border: 0;
     border-radius: 0;
-    font-size: 9pt;
+    font-size: 8pt;
   }
 }
+
+.cashier-ticket-print-item > strong { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.cashier-ticket-print-meta > div, .cashier-ticket-print-totals > div { break-inside: avoid; }
 
 .cashier-ticket-print-portal {
   display: none;

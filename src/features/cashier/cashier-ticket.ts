@@ -58,12 +58,15 @@ export function buildCashierTicket(result: CashierPaymentResultResponse): Cashie
 
 export function requestCashierTicketPrint(
   print: () => void,
-  body: Pick<HTMLElement, 'classList'>,
+  body: { classList: Pick<DOMTokenList, 'add' | 'remove'> },
+  ticket?: { classList: Pick<DOMTokenList, 'add' | 'remove'> },
 ): void {
+  ticket?.classList.add('cashier-ticket-selected')
   body.classList.add('print-cashier-ticket')
   try {
     print()
   } finally {
     body.classList.remove('print-cashier-ticket')
+    ticket?.classList.remove('cashier-ticket-selected')
   }
 }

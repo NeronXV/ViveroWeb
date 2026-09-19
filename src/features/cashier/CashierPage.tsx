@@ -12,6 +12,7 @@ import { isNavigationLocked } from './cashier-payment-state'
 import type { CashierPaymentMethod } from './cashier-types'
 import { CashierOperations } from './CashierOperations'
 import { CashierPrintableTicket } from './CashierPrintableTicket'
+import { CashierReceiptHistory } from './CashierReceiptHistory'
 import { playCashierSuccessSound } from './cashier-sound'
 
 
@@ -687,6 +688,8 @@ export function CashierPage() {
           </aside>
         </div>
       </div>
+    {userId && accessContext?.branch && <CashierReceiptHistory key={`${userId}:${accessContext.branch.id}`}
+      userId={userId} branchId={accessContext.branch.id} attempt={attempt} locked={isCriticalPaymentActive || showComposer} />}
     {!showComposer && <CashierOperations key={userId} locked={isCriticalPaymentActive} />}
 </main>
   )

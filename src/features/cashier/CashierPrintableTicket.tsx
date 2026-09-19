@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { useId } from 'react'
 import { formatCents } from './cashier-money'
 import { buildCashierTicket, PAYMENT_METHOD_LABELS, requestCashierTicketPrint, type CashierTicketModel } from './cashier-ticket'
 import type { CashierPaymentResultResponse } from './cashier-types'
@@ -13,13 +14,14 @@ function formatDate(value: string): string {
   })
 }
 
-function TicketContent({ ticket, portal = false }: { ticket: CashierTicketModel; portal?: boolean }) {
+function TicketContent({ ticket, portal = false, id, reprint = false }: { ticket: CashierTicketModel; portal?: boolean; id?: string; reprint?: boolean }) {
   return (
-      <article className={`cashier-print-ticket${portal ? ' cashier-ticket-print-portal' : ''}`} aria-label={`Ticket interno ${ticket.folio}`} aria-hidden={portal || undefined}>
+      <article id={id} className={`cashier-print-ticket${portal ? ' cashier-ticket-print-portal' : ''}`} aria-label={`Ticket interno ${ticket.folio}`} aria-hidden={portal || undefined}>
         <header className="cashier-ticket-print-header">
           <strong>Vivero Dulcinea</strong>
           <span>{ticket.branchName}</span>
           <h5>Comprobante interno — sin validez fiscal</h5>
+          {reprint && <strong>REIMPRESIÓN</strong>}
         </header>
 
         <dl className="cashier-ticket-print-meta">
@@ -32,7 +34,6 @@ function TicketContent({ ticket, portal = false }: { ticket: CashierTicketModel;
         <div className="cashier-ticket-print-items">
           {ticket.items.map((item) => (
             <div className="cashier-ticket-print-item" key={item.id}>
-              <span className="cashier-ticket-item-id">ID: {item.id}</span>
               <strong>{item.productName}</strong>
               <span>{item.quantity} × ${formatCents(item.unitPriceCents)}</span>
               <b>${formatCents(item.lineTotalCents)}</b>
@@ -57,20 +58,22 @@ function TicketContent({ ticket, portal = false }: { ticket: CashierTicketModel;
   )
 }
 
-export function CashierPrintableTicket({ result }: { result: CashierPaymentResultResponse }) {
+export function CashierPrintableTicket({ result, reprint = false }: { result: CashierPaymentResultResponse; reprint?: boolean }) {
+  const portalId = useId()
   const ticket = buildCashierTicket(result)
   if (!ticket) return null
 
-  const printTicket = () => requestCashierTicketPrint(() => window.print(), document.body)
+  const printTicket = () => requestCashierTicketPrint(() => window.print(), document.body, document.getElementById(portalId)!)
 
   return (
     <>
-      <TicketContent ticket={ticket} />
-      {typeof document !== 'undefined' && createPortal(<TicketContent ticket={ticket} portal />, document.body)}
+      <TicketContent ticket={ticket} reprint={reprint} />
+      {typeof document !== 'undefined' && createPortal(<TicketContent ticket={ticket} portal id={portalId} reprint={reprint} />, document.body)}
 
       <button type="button" className="checkout-btn cashier-ticket-print-button" onClick={printTicket}>
-        Imprimir ticket
+        {reprint ? 'Reimprimir ticket' : 'Imprimir ticket'}
       </button>
+      <p>Selecciona la Black Pos, papel de 58 mm, escala 100 % y desactiva encabezados y pies de página. Puedes volver a imprimir sin repetir el cobro.</p>
     </>
   )
 }
