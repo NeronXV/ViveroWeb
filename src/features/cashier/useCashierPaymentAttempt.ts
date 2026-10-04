@@ -7,6 +7,7 @@ import {
   CashierServiceError,
 } from './cashier-service'
 import {
+  attachPaymentFailure,
   attachSucceededResult,
   CashierPaymentStateError,
   createPaymentAttempt,
@@ -279,12 +280,11 @@ export function useCashierPaymentAttempt(userId: string | null, activeSale: Cash
           persist(attachSucceededResult(confirming, canonical))
           return true
         } catch (error) {
-          const code = error instanceof CashierServiceError ? error.code : null
-          persist({
-            ...confirming,
-            status: code === 'CLAIM_EXPIRED' ? 'EXPIRED' : 'UNCERTAIN',
-            errorMsg: errorMessage(error, 'El resultado del cobro es incierto y debe conciliarse.'),
-          })
+          persist(attachPaymentFailure(
+            confirming,
+            error instanceof CashierServiceError ? error : null,
+            errorMessage(error, 'El resultado del cobro es incierto y debe conciliarse.'),
+          ))
           return false
         }
       })

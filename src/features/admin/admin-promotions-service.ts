@@ -1,99 +1,54 @@
-import { getSupabaseClient } from '../../lib/supabase/client'
+import { backendId } from '../auth/backend-runtime'
+import { backendHttp, BackendHttpError, apiId, list, utc } from '../../lib/backend-http'
 import { AdminServiceError } from './admin-service'
 import type { AdminPromotion, UpsertCatalogPromotionInput } from './admin-promotions-types'
-
-const PROMOTIONS_TIMEOUT_MS = 8_000
-
-async function promotionRequest<T>(
-  action: (signal: AbortSignal) => Promise<{ data: unknown; error: { message: string; code?: string } | null }>,
-  parser: (data: unknown) => T,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const timeoutController = new AbortController()
-  const timeoutId = setTimeout(() => timeoutController.abort(), PROMOTIONS_TIMEOUT_MS)
-  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutController.signal]) : timeoutController.signal
-
-  try {
-    const { data, error } = await action(signal)
-    if (error) {
-      throw new AdminServiceError(error.message || 'Error en el servicio de promociones.', error.code)
-    }
-    return parser(data)
-  } catch (error) {
-    if (error instanceof AdminServiceError) throw error
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new AdminServiceError('La solicitud excedió el tiempo límite de espera.', 'TIMEOUT')
-    }
-    throw new AdminServiceError('Ocurrió un error inesperado al gestionar la promoción.', 'UNKNOWN')
-  } finally {
-    clearTimeout(timeoutId)
+function money(v: unknown, nullable = false): number | null {
+  if (nullable && v === null) return null
+  if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) throw new Error('Invalid money')
+  return v
+}
+function text(v: unknown): string { if (typeof v !== 'string') throw new Error('Invalid text'); return v }
+function parse(row: Record<string, unknown>): AdminPromotion {
+  if (!['ALL_PRODUCTS', 'SELECTED_PRODUCTS'].includes(String(row.scope)) || !['PERCENTAGE', 'FIXED_AMOUNT'].includes(String(row.promo_type)) || typeof row.is_active !== 'boolean' || !Array.isArray(row.product_ids)) throw new Error('Invalid promotion')
+  const percent = row.promo_type === 'PERCENTAGE'
+  if (percent ? !Number.isInteger(row.percentage_bps) || Number(row.percentage_bps) < 1 || Number(row.percentage_bps) > 10000 || row.fixed_amount_cents !== null : row.percentage_bps !== null || Number(money(row.fixed_amount_cents)) < 1) throw new Error('Invalid discount')
+  return { id: apiId(row.id), name: text(row.name), description: text(row.description) || null, scope: row.scope as AdminPromotion['scope'], promoType: row.promo_type as AdminPromotion['promoType'],
+    value: percent ? Number(row.percentage_bps) / 100 : Number(money(row.fixed_amount_cents)), minPurchaseCents: money(row.min_purchase_cents), maxDiscountCents: money(row.max_discount_cents, true),
+    startsAt: row.starts_at === null ? null : utc(row.starts_at), endsAt: row.ends_at === null ? null : utc(row.ends_at), isActive: row.is_active,
+    productIds: row.product_ids.map(apiId), createdAt: utc(row.created_at), updatedAt: utc(row.updated_at) }
+}
+async function safe<T>(action: () => Promise<T>, signal?: AbortSignal) {
+  try { return await action() } catch (error) {
+    if (signal?.aborted) throw new DOMException('Operación cancelada.', 'AbortError')
+    if (error instanceof BackendHttpError) throw new AdminServiceError(error.message, error.code)
+    throw new AdminServiceError('No se confirmó la promoción. Revisa los datos y actualiza la lista.', 'INCOMPATIBLE_RESPONSE')
   }
 }
-
-export async function fetchAdminPromotions(callerSignal?: AbortSignal): Promise<AdminPromotion[]> {
-  return promotionRequest(
-    async (signal) => {
-      const client = getSupabaseClient()
-      const query = client
-        .from('promotions')
-        .select('*, promotion_products(product_id)')
-        .order('created_at', { ascending: false })
-
-      return query.abortSignal(signal)
-    },
-    (data) => {
-      if (!Array.isArray(data)) return []
-      return data.map((row: Record<string, unknown>) => {
-        const productIds = Array.isArray(row.promotion_products)
-          ? (row.promotion_products as Record<string, unknown>[]).map((p) => String(p.product_id || ''))
-          : []
-        return {
-          id: String(row.id),
-          name: String(row.name || ''),
-          description: row.description ? String(row.description) : null,
-          scope: (row.scope === 'ALL_PRODUCTS' || row.scope === 'SELECTED_PRODUCTS') ? row.scope : 'ALL_PRODUCTS',
-          promoType: row.promo_type === 'FIXED_AMOUNT' ? 'FIXED_AMOUNT' : 'PERCENTAGE',
-          value: Number(row.value) || 0,
-          minPurchaseCents: row.min_purchase_cents !== null && row.min_purchase_cents !== undefined ? Number(row.min_purchase_cents) : null,
-          maxDiscountCents: row.max_discount_cents !== null && row.max_discount_cents !== undefined ? Number(row.max_discount_cents) : null,
-          startsAt: row.starts_at ? String(row.starts_at) : null,
-          endsAt: row.ends_at ? String(row.ends_at) : null,
-          isActive: Boolean(row.is_active),
-          productIds,
-          createdAt: row.created_at ? String(row.created_at) : undefined,
-          updatedAt: row.updated_at ? String(row.updated_at) : undefined,
-        }
-      })
-    },
-    callerSignal
-  )
+export function fetchAdminPromotions(signal?: AbortSignal): Promise<AdminPromotion[]> {
+  return safe(async () => {
+    const result: AdminPromotion[] = []; let after = 0
+    do {
+      const data = await backendHttp('promotions?limit=100' + (after ? '&after_id=' + after : ''), 'GET', undefined, signal)
+      const rows = list(data.items).map(parse)
+      for (const row of rows) { const id = Number(row.id); if (id <= after) throw new Error('Invalid order'); after = id; result.push(row) }
+      if (data.next_after_id === null) break
+      if (data.next_after_id !== after || rows.length !== 100) throw new Error('Invalid cursor')
+    } while (after < 4294967295)
+    return result
+  }, signal)
 }
-
-export async function upsertCatalogPromotion(
-  input: UpsertCatalogPromotionInput,
-  callerSignal?: AbortSignal,
-): Promise<void> {
-  return promotionRequest(
-    async (signal) => {
-      const client = getSupabaseClient()
-      const query = client.rpc('upsert_catalog_promotion', {
-        p_id: input.id ?? null,
-        p_name: input.name.trim(),
-        p_description: input.description?.trim() || null,
-        p_scope: input.scope,
-        p_promo_type: input.promoType,
-        p_value: input.value,
-        p_min_purchase_cents: input.minPurchaseCents ?? null,
-        p_max_discount_cents: input.maxDiscountCents ?? null,
-        p_starts_at: input.startsAt ?? null,
-        p_ends_at: input.endsAt ?? null,
-        p_is_active: input.isActive,
-        p_product_ids: input.scope === 'ALL_PRODUCTS' ? [] : input.productIds,
-      })
-
-      return query.abortSignal(signal)
-    },
-    () => {},
-    callerSignal
-  )
+export function upsertCatalogPromotion(input: UpsertCatalogPromotionInput, signal?: AbortSignal): Promise<void> {
+  return safe(async () => {
+    const percent = input.promoType === 'PERCENTAGE', value = String(input.value), match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(value)
+    if (!match) throw new Error('Invalid amount')
+    const bps = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'))
+    const id = input.id ? backendId(input.id) : null
+    const result = await backendHttp(id ? 'promotions/' + id : 'promotions', id ? 'PUT' : 'POST', {
+      name: input.name.trim(), description: input.description?.trim() || '', scope: input.scope, promo_type: input.promoType,
+      percentage_bps: percent ? bps : null, fixed_amount_cents: percent ? null : input.value,
+      min_purchase_cents: input.minPurchaseCents ?? 0, max_discount_cents: input.maxDiscountCents ?? null, starts_at: input.startsAt ?? null, ends_at: input.endsAt ?? null,
+      is_active: input.isActive, product_ids: input.scope === 'ALL_PRODUCTS' ? [] : input.productIds.map(backendId),
+    }, signal)
+    const saved = apiId(result.id); if (id !== null && Number(saved) !== id) throw new Error('Wrong promotion')
+  }, signal)
 }

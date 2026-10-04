@@ -1,4 +1,5 @@
-import { getSupabaseClient } from '../../lib/supabase/client'
+import { backendAdminRequest } from './backend-admin-request'
+import { BackendHttpError } from '../../lib/backend-http'
 import {
   parseAdminBranchesResponse,
   parseAdminStaffResponse,
@@ -80,7 +81,8 @@ async function adminRequest<T>(
   const timeoutId = setTimeout(() => timeoutController.abort(), ADMIN_TIMEOUT_MS)
   const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutController.signal]) : timeoutController.signal
   try {
-    const { data, error } = await getSupabaseClient().rpc(rpc, parameters).abortSignal(signal)
+    const { data, error } = await backendAdminRequest(rpc, parameters, signal).then(data => ({ data, error: null as { message: string; code: string } | null }))
+        .catch((error: unknown) => { if (error instanceof BackendHttpError) return { data: null, error: { message: error.code, code: error.code } }; throw error })
     if (error) {
       const code = error.message
       if (error.code === 'PGRST202' || error.code === '42883') {

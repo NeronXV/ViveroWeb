@@ -613,8 +613,8 @@ export function CashierPage() {
                   <div className="attempt-status-box uncertain" role="alert">
                     <h4 className="box-title">Cobro Incierto</h4>
                     <p>
-                      Se perdió la comunicación con el servidor durante el registro del pago.
-                      Por favor, concilia el estado antes de intentar cualquier acción para evitar duplicar cobros.
+                      El resultado de este intento todavía no está confirmado.
+                      Concilia el estado antes de reintentar para evitar duplicar cobros.
                     </p>
                     {attempt.errorMsg && <p className="error-msg-inline">{attempt.errorMsg}</p>}
                     <button

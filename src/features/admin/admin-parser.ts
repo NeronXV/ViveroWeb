@@ -60,7 +60,7 @@ function text(value: unknown, field: string, max: number): string {
 
 function uuid(value: unknown, field: string): string {
   const result = text(value, field, 36)
-  if (!UUID_PATTERN.test(result)) throw new AdminValidationError(`${field} no contiene un UUID válido.`)
+  if (!UUID_PATTERN.test(result) && !(/^[1-9][0-9]*$/.test(result) && Number(result) <= 4294967295)) throw new AdminValidationError(`${field} no contiene un identificador válido.`)
   return result
 }
 

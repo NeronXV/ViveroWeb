@@ -27,7 +27,7 @@ function exactKeys(value: Record<string, unknown>, expected: string[], field: st
 }
 
 function uuid(value: unknown, field: string): string {
-  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+  if (typeof value !== 'string' || !(UUID_PATTERN.test(value) || (/^[1-9][0-9]*$/.test(value) && Number(value) <= 4294967295))) {
     throw new AdminCustomersValidationError(`${field} no contiene un UUID válido.`)
   }
   return value

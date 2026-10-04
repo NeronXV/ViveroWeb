@@ -52,6 +52,7 @@ export interface AdminWebOrderItem {
 }
 
 export interface AdminWebOrder {
+  revision?: number
   id: string
   orderNumber: string
   branch: PublicOrderBranch
@@ -75,10 +76,11 @@ export interface AdminWebOrdersResponse {
     hasMore: boolean
     nextCursor: { createdAt: string; id: string } | null
   }
-  serverTime: string
+  serverTime?: string
 }
 
 export interface WebOrderStatusResult {
+  revision?: number
   schemaVersion: 1
   orderId: string
   status: WebOrderStatus

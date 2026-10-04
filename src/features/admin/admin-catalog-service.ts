@@ -1,262 +1,85 @@
-import { getSupabaseClient } from '../../lib/supabase/client'
+import { backendId, requireBackendAccess } from '../auth/backend-runtime'
+import { apiId, backendHttp, BackendHttpError, list, object, decimal } from '../../lib/backend-http'
 import { AdminServiceError } from './admin-service'
-import {
-  parseAdminCategories,
-  parseAdminProducts,
-  parseAdminProduct,
-  parseAdminCategory,
-} from './admin-catalog-parser'
-import type {
-  AdminCategory,
-  AdminProduct,
-  UpsertCategoryInput,
-  UpsertProductInput,
-} from './admin-catalog-types'
+import { parseAdminCategory, parseAdminProduct } from './admin-catalog-parser'
+import type { AdminCategory, AdminProduct, UpsertCategoryInput, UpsertProductInput } from './admin-catalog-types'
 
-const CATALOG_TIMEOUT_MS = 8_000
-const ADMIN_PRODUCT_COLUMNS = [
-  'id',
-  'internal_code',
-  'barcode',
-  'common_name',
-  'scientific_name',
-  'description',
-  'category_id',
-  'price_cents',
-  'wholesale_price_cents',
-  'unit',
-  'minimum_stock',
-  'watering_advice',
-  'light_type',
-  'recommended_climate',
-  'is_active',
-  'created_at',
-  'updated_at',
-  'categories(name)',
-].join(',')
-const ADMIN_CATEGORY_COLUMNS = 'id,name,description,is_active,created_at,updated_at'
-
-async function catalogRequest<T>(
-  action: (signal: AbortSignal) => Promise<{ data: unknown; error: { message: string; code?: string } | null }>,
-  parser: (data: unknown) => T,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const timeoutController = new AbortController()
-  const timeoutId = setTimeout(() => timeoutController.abort(), CATALOG_TIMEOUT_MS)
-  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutController.signal]) : timeoutController.signal
-
-  try {
-    const { data, error } = await action(signal)
-    if (error) {
-      const code = error.message || error.code || 'UNKNOWN'
-      if (code === 'Product management is not allowed' || error.code === '42501') {
-        throw new AdminServiceError('Acceso denegado. No tienes permisos para administrar productos o categorías.', 'UNAUTHORIZED')
-      }
-      if (code === 'Price management is not allowed') {
-        throw new AdminServiceError('No tienes permisos suficientes para modificar los precios de los productos.', 'UNAUTHORIZED_PRICES')
-      }
-      if (code === 'Price management is required for new products') {
-        throw new AdminServiceError('Se requiere el permiso de precios para crear nuevos productos.', 'UNAUTHORIZED_PRICES')
-      }
-      if (code === 'Code or barcode is already in use' || error.code === '23505') {
-        throw new AdminServiceError('El código interno o código de barras ya se encuentra registrado en otro producto.', 'CODE_DUPLICATE')
-      }
-      throw new AdminServiceError('No fue posible completar la operación de catálogo en el servidor.', error.code || 'SERVER_ERROR')
-    }
-
-    try {
-      return parser(data)
-    } catch (parseError) {
-      throw new AdminServiceError(
-        parseError instanceof Error ? parseError.message : 'El backend devolvió un contrato incompatible.',
-        'INCOMPATIBLE_RESPONSE'
-      )
-    }
-  } catch (error) {
+async function safe<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  try { return await action() } catch (error) {
+    if (signal?.aborted) throw new DOMException('Operación cancelada.', 'AbortError')
     if (error instanceof AdminServiceError) throw error
-    if (signal.aborted && !callerSignal?.aborted) {
-      throw new AdminServiceError('La operación de catálogo agotó el tiempo de espera.', 'TIMEOUT')
-    }
-    if (callerSignal?.aborted) {
-      throw new DOMException('Operación cancelada.', 'AbortError')
-    }
-    throw new AdminServiceError('No fue posible realizar la operación del catálogo.', 'UNKNOWN')
-  } finally {
-    clearTimeout(timeoutId)
+    if (error instanceof BackendHttpError) throw new AdminServiceError(error.code === 'DUPLICATE' ? 'El código o nombre ya está registrado.' : error.status === 403 ? 'No tienes permiso o una sucursal activa para esta operación.' : error.message, error.code)
+    throw new AdminServiceError('No se confirmó la operación del catálogo. Actualiza antes de repetirla.', 'INCOMPATIBLE_RESPONSE')
   }
 }
-
-export function fetchAdminProducts(
-  params: {
-    search?: string
-    categoryId?: string | null
-    status?: 'all' | 'active' | 'inactive'
-  },
-  signal?: AbortSignal,
-): Promise<AdminProduct[]> {
-  return catalogRequest(
-    async (requestSignal) => {
-      const client = getSupabaseClient()
-      let query = client.from('products').select(ADMIN_PRODUCT_COLUMNS)
-
-      if (params.search) {
-        const searchPattern = `%${params.search.trim()}%`
-        query = query.or(`common_name.ilike.${searchPattern},internal_code.ilike.${searchPattern},scientific_name.ilike.${searchPattern}`)
-      }
-
-      if (params.categoryId) {
-        query = query.eq('category_id', params.categoryId)
-      }
-
-      if (params.status === 'active') {
-        query = query.eq('is_active', true)
-      } else if (params.status === 'inactive') {
-        query = query.eq('is_active', false)
-      }
-
-      query = query.order('common_name')
-
-      return query.abortSignal(requestSignal)
-    },
-    parseAdminProducts,
-    signal
-  )
+async function pages(resource: string, query: URLSearchParams, signal?: AbortSignal) {
+  const rows: Record<string, unknown>[] = []; let after = 0
+  do {
+    query.set('limit', '100'); query.set('status', 'all'); if (after) query.set('after_id', String(after))
+    const data = await backendHttp(resource + '?' + query, 'GET', undefined, signal), current = list(data.items)
+    for (const row of current) { const id = Number(apiId(row.id)); if (id <= after) throw new Error('Invalid page'); after = id; rows.push(row) }
+    if (data.next_after_id === null) break
+    if (data.next_after_id !== after || current.length !== 100) throw new Error('Invalid cursor')
+  } while (after < 4294967295)
+  return rows
 }
-
+function category(row: Record<string, unknown>) {
+  return parseAdminCategory({ id: apiId(row.id), name: row.name, description: row.description === '' ? null : row.description, is_active: row.is_active, created_at: row.created_at, updated_at: row.updated_at })
+}
+function product(row: Record<string, unknown>, categories: AdminCategory[]) {
+  const { image: _image, effective_price_cents: _price, active_promotion: _promotion, ...fields } = row
+  void _image; void _price; void _promotion
+  const categoryId = apiId(row.category_id), matched = categories.find(c => c.id === categoryId)
+  if (!matched) throw new Error('Missing category')
+  return parseAdminProduct({ ...fields, id: apiId(row.id), category_id: categoryId, scientific_name: row.scientific_name === '' ? null : row.scientific_name,
+    minimum_stock: typeof row.minimum_stock === 'string' ? decimal(row.minimum_stock) : row.minimum_stock, categories: { name: matched.name } })
+}
 export function fetchAdminCategories(signal?: AbortSignal): Promise<AdminCategory[]> {
-  return catalogRequest(
-    async (requestSignal) => {
-      const query = getSupabaseClient().from('categories').select(ADMIN_CATEGORY_COLUMNS).order('name')
-      return query.abortSignal(requestSignal)
-    },
-    parseAdminCategories,
-    signal
-  )
+  return safe(async () => (await pages('categories', new URLSearchParams(), signal)).map(category), signal)
 }
-
-export function upsertProduct(
-  input: UpsertProductInput,
-  signal?: AbortSignal,
-): Promise<AdminProduct> {
-  return catalogRequest(
-    async (requestSignal) => {
-      const query = getSupabaseClient().rpc('upsert_product', {
-        p_id: input.id ?? null,
-        p_internal_code: input.internalCode.trim(),
-        p_barcode: input.barcode?.trim() || null,
-        p_common_name: input.commonName.trim(),
-        p_scientific_name: input.scientificName?.trim() || null,
-        p_description: input.description?.trim() || '',
-        p_category_id: input.categoryId,
-        p_price_cents: input.priceCents,
-        p_wholesale_price_cents: input.wholesalePriceCents,
-        p_unit: input.unit,
-        p_minimum_stock: input.minimumStock,
-        p_watering_advice: input.wateringAdvice?.trim() || '',
-        p_light_type: input.lightType?.trim() || '',
-        p_recommended_climate: input.recommendedClimate?.trim() || '',
-        p_is_active: input.isActive,
-      })
-
-      return query.abortSignal(requestSignal)
-    },
-    parseAdminProduct,
-    signal
-  )
+export function fetchAdminProducts(params: { search?: string; categoryId?: string | null; status?: 'all' | 'active' | 'inactive' }, signal?: AbortSignal): Promise<AdminProduct[]> {
+  return safe(async () => {
+    const query = new URLSearchParams()
+    if (params.search) query.set('search', params.search.trim())
+    if (params.categoryId) query.set('category_id', String(backendId(params.categoryId)))
+    const [rows, categories] = await Promise.all([pages('products', query, signal), fetchAdminCategories(signal)])
+    return rows.map(row => product(row, categories)).filter(p => !params.status || params.status === 'all' || p.isActive === (params.status === 'active'))
+  }, signal)
 }
-
-export function upsertCategory(
-  input: UpsertCategoryInput,
-  signal?: AbortSignal,
-): Promise<AdminCategory> {
-  return catalogRequest(
-    async (requestSignal) => {
-      const query = getSupabaseClient().rpc('upsert_category', {
-        p_id: input.id ?? null,
-        p_name: input.name.trim(),
-        p_description: input.description?.trim() || null,
-        p_is_active: input.isActive,
-      })
-
-      return query.abortSignal(requestSignal)
-    },
-    parseAdminCategory,
-    signal
-  )
+export function upsertProduct(input: UpsertProductInput, signal?: AbortSignal): Promise<AdminProduct> {
+  return safe(async () => {
+    const id = input.id ? backendId(input.id) : null
+    const data = await backendHttp(id ? 'products/' + id : 'products', id ? 'PATCH' : 'POST', {
+      internal_code: input.internalCode.trim(), barcode: input.barcode?.trim() || null, common_name: input.commonName.trim(), scientific_name: input.scientificName?.trim() || null,
+      description: input.description?.trim() || '', category_id: backendId(input.categoryId), price_cents: input.priceCents, wholesale_price_cents: input.wholesalePriceCents,
+      unit: input.unit, minimum_stock: input.minimumStock, watering_advice: input.wateringAdvice?.trim() || '', light_type: input.lightType?.trim() || '', recommended_climate: input.recommendedClimate?.trim() || '', is_active: input.isActive,
+    }, signal)
+    const saved = apiId(data.id)
+    if (id !== null && Number(saved) !== id) throw new Error('Wrong product')
+    const rows = await fetchAdminProducts({}, signal), row = rows.find(p => p.id === saved)
+    if (!row) throw new Error('Missing product'); return row
+  }, signal)
 }
-
-export function setProductImagePrimary(
-  imageId: string,
-  signal?: AbortSignal,
-): Promise<void> {
-  return catalogRequest(
-    async (requestSignal) => {
-      const query = getSupabaseClient().rpc('set_product_image_primary', {
-        p_image_id: imageId,
-      })
-
-      return query.abortSignal(requestSignal)
-    },
-    () => {},
-    signal
-  )
+export function upsertCategory(input: UpsertCategoryInput, signal?: AbortSignal): Promise<AdminCategory> {
+  return safe(async () => {
+    const id = input.id ? backendId(input.id) : null
+    const result = await backendHttp(id ? 'categories/' + id : 'categories', id ? 'PATCH' : 'POST', { name: input.name.trim(), description: input.description?.trim() || '', is_active: input.isActive }, signal)
+    const saved = apiId(result.id), row = (await fetchAdminCategories(signal)).find(c => c.id === saved)
+    if (!row || (id !== null && Number(saved) !== id)) throw new Error('Wrong category'); return row
+  }, signal)
 }
-
-export async function uploadProductImage(
-  productId: string,
-  file: Blob,
-  existingImageId?: string,
-  callerSignal?: AbortSignal,
-): Promise<{ imageId: string; storagePath: string }> {
-  const MAX_SIZE = 5 * 1024 * 1024 // 5 MiB
-  if (file.size > MAX_SIZE) {
-    throw new AdminServiceError('La fotografía supera el límite máximo de 5 MiB.', 'FILE_TOO_LARGE')
-  }
-
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/jpg']
-  if (file.type && !allowedTypes.includes(file.type.toLowerCase())) {
-    throw new AdminServiceError('Formato no compatible. Usa JPEG, PNG, WEBP o AVIF.', 'INVALID_FORMAT')
-  }
-
-  const imageId = existingImageId || crypto.randomUUID()
-  const storagePath = `${productId}/${imageId}.jpg`
-  const client = getSupabaseClient()
-
-  // 1. Subir archivo a bucket 'catalog-images'
-  const { error: uploadError } = await client.storage
-    .from('catalog-images')
-    .upload(storagePath, file, {
-      contentType: file.type || 'image/jpeg',
-      upsert: true,
-    })
-
-  if (uploadError) {
-    throw new AdminServiceError(
-      `Error al subir la imagen al almacenamiento: ${uploadError.message}`,
-      'STORAGE_ERROR'
-    )
-  }
-
-  // 2. Registrar en tabla product_images (upsert)
-  const { error: dbError } = await client
-    .from('product_images')
-    .upsert({
-      id: imageId,
-      product_id: productId,
-      storage_path: storagePath,
-      sort_order: 0,
-      is_primary: false,
-    })
-
-  if (dbError) {
-    throw new AdminServiceError(
-      `Error al registrar la imagen en la base de datos: ${dbError.message}`,
-      'DB_ERROR'
-    )
-  }
-
-  // 3. Establecer como imagen principal
-  await setProductImagePrimary(imageId, callerSignal)
-
-  return { imageId, storagePath }
+export async function uploadProductImage(productId: string, file: Blob, existingImageId?: string, signal?: AbortSignal): Promise<{ imageId: string; storagePath: string }> {
+  return safe(async () => {
+    const product = backendId(productId), oldId = existingImageId ? backendId(existingImageId) : null
+    if (file.size < 1 || file.size > 5 * 1024 * 1024) throw new AdminServiceError('La fotografía debe pesar entre 1 byte y 5 MiB.', 'FILE_TOO_LARGE')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new AdminServiceError('Usa una fotografía JPEG, PNG o WEBP.', 'INVALID_FORMAT')
+    const { token } = requireBackendAccess()
+    const response = await fetch(`/api/v1/products/${product}/images`, { method: 'POST', body: file, credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { Authorization: 'Bearer ' + token, 'Content-Type': file.type }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) })
+    if (!response.ok) throw new BackendHttpError(response.status, 'IMAGE_UPLOAD_FAILED')
+    const data = object(await response.json()), imageId = apiId(data.id)
+    if (data.url !== '/api/v1/images/' + imageId) throw new Error('Invalid image')
+    await backendHttp(`products/${product}/images/${imageId}`, 'PATCH', { is_primary: true }, signal)
+    if (oldId && String(oldId) !== imageId) await backendHttp(`products/${product}/images/${oldId}`, 'DELETE', undefined, signal)
+    return { imageId, storagePath: data.url as string }
+  }, signal)
 }

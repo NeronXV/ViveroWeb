@@ -1,5 +1,3 @@
-import { getSupabaseClient } from '../../lib/supabase/client'
-import { getSupabaseEnv } from '../../lib/supabase/env'
 import { isValidCatalogStoragePath, PUBLIC_CATALOG_IMAGE_BUCKET } from './catalog-parser'
 import type { PublicCatalogImage } from './catalog-types'
 
@@ -36,9 +34,10 @@ function isSafePublicUrl(value: unknown, expectedOrigin: string): value is strin
 
 export function resolvePublicCatalogImageUrl(
   image: PublicCatalogImage | null,
-  storage: CatalogStorageClient = getSupabaseClient().storage,
-  expectedOrigin: string = getSupabaseEnv().url,
+  storage?: CatalogStorageClient,
+  expectedOrigin?: string,
 ): string | null {
+  if (image && 'authority' in image) return /^\/api\/v1\/images\/[1-9][0-9]*$/.test(image.url) ? image.url : null
   if (
     image === null ||
     image.bucketName !== PUBLIC_CATALOG_IMAGE_BUCKET ||
@@ -46,6 +45,7 @@ export function resolvePublicCatalogImageUrl(
   ) return null
 
   try {
+    if (!storage || !expectedOrigin) return null
     const result = storage.from(image.bucketName).getPublicUrl(image.storagePath)
     const publicUrl = result.data?.publicUrl
     return isSafePublicUrl(publicUrl, expectedOrigin) ? publicUrl : null

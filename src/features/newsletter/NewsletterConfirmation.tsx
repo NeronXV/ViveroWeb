@@ -1,20 +1,22 @@
-import { useState } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
-import { getSupabaseClient } from '../../lib/supabase/client'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { newsletterLink, publicNewsletter } from './newsletter-service'
 export function NewsletterConfirmation() {
-  const [params] = useSearchParams()
-  const unsubscribe = params.has('unsubscribe'), token = params.get(unsubscribe ? 'unsubscribe' : 'confirm') ?? ''
-  const valid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)
+  const [link] = useState(() => newsletterLink(window.location.hash))
+  const unsubscribe = link?.action === 'unsubscribe', valid = Boolean(link)
+  const pending = useRef<AbortController | null>(null)
+  useEffect(() => { window.history.replaceState(window.history.state, '', window.location.pathname); return () => { pending.current?.abort() } }, [])
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [done, setDone] = useState(false)
   const confirm = async () => {
-    if (!valid || busy) return
+    if (!link || busy || done) return
+    const controller = new AbortController(); pending.current = controller
     setBusy(true)
     try {
-      const { error } = await getSupabaseClient().rpc(unsubscribe ? 'unsubscribe_newsletter' : 'confirm_newsletter_subscription', { p_token: token })
-      if (error) throw error
+      await publicNewsletter(link.action, { token: link.token }, controller.signal)
+      if (controller.signal.aborted) return
       setDone(true); setMessage(unsubscribe ? 'Tu baja quedó registrada.' : 'Tu suscripción quedó confirmada.')
-    } catch { setMessage('El enlace no es válido, ya se utilizó o el servicio no está disponible.') }
-    finally { setBusy(false) }
+    } catch { if (!controller.signal.aborted) setMessage('El enlace no es válido, ya se utilizó o el servicio no está disponible.') }
+    finally { if (!controller.signal.aborted) setBusy(false) }
   }
   return <main className="internal-page"><section className="login-card"><h1>{unsubscribe ? 'Cancelar suscripción' : 'Confirmar suscripción'}</h1>
     {!valid && <p role="alert">El enlace no es válido.</p>}<p role="status">{message}</p>

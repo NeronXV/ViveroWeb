@@ -1,8 +1,7 @@
+vi.mock('../auth/backend-runtime', () => ({ hasBackendIdentity: () => true }))
+import { BackendHttpError } from '../../lib/backend-http'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchAdminCategories, fetchAdminProducts } from './admin-catalog-service'
-import { searchCustomers } from './admin-customers-service'
 import {
-  AdminServiceError,
   fetchAdminInventoryBalances,
   fetchInventoryHistory,
   reconcileInventoryCount,
@@ -15,106 +14,31 @@ type ServiceResult = {
 }
 
 let result: ServiceResult = { data: [], error: null }
-let selectedColumns: string | null = null
-let lastSignal: AbortSignal | null = null
 let lastRpc: { name: string; parameters: Record<string, unknown> } | null = null
 let keepRequestPending = false
 
 function finishWithSignal(signal: AbortSignal): Promise<ServiceResult> {
-  lastSignal = signal
   if (!keepRequestPending) return Promise.resolve(result)
   return new Promise((_, reject) => {
     signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
   })
 }
 
-function queryBuilder() {
-  const query = {
-    or: () => query,
-    eq: () => query,
-    order: () => query,
-    abortSignal: (signal: AbortSignal) => finishWithSignal(signal),
-  }
-  return query
-}
-
-vi.mock('../../lib/supabase/client', () => ({
-  getSupabaseClient: () => ({
-    from: () => ({
-      select: (columns: string) => {
-        selectedColumns = columns
-        return queryBuilder()
-      },
-    }),
-    rpc: (name: string, parameters: Record<string, unknown>) => {
-      lastRpc = { name, parameters }
-      return { abortSignal: (signal: AbortSignal) => finishWithSignal(signal) }
-    },
-  }),
+vi.mock('./backend-admin-request', () => ({
+  backendAdminRequest: async (name: string, parameters: Record<string, unknown>, signal: AbortSignal) => {
+    lastRpc = { name, parameters }
+    const response = await finishWithSignal(signal)
+    if (response.error) throw new BackendHttpError(400, response.error.code ?? response.error.message)
+    return response.data
+  },
 }))
 
-describe('límites de los servicios administrativos de Supabase', () => {
+describe('límites de servicios administrativos y contratos de presentación', () => {
   beforeEach(() => {
     vi.useRealTimers()
     result = { data: [], error: null }
-    selectedColumns = null
-    lastSignal = null
     lastRpc = null
     keepRequestPending = false
-  })
-
-  it('consulta productos con una proyección explícita y aplica la señal combinada', async () => {
-    const callerController = new AbortController()
-
-    await fetchAdminProducts({}, callerController.signal)
-
-    expect(selectedColumns).not.toContain('*')
-    expect(selectedColumns).toContain('categories(name)')
-    expect(lastSignal).not.toBe(callerController.signal)
-    expect(lastSignal?.aborted).toBe(false)
-    callerController.abort()
-    expect(lastSignal?.aborted).toBe(true)
-  })
-
-  it('consulta categorías con una proyección explícita', async () => {
-    await fetchAdminCategories()
-
-    expect(selectedColumns).toBe('id,name,description,is_active,created_at,updated_at')
-  })
-
-  it('propaga el timeout interno a la consulta efectiva', async () => {
-    vi.useFakeTimers()
-    keepRequestPending = true
-
-    const request = fetchAdminCategories()
-    const rejection = expect(request).rejects.toMatchObject({ code: 'TIMEOUT' })
-    await vi.advanceTimersByTimeAsync(8_000)
-
-    await rejection
-    expect(lastSignal?.aborted).toBe(true)
-  })
-
-  it('envía el contrato exacto de search_customers', async () => {
-    await searchCustomers('  ana  ', 25)
-
-    expect(lastRpc).toEqual({
-      name: 'search_customers',
-      parameters: { p_query: 'ana', p_limit: 25 },
-    })
-  })
-
-  it('rechaza límites fuera del rango backend antes de consultar', () => {
-    expect(() => searchCustomers('ana', 51)).toThrow(AdminServiceError)
-    expect(lastRpc).toBeNull()
-  })
-
-  it('no expone mensajes desconocidos del backend', async () => {
-    result = { data: null, error: { message: 'sensitive database detail', code: 'XX999' } }
-
-    await expect(searchCustomers('ana')).rejects.toMatchObject({
-      message: 'No fue posible completar la operación de clientes en el servidor.',
-      code: 'XX999',
-    })
   })
 
   it('consulta el dashboard de inventario con el contrato piloto vigente', async () => {

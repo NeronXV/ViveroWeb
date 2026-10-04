@@ -26,12 +26,28 @@ export class CashierPaymentStateError extends Error {
   }
 }
 
+export function attachPaymentFailure(
+  attempt: CashierPaymentAttempt,
+  failure: { status?: number; code?: string } | null,
+  errorMsg: string,
+): CashierPaymentAttempt {
+  if (attempt.status !== 'CONFIRMING') throw new CashierPaymentStateError('Solo se puede resolver un cobro en confirmación.')
+  const rejectedForStock = failure?.status === 409 && failure.code === 'INVENTORY_INSUFFICIENT'
+  return { ...attempt, status: rejectedForStock ? 'CLAIMED' : failure?.code === 'CLAIM_EXPIRED' ? 'EXPIRED' : 'UNCERTAIN', errorMsg }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value)
+}
+function isId(value: unknown): value is string {
+  return isUuid(value) || (typeof value === 'string' && /^[1-9][0-9]*$/.test(value) && Number(value) <= 4294967295)
+}
+function isKey(value: unknown): value is string {
+  return isUuid(value) || (typeof value === 'string' && /^[a-f0-9]{64}$/.test(value))
 }
 
 function isNullableString(value: unknown): value is string | null {
@@ -47,7 +63,7 @@ export function createPaymentAttempt(
   saleId: string,
   idempotencyKey: string,
 ): CashierPaymentAttempt {
-  if (!isUuid(userId) || !isUuid(saleId) || !isUuid(idempotencyKey)) {
+  if (!isId(userId) || !isId(saleId) || !isKey(idempotencyKey)) {
     throw new CashierPaymentStateError('No se puede crear un intento con identificadores inválidos.')
   }
 
@@ -91,13 +107,13 @@ export function parseStoredPaymentAttempt(
   if (value.version !== 2 || value.userId !== expectedUserId || value.saleId !== expectedSaleId) {
     throw new CashierPaymentStateError('El intento persistido no corresponde a esta versión, usuario o venta.')
   }
-  if (!isUuid(value.userId) || !isUuid(value.saleId) || !isUuid(value.idempotencyKey)) {
+  if (!isId(value.userId) || !isId(value.saleId) || !isKey(value.idempotencyKey)) {
     throw new CashierPaymentStateError('El intento persistido contiene identificadores inválidos.')
   }
   if (typeof value.status !== 'string' || !PAYMENT_STATUSES.includes(value.status as CashierPaymentStatus)) {
     throw new CashierPaymentStateError('El intento persistido contiene un estado inválido.')
   }
-  if (value.claimToken !== null && !isUuid(value.claimToken)) {
+  if (value.claimToken !== null && !isKey(value.claimToken)) {
     throw new CashierPaymentStateError('El intento persistido contiene un claim inválido.')
   }
   if (!isNullableString(value.claimExpiresAt) || !isNullableString(value.reference) || !isNullableString(value.errorMsg)) {
@@ -150,7 +166,7 @@ export function parseStoredPaymentAttempt(
 }
 
 export function getPaymentAttemptStorageKey(userId: string, saleId: string): string {
-  return `${STORAGE_PREFIX}:${userId}:${saleId}`
+  return `${UUID_PATTERN.test(userId) ? STORAGE_PREFIX : 'viveroweb_backend_cashier_attempt_v1'}:${userId}:${saleId}`
 }
 
 export function loadPaymentAttempt(
@@ -164,8 +180,7 @@ export function loadPaymentAttempt(
   try {
     return parseStoredPaymentAttempt(raw, userId, saleId)
   } catch {
-    storage.removeItem(key)
-    return null
+    throw new CashierPaymentStateError('El intento guardado es incompatible. Se conserva y se bloquea otro cobro hasta revisar su resultado.')
   }
 }
 
@@ -204,6 +219,11 @@ export function attachSucceededResult(
   }
   if (result.sale?.id !== attempt.saleId) {
     throw new CashierPaymentStateError('El resultado canónico pertenece a otra venta.')
+  }
+  if (attempt.method !== null && (!result.payment || result.payment.method !== attempt.method
+    || result.payment.amountReceivedCents !== attempt.amountReceivedCents
+    || result.payment.reference !== (attempt.reference?.trim() || null))) {
+    throw new CashierPaymentStateError('El comprobante no corresponde a los datos del intento original.')
   }
   return { ...attempt, status: 'SUCCEEDED', errorMsg: null, paymentResult: result }
 }

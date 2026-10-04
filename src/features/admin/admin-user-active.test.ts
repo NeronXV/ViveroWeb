@@ -1,3 +1,5 @@
+vi.mock('../auth/backend-runtime', () => ({ hasBackendIdentity: () => true }))
+import { BackendHttpError } from '../../lib/backend-http'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import {
   createBranch,
@@ -55,11 +57,14 @@ let mockSupabaseImplementation = () => {
   }
 }
 
-vi.mock('../../lib/supabase/client', () => {
-  return {
-    getSupabaseClient: () => mockSupabaseImplementation(),
-  }
-})
+vi.mock('./backend-admin-request', () => ({
+  backendAdminRequest: async (rpc: string, parameters: Record<string, unknown>) => {
+    lastRpcCall = { rpc, parameters }
+    const response = await mockSupabaseImplementation().rpc(rpc, parameters).abortSignal()
+    if (response.error) throw new BackendHttpError(400, response.error.message)
+    return response.data
+  },
+}))
 
 const VALID_BRANCH_ROW = {
   id: '10000000-0000-0000-0000-000000000001',

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import imageFallback from '../../assets/isotipo-flor.svg'
 import { usePublicCart } from '../public-orders/PublicCartProvider'
-import { loadPublicOrderOptions, submitWebOrder, WebOrderServiceError } from '../public-orders/web-order-service'
+import { BackendOrderError, createBackendOrderService, createBackendOrderAttempt, readBackendOrderAttempt,
+  type BackendOrderAttempt, type BackendOrderSubmission } from '../public-orders/backend-order-service'
+import { browserOrderLock, createBackendOrderCoordinator } from '../public-orders/backend-order-coordinator'
 import type { PublicOrderBranch, SubmitWebOrderResult } from '../public-orders/web-order-types'
 import { resolvePublicCatalogImageUrl } from './catalog-image'
 import { formatPriceCents } from './CatalogProductCard'
@@ -15,7 +17,10 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
   const [notes, setNotes] = useState('')
-  const [attemptId, setAttemptId] = useState<string | null>(null)
+  const [prepared, setPrepared] = useState<BackendOrderAttempt | null>(null)
+  const [pending, setPending] = useState<BackendOrderAttempt | null>(null)
+  const [storageBlocked, setStorageBlocked] = useState(false)
+  const operationRef = useRef(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [confirmation, setConfirmation] = useState<SubmitWebOrderResult | null>(null)
@@ -27,17 +32,22 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   } | null>(null)
   const [copied, setCopied] = useState(false)
   const cartSignature = useMemo(() => items.map((item) => `${item.product.id}:${item.quantity}`).join('|'), [items])
+  const formRevision = useRef(0)
 
-  useEffect(() => { setAttemptId(null); setError('') }, [cartSignature])
+  useEffect(() => { formRevision.current += 1; setPrepared(null) }, [cartSignature, branchId, customerName, customerPhone, customerEmail, notes])
+  useEffect(() => {
+    try { setPending(readBackendOrderAttempt(window.localStorage)) }
+    catch { setStorageBlocked(true); setError('No se pudo leer el intento guardado. No envíes otro pedido hasta revisar el almacenamiento.') }
+  }, [])
 
   const optionsLoadedRef = useRef(false)
 
   const loadBranches = useCallback((signal?: AbortSignal) => {
     setOptionsState('loading')
-    loadPublicOrderOptions(signal)
+    createBackendOrderService().options(signal)
       .then((result) => {
-        setBranches(result.branches)
-        setBranchId((current) => current || result.branches[0]?.id || '')
+        setBranches(result.branches.map(branch => ({ ...branch, id: String(branch.id) })))
+        setBranchId((current) => current || String(result.branches[0]?.id ?? ''))
         setOptionsState('ready')
         optionsLoadedRef.current = true
       })
@@ -72,13 +82,12 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (items.length === 0 || submitting) return
+    if (items.length === 0 || operationRef.current || storageBlocked || pending) return
     if (customerPhone.trim() === '' && customerEmail.trim() === '') {
       setError('Escribe un teléfono o correo para que podamos confirmar tu pedido.')
       return
     }
-    const orderId = attemptId ?? window.crypto.randomUUID()
-    setAttemptId(orderId)
+    operationRef.current = true
     setSubmitting(true)
     setError('')
     try {
@@ -88,15 +97,21 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
       const currentName = customerName.trim()
       const branchDisplay = selectedBranch ? `${selectedBranch.name} (${selectedBranch.code})` : 'Sucursal seleccionada'
 
-      const result = await submitWebOrder({
-        orderId,
-        branchId,
-        customerName: currentName,
-        customerPhone: currentPhone,
-        customerEmail: currentEmail,
-        notes,
-        items: items.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
-      })
+      const service = createBackendOrderService()
+      const input = { branch_id: Number(branchId), items: items.map(item => ({ product_id: Number(item.product.id), quantity: item.quantity })) }
+      if (!prepared) {
+        const expectedRevision = formRevision.current
+        const quote = await service.quote(input)
+        // A late quote cannot replace a cart/contact/branch edited while awaiting it.
+        if (expectedRevision !== formRevision.current) return
+        setPrepared(createBackendOrderAttempt({ ...input, customer_name: currentName, customer_phone: currentPhone || null,
+          customer_email: currentEmail || null, notes: notes.trim() || null, expected_total_cents: quote.total_cents }))
+        return
+      }
+      setPending(prepared)
+      const receipt = await createBackendOrderCoordinator(window.localStorage, service, browserOrderLock).send(prepared)
+      const result: SubmitWebOrderResult = { schemaVersion: 1, orderId: String(receipt.id), orderNumber: receipt.order_number,
+        status: receipt.status, totalCents: receipt.total_cents, createdAt: receipt.created_at, idempotentReplay: receipt.idempotent_replay }
 
       setSubmittedDetails({
         branchName: branchDisplay,
@@ -106,12 +121,31 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
       })
       setConfirmation(result)
       clearCart()
-      setAttemptId(null)
+      setPending(null)
+      setPrepared(null)
     } catch (reason) {
-      setError(reason instanceof WebOrderServiceError ? reason.message : 'No fue posible enviar el pedido. Intenta nuevamente.')
+      try { setPending(readBackendOrderAttempt(window.localStorage)) }
+      catch { setStorageBlocked(true) }
+      setError(reason instanceof BackendOrderError ? reason.message : 'No se pudo confirmar el pedido o guardar su intento. Conserva el contenido y recupera el resultado.')
     } finally {
       setSubmitting(false)
+      operationRef.current = false
     }
+  }
+  const recoverPending = async () => {
+    if (!pending || operationRef.current) return
+    operationRef.current = true; setSubmitting(true); setError('')
+    try {
+      const service = createBackendOrderService()
+      const receipt = await createBackendOrderCoordinator(window.localStorage, service, browserOrderLock).recover(pending)
+      const input = JSON.parse(pending.body) as BackendOrderSubmission
+      setSubmittedDetails({ branchName: branches.find(b => Number(b.id) === input.branch_id)?.name ?? `Sucursal ${input.branch_id}`,
+        customerName: input.customer_name, customerEmail: input.customer_email ?? '', customerPhone: input.customer_phone ?? '' })
+      setConfirmation({ schemaVersion: 1, orderId: String(receipt.id), orderNumber: receipt.order_number, status: receipt.status,
+        totalCents: receipt.total_cents, createdAt: receipt.created_at, idempotentReplay: receipt.idempotent_replay })
+      clearCart(); setPending(null); setPrepared(null)
+    } catch (reason) { setError(reason instanceof BackendOrderError ? reason.message : 'No se confirmó el resultado. El intento se conserva.') }
+    finally { setSubmitting(false); operationRef.current = false }
   }
 
   return <>
@@ -213,6 +247,13 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
             </button>
           </div>
         </div>
+      ) : pending ? (
+        <div className="cart-footer">
+          <p>Hay un pedido pendiente de confirmar. Se conservarán su contacto, productos, total y clave originales.</p>
+          <p>Primero se consultará el resultado; solo si no existe se reenviará el mismo pedido.</p>
+          <button type="button" className="checkout-btn" disabled={submitting} onClick={() => void recoverPending()}>{submitting ? 'Consultando…' : 'Recuperar o reenviar pedido original'}</button>
+          <p role="alert">{error}</p>
+        </div>
       ) : (
         <form className="web-order-form" onSubmit={submit} aria-busy={submitting}>
           <div className="cart-items">
@@ -227,7 +268,7 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
             })}
           </div>
           <div className="cart-footer">
-            <div className="cart-total-row"><span>Total estimado:</span><span>{formatPriceCents(estimatedTotalCents)}</span></div>
+            <div className="cart-total-row"><span>{prepared ? 'Total cotizado:' : 'Total estimado:'}</span><span>{formatPriceCents(prepared ? (JSON.parse(prepared.body) as BackendOrderSubmission).expected_total_cents : estimatedTotalCents)}</span></div>
             <p className="web-order-help">El servidor confirmará precios y promociones al enviar el pedido.</p>
             {items.length > 0 && <div className="web-order-fields">
               <label>Nombre completo<input required minLength={2} maxLength={160} autoComplete="name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} /></label>
@@ -236,7 +277,7 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
               <label>Sucursal de recolección<select required value={branchId} onChange={(event) => setBranchId(event.target.value)} disabled={optionsState !== 'ready'}><option value="" disabled>{optionsState === 'loading' ? 'Cargando sucursales disponibles…' : optionsState === 'error' ? 'Error al cargar sucursales' : 'Selecciona una sucursal'}</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>)}</select></label>
               <label>Notas <small>(opcional)</small><textarea maxLength={500} rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
             </div>}
-            <button className="checkout-btn" type="submit" disabled={items.length === 0 || branchId === '' || optionsState !== 'ready' || submitting}>{submitting ? 'Enviando pedido…' : 'Enviar pedido'}</button>
+            <button className="checkout-btn" type="submit" disabled={storageBlocked || items.length === 0 || branchId === '' || optionsState !== 'ready' || submitting}>{submitting ? 'Procesando…' : prepared ? 'Confirmar pedido con total cotizado' : 'Cotizar pedido'}</button>
             {optionsState === 'error' && <button type="button" className="catalog-action" onClick={retryBranches} style={{ marginTop: '0.6rem', width: '100%' }}>↻ Reintentar sucursales</button>}
             <p className="form-notice web-order-error" role={error ? 'alert' : undefined} aria-live="polite">{error}</p>
           </div>

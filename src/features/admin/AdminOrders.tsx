@@ -58,18 +58,19 @@ export function AdminOrders({ active }: { active: boolean }) {
   const itemCount = orders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0)
 
   const changeStatus = async (order: AdminWebOrder, nextStatus: WebOrderStatus) => {
-    if (updatingId) return
+    if (updatingId || status !== 'ready') return
     setUpdatingId(order.id)
     setError('')
     try {
-      const result = await setAdminWebOrderStatus(order.id, nextStatus)
+      const result = await setAdminWebOrderStatus(order.id, nextStatus, order.revision!)
       setOrders((current) => current.map((candidate) => candidate.id === order.id
-        ? { ...candidate, status: result.status, updatedAt: result.updatedAt }
+        ? { ...candidate, status: result.status, revision: result.revision, updatedAt: result.updatedAt }
         : candidate))
       setSelectedOrder((current) => current?.id === order.id
-        ? { ...current, status: result.status, updatedAt: result.updatedAt }
+        ? { ...current, status: result.status, revision: result.revision, updatedAt: result.updatedAt }
         : current)
     } catch (reason) {
+      setStatus('error')
       setError(reason instanceof WebOrderServiceError ? reason.message : 'No fue posible actualizar el pedido.')
     } finally {
       setUpdatingId(null)
@@ -77,7 +78,7 @@ export function AdminOrders({ active }: { active: boolean }) {
   }
 
   const sendToCashier = async (order: AdminWebOrder) => {
-    if (updatingId) return
+    if (updatingId || status !== 'ready') return
     setUpdatingId(order.id)
     setError('')
     try {
@@ -85,6 +86,7 @@ export function AdminOrders({ active }: { active: boolean }) {
       setOrders((current) => current.map((item) => item.id === order.id ? { ...item, checkout } : item))
       setSelectedOrder((current) => current?.id === order.id ? { ...current, checkout } : current)
     } catch (reason) {
+      setStatus('error')
       setError(reason instanceof WebOrderServiceError ? reason.message : 'No fue posible enviar a Caja.')
     } finally { setUpdatingId(null) }
   }
@@ -92,7 +94,7 @@ export function AdminOrders({ active }: { active: boolean }) {
   if (!active) return null
 
   return <section className="db-tab-content active" aria-labelledby="orders-title" aria-busy={status === 'loading'}>
-    <div className="section-header-row"><div><h3 id="orders-title" style={{ margin: 0 }}>🧾 Pedidos reales de la tienda web</h3><p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Solicitudes persistidas en Supabase con precios confirmados por el servidor.</p></div><button type="button" className="retry-btn-secondary" onClick={() => setRefreshKey((value) => value + 1)} disabled={status === 'loading'}>Actualizar</button></div>
+    <div className="section-header-row"><div><h3 id="orders-title" style={{ margin: 0 }}>🧾 Pedidos reales de la tienda web</h3><p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Solicitudes persistidas en MariaDB con precios confirmados por el servidor.</p></div><button type="button" className="retry-btn-secondary" onClick={() => setRefreshKey((value) => value + 1)} disabled={status === 'loading'}>Actualizar</button></div>
 
     <div className="stock-kpi-bar" style={{ marginTop: '1rem' }}>
       <div className="stock-kpi-card"><div className="stock-kpi-icon">📦</div><div className="stock-kpi-info"><span className="stock-kpi-value">{orders.length}</span><span className="stock-kpi-label">Pedidos recibidos</span></div></div>

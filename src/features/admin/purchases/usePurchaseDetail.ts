@@ -72,6 +72,7 @@ export function usePurchaseDetail(purchaseId: string | null) {
 
     try {
       await resolveSupplierPurchaseItem({
+        purchaseId: purchaseId,
         itemId,
         resolution,
         productId,

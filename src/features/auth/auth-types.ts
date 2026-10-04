@@ -1,3 +1,4 @@
+import type { BackendSessionAccess } from './backend-session'
 import type { AccessStatus, UserAccessContext } from '../access/access-types'
 
 export type AuthStatus = 'initializing' | 'anonymous' | 'authenticated' | 'error'
@@ -8,6 +9,7 @@ export interface AuthUser {
 }
 
 export interface AuthContextValue {
+  backend: BackendSessionAccess
   status: AuthStatus
   user: AuthUser | null
   error: string | null

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/useAuth'
 import { hasCapability } from '../access/access-helpers'
-import { closeCashier, loadClosing, refundSale, lookupRefund, type parseClosingPreview } from './cashier-operations-service'
+import { closeCashier, loadClosing, refundSale, lookupRefund, recoverCashierOperation, completeCashierOperation, type parseClosingPreview } from './cashier-operations-service'
 import { formatPriceCents as formatCents } from '../public-catalog/CatalogProductCard'
 import { parsePesosToCents } from './cashier-money'
 
@@ -42,6 +42,7 @@ export function CashierOperations({ locked }: { locked: boolean }) {
     try {
       const result = await closeCashier(opening, counted, keyFor('close', [opening, counted]))
       setNotice('Corte registrado. Esperado: ' + formatCents(result.expectedCashCents) + ' · Contado: ' + formatCents(result.countedCashCents) + ' · Diferencia: ' + formatCents(result.differenceCents))
+      await completeCashierOperation(result.attempt)
       delete attempts.current.close
       form.reset(); setRevision((value) => value + 1)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se confirmó el corte.') }
@@ -58,6 +59,7 @@ export function CashierOperations({ locked }: { locked: boolean }) {
       const result = await refundSale(folio, reason, method, restock, keyFor('refund', [folio, reason, method, restock]))
       setNotice('Devolución total registrada por ' + formatCents(result.amountCents) + '. No vuelvas a entregar el dinero.')
       setRefundable({ ...refundable, alreadyRefunded: true })
+      await completeCashierOperation(result.attempt)
       delete attempts.current.refund
       form.reset(); setRevision((value) => value + 1)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se confirmó la devolución.') }
@@ -68,6 +70,16 @@ export function CashierOperations({ locked }: { locked: boolean }) {
     <p>Operaciones de tu usuario y sucursal que aún no están incluidas en un corte. El primer corte incluye todo tu historial sin cerrar.</p>
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     <button type="button" className="retry-btn-secondary" disabled={busy || locked} onClick={() => setRevision((value) => value + 1)}>Actualizar resumen</button>
+    <button type="button" className="retry-btn-secondary" disabled={busy || locked} onClick={async () => {
+      setBusy(true); setError('')
+      try {
+        const recovered = await recoverCashierOperation()
+        setNotice(recovered.message)
+        await completeCashierOperation(recovered.attempt)
+        attempts.current = {}; setRevision(value => value + 1)
+      } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se confirmó la operación pendiente.') }
+      finally { setBusy(false) }
+    }}>Recuperar corte o devolución pendiente</button>
     {preview && <><p>Efectivo: {formatCents(preview.payments.cash)} · Tarjeta: {formatCents(preview.payments.card)} · Transferencia: {formatCents(preview.payments.transfer)}</p>
       <p>Neto de operaciones: {formatCents(preview.payments.cash + preview.payments.card + preview.payments.transfer - preview.refunds.cash - preview.refunds.other)}</p>
       <p>Devoluciones en efectivo: {formatCents(preview.refunds.cash)} · Otras: {formatCents(preview.refunds.other)}</p>

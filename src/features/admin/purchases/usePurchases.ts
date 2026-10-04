@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  fetchSupplierPurchases,
+  fetchSupplierPurchases, fetchSuppliers,
   PurchaseServiceError,
 } from './purchases-service'
 import type {
@@ -26,7 +26,8 @@ export function usePurchases(active: boolean) {
 
     try {
       const filter = statusFilter === 'ALL' ? null : statusFilter
-      const res = await fetchSupplierPurchases({ status: filter, limit: 100 })
+      const [res, suppliers] = await Promise.all([fetchSupplierPurchases({ status: filter, limit: 100 }), fetchSuppliers()])
+      setCustomSuppliers(suppliers)
       setPurchases(res.items)
     } catch (err) {
       if (err instanceof PurchaseServiceError) {

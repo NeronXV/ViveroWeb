@@ -59,7 +59,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   // Cargar sucursales si tiene permisos globales para filtrar
   const branchesDir = useAdminBranches(canViewAllSales)
 
-  // Hook de reportes reales de Supabase
+  // Hook de reportes reales de MariaDB
   const {
     dailySales,
     topProducts,
@@ -282,7 +282,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
                   {isReportsLoading && dailySales.length === 0 && (
                     <div className="cashier-status-container" role="status">
                       <div className="loading-spinner" />
-                      <p>Generando reportes a partir de transacciones de Supabase...</p>
+                      <p>Generando reportes a partir de transacciones de MariaDB...</p>
                     </div>
                   )}
 

@@ -37,7 +37,7 @@ export function SupplierCreateModal({ isOpen, onClose, onCreated }: SupplierCrea
     const trimmedName = name.trim()
 
     if (!validateSupplierCode(trimmedCode)) {
-      setError('El código del proveedor debe tener entre 2 y 50 caracteres (letras, números y guiones).')
+      setError('El código del proveedor debe tener entre 2 y 32 caracteres (letras, números y guiones).')
       return
     }
 

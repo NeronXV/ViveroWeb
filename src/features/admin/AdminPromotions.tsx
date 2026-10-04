@@ -141,7 +141,7 @@ export function AdminPromotions({ active }: { active: boolean }) {
       })
 
       setIsModalOpen(false)
-      setNotice(`✅ Campaña "${name.trim()}" guardada exitosamente en Supabase.`)
+      setNotice(`✅ Campaña "${name.trim()}" guardada exitosamente en el servidor.`)
       setTimeout(() => setNotice(null), 4000)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Error al guardar la campaña.')
@@ -184,7 +184,7 @@ export function AdminPromotions({ active }: { active: boolean }) {
             <span>🏷️</span> Campañas y Promociones de Catálogo
           </h3>
           <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Gestiona descuentos automáticos en Supabase para productos individuales o todo el catálogo.
+            Gestiona descuentos automáticos en el servidor para productos individuales o todo el catálogo.
           </p>
         </div>
         <button
@@ -300,7 +300,7 @@ export function AdminPromotions({ active }: { active: boolean }) {
       {promoState.status === 'loading' && promoState.promotions.length === 0 && (
         <div className="cashier-status-container" role="status" style={{ marginTop: '2rem' }}>
           <div className="loading-spinner" />
-          <p>Cargando promociones autoritativas de Supabase…</p>
+          <p>Cargando promociones autoritativas de el servidor…</p>
         </div>
       )}
 
@@ -437,7 +437,7 @@ export function AdminPromotions({ active }: { active: boolean }) {
             </h4>
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: 1.5 }}>
               {filterStatus === 'all'
-                ? 'Crea ofertas especiales para temporadas, días festivos o plantas seleccionadas. Los descuentos calculados por Supabase se reflejarán automáticamente en el catálogo público.'
+                ? 'Crea ofertas especiales para temporadas, días festivos o plantas seleccionadas. Los descuentos calculados por el servidor se reflejarán automáticamente en el catálogo público.'
                 : 'Cambia el filtro seleccionado o crea una nueva campaña para este grupo.'}
             </p>
           </div>

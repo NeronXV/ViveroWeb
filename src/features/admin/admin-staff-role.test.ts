@@ -1,3 +1,5 @@
+vi.mock('../auth/backend-runtime', () => ({ hasBackendIdentity: () => true }))
+import { BackendHttpError } from '../../lib/backend-http'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import {
   fetchAdminRoleOptions,
@@ -16,15 +18,13 @@ let mockRpcReturn: { data: unknown; error: { message: string; code?: string } | 
 }
 let lastRpcCall: { rpc: string; parameters: Record<string, unknown> } | null = null
 
-vi.mock('../../lib/supabase/client', () => ({
-  getSupabaseClient: () => ({
-    rpc: (rpc: string, parameters: Record<string, unknown>) => {
-      lastRpcCall = { rpc, parameters }
-      return {
-        abortSignal: () => Promise.resolve(mockRpcReturn),
-      }
-    },
-  }),
+vi.mock('./backend-admin-request', () => ({
+  backendAdminRequest: async (rpc: string, parameters: Record<string, unknown>) => {
+    lastRpcCall = { rpc, parameters }
+    const response = mockRpcReturn
+    if (response.error) throw new BackendHttpError(400, response.error.code ?? response.error.message)
+    return response.data
+  },
 }))
 
 describe('Contrato y servicio de administración de roles (get_admin_role_options y set_admin_staff_role)', () => {

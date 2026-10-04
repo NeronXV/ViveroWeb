@@ -164,7 +164,7 @@ export function BranchDirectory({ active }: { active: boolean }) {
             <span>🏬</span> Directorio de Sucursales
           </h3>
           <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Gestión centralizada de ubicaciones físicas y asignaciones operativas en Supabase.
+            Gestión centralizada de ubicaciones físicas y asignaciones operativas en MariaDB.
           </p>
         </div>
         {canManageBranches && (
@@ -722,7 +722,7 @@ export function StaffDirectory({ active, canAssignRoles }: { active: boolean; ca
             <span>👥</span> Personal y Roles
           </h3>
           <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Directorio institucional de Supabase. Acciones de asignación protegidas por jerarquía.
+            Directorio institucional de MariaDB. Acciones de asignación protegidas por jerarquía.
           </p>
         </div>
       </div>

@@ -1,51 +1,44 @@
-import { getSupabaseClient } from '../../lib/supabase/client'
-import { counterStorageKey, parseCounterProduct, parseCreatedSale, parseSubmission, row, type CounterSubmission } from './counter-sale'
+import { backendId, requireBackendAccess } from '../auth/backend-runtime'
+import { createBackendCatalogService } from '../public-catalog/backend-catalog-service'
+import { BackendCounterError, createBackendCounterAttempt, createBackendCounterSaleService, readBackendCounterAttempt, finishBackendCounterAttempt, type BackendCounterAttempt } from './backend-counter-sale-service'
+import type { CounterLine } from './counter-sale'
 export async function searchCounterProducts(query: string, signal: AbortSignal) {
-  const escaped = query.trim().replace(/[\\%_]/g, value => '\\' + value)
-  if (escaped.length < 2) throw new Error('Escribe al menos dos caracteres.')
-  const { data, error } = await getSupabaseClient().from('products').select('id,internal_code,common_name')
-    .eq('is_active', true).ilike('common_name', '%' + escaped + '%').order('common_name').order('id').limit(20)
-    .abortSignal(AbortSignal.any([signal, AbortSignal.timeout(10000)]))
-  if (error || !Array.isArray(data)) throw new Error('No se pudieron buscar productos. Intenta de nuevo.')
-  return data.map(value => {
-    const product = row(value)
-    if (typeof product.id !== 'string' || typeof product.internal_code !== 'string' || typeof product.common_name !== 'string') throw new Error('Catálogo incompatible.')
-    return { id: product.id, code: product.internal_code, name: product.common_name }
-  })
+  if (query.trim().length < 2) throw new Error('Escribe al menos dos caracteres.')
+  const page = await createBackendCatalogService().products({ search: query, limit: 20 }, signal)
+  return page.items.map(p => ({ id: String(p.id), code: p.internal_code, name: p.common_name }))
 }
 export async function lookupCounterProduct(code: string) {
-  const { data, error } = await getSupabaseClient().rpc('get_product_by_scan_code', { p_code: code.trim() }).abortSignal(AbortSignal.timeout(10000))
-  if (error) throw new Error(error.message === 'PRODUCT_SCAN_CODE_AMBIGUOUS' ? 'Hay más de un producto con ese código. Pide revisar el catálogo.' : 'No se pudo consultar el código. Revisa que el servicio esté habilitado.')
-  const product = parseCounterProduct(data)
+  const product = await createBackendCounterSaleService().scan(requireBackendAccess().token, code)
   if (!product) throw new Error('No se encontró un producto activo con ese código.')
-  return product
+  return { id: String(product.id), code: product.internal_code, name: product.common_name, priceCents: product.effective_price_cents }
+}
+function access(userId: number, branchId: number) {
+  const { token, context } = requireBackendAccess()
+  if (context.user.id !== userId || context.branch?.id !== branchId || !context.branch.is_active) throw new Error('Cambió la sesión o sucursal. Conserva el intento y vuelve a iniciar sesión.')
+  return token
 }
 export function readCounterPending(userId: string, branchId: string) {
-  const saved = localStorage.getItem(counterStorageKey(userId, branchId))
-  return saved === null ? null : parseSubmission(JSON.parse(saved), userId, branchId)
+  return readBackendCounterAttempt(localStorage, backendId(userId), backendId(branchId))
 }
-export class CounterRejected extends Error {}
-export async function submitCounterSale(request: CounterSubmission) {
-  const key = counterStorageKey(request.userId, request.branchId)
-  if (!navigator.locks) throw new Error('Usa un navegador actualizado para crear ventas de forma segura.')
-  return navigator.locks.request(key, async () => {
-    const pending = readCounterPending(request.userId, request.branchId)
-    if (pending && JSON.stringify(pending) !== JSON.stringify(request)) throw new Error('Hay otro intento pendiente. Cierra y vuelve a abrir Nueva venta para recuperarlo.')
-    localStorage.setItem(key, JSON.stringify(request))
-    const { data, error } = await getSupabaseClient().rpc('submit_sale_to_cashier', {
-      p_sale_id: request.id, p_folio: request.folio, p_items: request.items, p_customer_id: request.customerId,
-    }).abortSignal(AbortSignal.timeout(15000))
-    if (error) {
-      if (['22023', '23505'].includes(error.code ?? '')) {
-        localStorage.removeItem(key)
-        throw new CounterRejected('El servidor rechazó los productos o el folio. Revisa el carrito antes de volver a enviar.')
-      }
-      throw new Error('No se confirmó el resultado. Recupera este mismo intento; no prepares otra venta por estos productos.')
-    }
-    return parseCreatedSale(data, request)
-  })
+export async function quoteCounterSale(lines: CounterLine[], userId: string, branchId: string, customerId: string | null) {
+  const user = backendId(userId), branch = backendId(branchId), token = access(user, branch)
+  const items = lines.map(line => ({ product_id: backendId(line.product.id), quantity: line.quantity }))
+  const quote = await createBackendCounterSaleService().quote(token, branch, items)
+  return createBackendCounterAttempt(user, branch, { items, expected_total_cents: quote.total_cents, customer_id: customerId === null ? null : backendId(customerId) })
 }
-export function finishCounterSale(request: CounterSubmission) {
-  const pending = readCounterPending(request.userId, request.branchId)
-  if (pending?.id === request.id) localStorage.removeItem(counterStorageKey(request.userId, request.branchId))
+export async function submitCounterSale(attempt: BackendCounterAttempt) {
+  const token = access(attempt.userId, attempt.branchId), service = createBackendCounterSaleService()
+  const pending = readBackendCounterAttempt(localStorage, attempt.userId, attempt.branchId)
+  if (pending) {
+    if (pending.key !== attempt.key || pending.body !== attempt.body) throw new Error('Hay otra venta pendiente. Vuelve a abrir Nueva venta para recuperarla.')
+    try { return await service.recover(token, pending) }
+    catch (error) { if (!(error instanceof BackendCounterError) || error.status !== 404 || error.code !== 'SALE_NOT_FOUND') throw error }
+  }
+  return service.submit(token, attempt, localStorage)
+}
+export function finishCounterSale(attempt: BackendCounterAttempt) { finishBackendCounterAttempt(localStorage, attempt) }
+export async function retireCounterSale(attempt: BackendCounterAttempt) {
+  const result = await createBackendCounterSaleService().retire(access(attempt.userId, attempt.branchId), attempt)
+  finishCounterSale(attempt)
+  return result
 }

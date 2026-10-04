@@ -129,7 +129,7 @@ export function AdminCustomers({ active }: { active: boolean }) {
       <div className="section-header-row">
         <div>
           <h3>Administración de Clientes</h3>
-          <p className="real-data-copy">Directorio real en Supabase. Operaciones administrativas protegidas.</p>
+          <p className="real-data-copy">Directorio real en MariaDB. Operaciones administrativas protegidas.</p>
         </div>
         <button type="button" className="catalog-action" onClick={handleCreateOpen}>
           + Registrar Cliente

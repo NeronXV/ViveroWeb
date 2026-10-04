@@ -1,7 +1,7 @@
 import { ProductQrLabelCard } from '../ProductQrLabelCard'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { centsToPesos, centsToFormattedMxn, pesosToCents, calculateExpectedTotalCents, validatePurchaseLines, sanitizeFileName } from './purchases-parser'
-import { confirmSupplierPurchase, createSupplierPurchaseDraft, fetchSupplierPurchaseDetail, resolveSupplierPurchaseItem, setSupplierPresentation } from './purchases-service'
+import { confirmSupplierPurchase, recoverSupplierPurchaseDraft, createSupplierPurchaseDraft, fetchSupplierPurchaseDetail, resolveSupplierPurchaseItem, setSupplierPresentation } from './purchases-service'
 import { extractFromLocalPdf, parseCsv, parseManualOrPasteJson } from './purchases-extractor'
 import { SupplierCreateModal } from './SupplierCreateModal'
 import { SupplierPresentationModal } from './SupplierPresentationModal'
@@ -262,6 +262,7 @@ export function PurchaseDraftWizard({
 
     try {
       await resolveSupplierPurchaseItem({
+        purchaseId: purchaseDetail.id,
         itemId,
         resolution: 'MATCHED',
         productId: product.id,
@@ -287,6 +288,7 @@ export function PurchaseDraftWizard({
 
     try {
       await resolveSupplierPurchaseItem({
+        purchaseId: purchaseDetail.id,
         itemId,
         resolution: 'IGNORED',
         productId: null,
@@ -404,6 +406,12 @@ export function PurchaseDraftWizard({
         ))}
       </div>
 
+      {!purchaseDetail && <button type="button" disabled={isCreatingDraft} onClick={async () => {
+        setIsCreatingDraft(true); setDraftError(null)
+        try { const recovered = await recoverSupplierPurchaseDraft(); if (recovered) { setPurchaseDetail(recovered); setStep(4) } else setDraftError('No hay un borrador pendiente de recuperar en esta sucursal.') }
+        catch (error) { setDraftError(error instanceof Error ? error.message : 'No se confirmó el borrador pendiente.') }
+        finally { setIsCreatingDraft(false) }
+      }}>Recuperar borrador pendiente</button>}
       {draftError && <div className="admin-dialog-error" role="alert">{draftError}</div>}
       {confirmError && <div className="admin-dialog-error" role="alert">{confirmError}</div>}
 

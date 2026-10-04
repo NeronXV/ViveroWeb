@@ -1,5 +1,37 @@
 # Vivero Dulcinea Web
 
+## Estado actual — 3 de octubre de 2026
+
+La Web operativa está en https://viverodulcinea.bajastack.network y consume la API
+oficial de ViveroApp, con MariaDB y Docker. Sesión, catálogo/pedidos, caja,
+mostrador, administración de catálogo/imágenes/promociones, clientes, personal,
+compras/proveedores y contratos de recuperación/newsletter usan la API.
+El bundle activo no incluye Supabase. El envío real de correo sigue pendiente.
+
+El rechazo `409 INVENTORY_INSUFFICIENT` conserva el intento de cobro y muestra
+falta de existencias; los errores inciertos siguen requiriendo conciliación con
+la clave original. No borrar localStorage para reintentar. El origen anterior
+conserva acceso temporal a caja para recuperar intentos guardados allí.
+
+La configuración de desarrollo usa `BACKEND_PROXY_TARGET` en un archivo privado;
+el navegador consume `/api/v1` por el mismo origen, sin contraseñas de base ni
+claves administrativas en Vite. Docker construye sin incluir archivos `.env`.
+La infraestructura compartida vive en el checkout vecino `ViveroApp/infra/docker`.
+
+Validación local para este checkpoint: `npm run lint`, `npm test` (471 pruebas,
+44 archivos) y `npm run build` correctos. La aceptación humana completa de Web
+y Android sigue pendiente; Supabase se conserva para conciliación histórica.
+
+- [Sesión y permisos API](docs/backend-web-session.md).
+- [Rechazo de cobro por inventario](docs/backend-web-cashier-inventory-rejection.md).
+- [Corte de catálogo](docs/backend-catalog-cutover.md).
+- [Operación del VPS](../ViveroApp/docs/vps-multiproject-operations.md).
+- [Dominio definitivo](../ViveroApp/docs/vps-canonical-domain.md).
+
+## Referencia histórica del MVP con Supabase
+
+Las secciones siguientes describen el checkpoint anterior, no el destino activo.
+
 Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El catálogo público, la autenticación, el contexto de acceso, Caja y parte de Administración usan contratos reales de Supabase; los módulos aún demostrativos se identifican de forma explícita.
 
 ## Checkpoint del MVP

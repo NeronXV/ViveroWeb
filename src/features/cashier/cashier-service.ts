@@ -1,439 +1,98 @@
-import { getSupabaseClient } from '../../lib/supabase/client'
-import {
-  parseCashierClaimResponse,
-  parseCashierConfirmResponse,
-  parseCashierPaymentResultResponse,
-  parseCashierReleaseClaimResponse,
-  parseCashierSaleDetailResponse,
-  parseCashierSalesResponse,
-} from './cashier-parser'
-import type {
-  CashierClaimResponse,
-  CashierConfirmResponse,
-  CashierCursor,
-  CashierPaymentMethod,
-  CashierPaymentResultResponse,
-  CashierReleaseClaimResponse,
-  CashierSaleDetailResponse,
-  CashierSalesResponse,
-} from './cashier-types'
-
-const CASHIER_TIMEOUT_MS = 8_000
+import { backendHttp, apiId, object, list, utc, decimal, BackendHttpError } from '../../lib/backend-http'
+import { backendId, backendKey, requireBackendAccess } from '../auth/backend-runtime'
+import { createBackendCashierService, createBackendPaymentAttempt, parseBackendPaymentReceipt, BackendCashierError } from './backend-cashier-service'
+import { parseCashierSalesResponse, parseCashierSaleDetailResponse, parseCashierClaimResponse, parseCashierReleaseClaimResponse, parseCashierConfirmResponse, parseCashierPaymentResultResponse } from './cashier-parser'
+import type { CashierCursor, CashierPaymentMethod, CashierPaymentResultResponse } from './cashier-types'
 
 export class CashierServiceError extends Error {
-  constructor(
-    message: string,
-    public readonly code?: string,
-  ) {
-    super(message)
-    this.name = 'CashierServiceError'
+  constructor(message: string, public readonly code?: string, public readonly status?: number) { super(message); this.name = 'CashierServiceError' }
+}
+export interface GetSalesParams { limit?: number; cursor?: CashierCursor | null }
+export interface ConfirmPaymentParams { saleId: string; claimToken: string; idempotencyKey: string; method: CashierPaymentMethod; amountReceivedCents?: number | null; reference?: string | null }
+async function boundary<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  try { return await work() }
+  catch (error) {
+    if (signal?.aborted) throw new DOMException('Operación cancelada.', 'AbortError')
+    if (error instanceof BackendHttpError || error instanceof BackendCashierError) throw new CashierServiceError(error.message, error.code, error.status)
+    throw new CashierServiceError('No se confirmó la operación de Caja. Conserva el intento y consulta su resultado.', 'INCOMPATIBLE_RESPONSE')
   }
 }
-
-export interface GetSalesParams {
-  limit?: number
-  cursor?: CashierCursor | null
+function saleView(row: Record<string, unknown>, metadata: Record<string, unknown>) {
+  return { id: apiId(row.id), folio: row.folio, createdAt: utc(metadata.created_at), totalCents: row.total_cents,
+    itemCount: metadata.item_count, status: row.status, createdByLabel: metadata.created_by_label, claimState: metadata.claim_state,
+    claimExpiresAt: metadata.claim_expires_at === null ? null : utc(metadata.claim_expires_at), serverTime: utc(metadata.server_time) }
 }
-
-export async function fetchCashierSales(
-  params: GetSalesParams,
-  callerSignal?: AbortSignal,
-): Promise<CashierSalesResponse> {
-  const { limit = 25, cursor = null } = params
-  const timeoutController = new AbortController()
-  const timeoutId = window.setTimeout(() => timeoutController.abort(), CASHIER_TIMEOUT_MS)
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutController.signal])
-    : timeoutController.signal
-
-  try {
-    const client = getSupabaseClient()
-    const rpcParams = {
-      p_limit: limit,
-      p_after_created_at: cursor?.createdAt ?? null,
-      p_after_id: cursor?.id ?? null,
-    }
-
-    const { data, error } = await client
-      .rpc('get_cashier_sales', rpcParams)
-      .abortSignal(signal)
-
-    if (error) {
-      const code = error.message
-      if (code === 'CASHIER_UNAUTHORIZED') {
-        throw new CashierServiceError('Acceso denegado. No tienes permisos para operar como cajero.', code)
-      }
-      if (code === 'CASHIER_PAGE_LIMIT_INVALID') {
-        throw new CashierServiceError('Límite de página no válido.', code)
-      }
-      if (code === 'CASHIER_CURSOR_INVALID') {
-        throw new CashierServiceError('El cursor de paginación proporcionado no es válido.', code)
-      }
-      throw new CashierServiceError('No fue posible cargar las ventas de la caja.', code)
-    }
-
-    try {
-      return parseCashierSalesResponse(data)
-    } catch (parseError) {
-      throw new CashierServiceError(
-        parseError instanceof Error ? parseError.message : 'La respuesta del backend es incompatible.',
-        'INCOMPATIBLE_RESPONSE',
-      )
-    }
-  } catch (error) {
-    if (error instanceof CashierServiceError) throw error
-    if (signal.aborted && !callerSignal?.aborted) {
-      throw new CashierServiceError('Tiempo de espera agotado al conectar con el servidor.', 'TIMEOUT')
-    }
-    throw new CashierServiceError('No fue posible cargar las ventas de la caja.', 'UNKNOWN')
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
+function itemView(row: Record<string, unknown>) {
+  return { id: apiId(row.id), productName: row.product_name, quantity: typeof row.quantity === 'number' ? row.quantity : decimal(row.quantity), unitPriceCents: row.unit_price_cents, lineTotalCents: row.line_total_cents }
 }
-
-export async function fetchCashierSaleDetail(
-  saleId: string,
-  callerSignal?: AbortSignal,
-): Promise<CashierSaleDetailResponse> {
-  const timeoutController = new AbortController()
-  const timeoutId = window.setTimeout(() => timeoutController.abort(), CASHIER_TIMEOUT_MS)
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutController.signal])
-    : timeoutController.signal
-
-  try {
-    const client = getSupabaseClient()
-    const { data, error } = await client
-      .rpc('get_cashier_sale_detail', { p_sale_id: saleId })
-      .abortSignal(signal)
-
-    if (error) {
-      const code = error.message
-      if (code === 'CASHIER_UNAUTHORIZED') {
-        throw new CashierServiceError('Acceso denegado. No tienes permisos para operar como cajero.', code)
-      }
-      if (code === 'SALE_UNAVAILABLE') {
-        throw new CashierServiceError('La venta ya no está disponible para su cobro.', code)
-      }
-      if (code === 'SALE_DATA_INVALID') {
-        throw new CashierServiceError('Los datos del detalle de la venta no son válidos.', code)
-      }
-      throw new CashierServiceError('No fue posible cargar el detalle de la venta.', code)
-    }
-
-    try {
-      return parseCashierSaleDetailResponse(data)
-    } catch (parseError) {
-      throw new CashierServiceError(
-        parseError instanceof Error ? parseError.message : 'La respuesta del backend es incompatible.',
-        'INCOMPATIBLE_RESPONSE',
-      )
-    }
-  } catch (error) {
-    if (error instanceof CashierServiceError) throw error
-    if (signal.aborted && !callerSignal?.aborted) {
-      throw new CashierServiceError('Tiempo de espera agotado al conectar con el servidor.', 'TIMEOUT')
-    }
-    throw new CashierServiceError('No fue posible cargar el detalle de la venta.', 'UNKNOWN')
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
+export function fetchCashierSales(params: GetSalesParams, signal?: AbortSignal) {
+  return boundary(async () => {
+    const limit = params.limit ?? 25, query = new URLSearchParams({ limit: String(limit), view: 'operations' })
+    if (params.cursor) query.set('before_id', String(backendId(params.cursor.id)))
+    const result = await backendHttp('cashier/sales?' + query, 'GET', undefined, signal)
+    if (result.schema_version !== 1) throw new Error('schema')
+    const rows = list(result.items), items = rows.map(row => saleView(row, object(row.operation)))
+    return parseCashierSalesResponse({ schemaVersion: 1, items, page: { limit, hasMore: result.next_before_id !== null,
+      nextCursor: result.next_before_id === null ? null : { id: apiId(result.next_before_id), createdAt: items.at(-1)?.createdAt } } })
+  }, signal)
 }
-
-// Nuevas llamadas de la fase de cobros reales
-export async function claimSaleForPayment(
-  saleId: string,
-  claimToken: string | null = null,
-  callerSignal?: AbortSignal,
-): Promise<CashierClaimResponse> {
-  const timeoutController = new AbortController()
-  const timeoutId = window.setTimeout(() => timeoutController.abort(), CASHIER_TIMEOUT_MS)
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutController.signal])
-    : timeoutController.signal
-
-  try {
-    const client = getSupabaseClient()
-    const rpcParams = {
-      p_sale_id: saleId,
-      p_claim_token: claimToken || null,
-    }
-
-    const { data, error } = await client
-      .rpc('claim_sale_for_payment', rpcParams)
-      .abortSignal(signal)
-
-    if (error) {
-      const code = error.message
-      if (code === 'CASHIER_UNAUTHORIZED') {
-        throw new CashierServiceError('Acceso denegado. No tienes permisos para operar como cajero.', code)
-      }
-      if (code === 'SALE_UNAVAILABLE') {
-        throw new CashierServiceError('La venta ya no está disponible para su cobro.', code)
-      }
-      if (code === 'SALE_STATUS_INVALID') {
-        throw new CashierServiceError('El estado de la venta no es válido para procesar cobro.', code)
-      }
-      if (code === 'CLAIM_UNAVAILABLE') {
-        throw new CashierServiceError('La venta está siendo cobrada por otro cajero.', code)
-      }
-      if (code === 'CLAIM_EXPIRED') {
-        throw new CashierServiceError('Tu reserva de cobro para esta venta ha expirado.', code)
-      }
-      if (code === 'CLAIM_NOT_OWNED') {
-        throw new CashierServiceError('La reserva de cobro para esta venta pertenece a otro cajero.', code)
-      }
-      throw new CashierServiceError('No fue posible reservar la venta para cobro.', code)
-    }
-
-    try {
-      const response = parseCashierClaimResponse(data)
-      if (response.sale_id !== saleId) {
-        throw new Error('La respuesta no corresponde a la venta reclamada.')
-      }
-      if (claimToken !== null && (response.claim_token !== claimToken || !response.renewed)) {
-        throw new Error('La renovación no conservó el claim esperado.')
-      }
-      return response
-    } catch (parseError) {
-      throw new CashierServiceError(
-        parseError instanceof Error ? parseError.message : 'La respuesta del backend es incompatible.',
-        'INCOMPATIBLE_RESPONSE',
-      )
-    }
-  } catch (error) {
-    if (error instanceof CashierServiceError) throw error
-    if (signal.aborted && !callerSignal?.aborted) {
-      throw new CashierServiceError('Tiempo de espera agotado al conectar con el servidor.', 'TIMEOUT')
-    }
-    throw new CashierServiceError('No fue posible reservar la venta para cobro.', 'UNKNOWN')
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
+export function fetchCashierSaleDetail(saleId: string, signal?: AbortSignal) {
+  return boundary(async () => {
+    const result = await backendHttp(`cashier/sales/${backendId(saleId)}?view=operations`, 'GET', undefined, signal)
+    if (result.schema_version !== 1) throw new Error('schema')
+    return parseCashierSaleDetailResponse({ schemaVersion: 1, sale: saleView(object(result.sale), object(result.operation)), items: list(result.items).map(itemView) })
+  }, signal)
 }
-
-export async function releaseSalePaymentClaim(
-  saleId: string,
-  claimToken: string,
-  callerSignal?: AbortSignal,
-): Promise<CashierReleaseClaimResponse> {
-  const timeoutController = new AbortController()
-  const timeoutId = window.setTimeout(() => timeoutController.abort(), CASHIER_TIMEOUT_MS)
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutController.signal])
-    : timeoutController.signal
-
-  try {
-    const client = getSupabaseClient()
-    const rpcParams = {
-      p_sale_id: saleId,
-      p_claim_token: claimToken,
-    }
-
-    const { data, error } = await client
-      .rpc('release_sale_payment_claim', rpcParams)
-      .abortSignal(signal)
-
-    if (error) {
-      const code = error.message
-      if (code === 'CASHIER_UNAUTHORIZED') {
-        throw new CashierServiceError('Acceso denegado. No tienes permisos para operar como cajero.', code)
-      }
-      if (code === 'SALE_UNAVAILABLE') {
-        throw new CashierServiceError('La venta ya no está disponible.', code)
-      }
-      if (code === 'CLAIM_NOT_OWNED') {
-        throw new CashierServiceError('No posees la reserva de cobro de esta venta.', code)
-      }
-      throw new CashierServiceError('No fue posible liberar la reserva de cobro.', code)
-    }
-
-    try {
-      const response = parseCashierReleaseClaimResponse(data)
-      if (response.sale_id !== saleId || response.claim_token !== claimToken) {
-        throw new Error('La respuesta no corresponde al claim liberado.')
-      }
-      return response
-    } catch (parseError) {
-      throw new CashierServiceError(
-        parseError instanceof Error ? parseError.message : 'La respuesta del backend es incompatible.',
-        'INCOMPATIBLE_RESPONSE',
-      )
-    }
-  } catch (error) {
-    if (error instanceof CashierServiceError) throw error
-    if (signal.aborted && !callerSignal?.aborted) {
-      throw new CashierServiceError('Tiempo de espera agotado al conectar con el servidor.', 'TIMEOUT')
-    }
-    throw new CashierServiceError('No fue posible liberar la reserva de cobro.', 'UNKNOWN')
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
+export function claimSaleForPayment(saleId: string, claimToken: string | null = null, signal?: AbortSignal) {
+  return boundary(async () => {
+    const { token, context } = requireBackendAccess(), result = await createBackendCashierService().claim(token, backendId(saleId), claimToken, signal)
+    if (result.cashier_id !== context.user.id || result.branch_id !== context.branch?.id || (claimToken !== null && (result.claim_token !== claimToken || !result.renewed))) throw new Error('identity')
+    return parseCashierClaimResponse({ sale_id: apiId(result.sale_id), branch_id: apiId(result.branch_id), cashier_id: apiId(result.cashier_id),
+      claim_token: result.claim_token, created_at: result.created_at, expires_at: result.expires_at, server_time: result.server_time, renewed: result.renewed })
+  }, signal)
 }
-
-export interface ConfirmPaymentParams {
-  saleId: string
-  claimToken: string
-  idempotencyKey: string
-  method: CashierPaymentMethod
-  amountReceivedCents?: number | null
-  reference?: string | null
+export function releaseSalePaymentClaim(saleId: string, claimToken: string, signal?: AbortSignal) {
+  return boundary(async () => {
+    const result = await backendHttp(`cashier/sales/${backendId(saleId)}/release`, 'POST', { claim_token: claimToken }, signal)
+    if (result.schema_version !== 1 || apiId(result.sale_id) !== saleId || result.claim_token !== claimToken) throw new Error('identity')
+    return parseCashierReleaseClaimResponse({ sale_id: saleId, claim_token: claimToken, released_at: utc(result.released_at), closed_reason: result.closed_reason })
+  }, signal)
 }
-
-export async function confirmSalePayment(
-  params: ConfirmPaymentParams,
-  callerSignal?: AbortSignal,
-): Promise<CashierConfirmResponse> {
-  const timeoutController = new AbortController()
-  const timeoutId = window.setTimeout(() => timeoutController.abort(), CASHIER_TIMEOUT_MS)
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutController.signal])
-    : timeoutController.signal
-
-  try {
-    const client = getSupabaseClient()
-    const rpcParams = {
-      p_sale_id: params.saleId,
-      p_claim_token: params.claimToken,
-      p_idempotency_key: params.idempotencyKey,
-      p_method: params.method,
-      p_amount_received_cents: params.amountReceivedCents ?? null,
-      p_reference: params.reference ?? null,
-    }
-
-    const { data, error } = await client
-      .rpc('confirm_sale_payment', rpcParams)
-      .abortSignal(signal)
-
-    if (error) {
-      const code = error.message
-      if (code === 'CASHIER_UNAUTHORIZED') {
-        throw new CashierServiceError('Acceso denegado. No tienes permisos para operar como cajero.', code)
-      }
-      if (code === 'SALE_UNAVAILABLE') {
-        throw new CashierServiceError('La venta ya no está disponible para su cobro.', code)
-      }
-      if (code === 'IDEMPOTENCY_KEY_INVALID') {
-        throw new CashierServiceError('La clave de idempotencia del intento no es válida.', code)
-      }
-      if (code === 'PAYMENT_METHOD_INVALID') {
-        throw new CashierServiceError('El método de pago seleccionado no es válido.', code)
-      }
-      if (code === 'IDEMPOTENCY_CONFLICT') {
-        throw new CashierServiceError('Conflicto de idempotencia detectado. Se intentó pagar la misma venta con parámetros distintos.', code)
-      }
-      if (code === 'SALE_ALREADY_PAID') {
-        throw new CashierServiceError('La venta ya ha sido cobrada por completo.', code)
-      }
-      if (code === 'SALE_STATUS_INVALID') {
-        throw new CashierServiceError('El estado de la venta no es válido para procesar cobro.', code)
-      }
-      if (code === 'INVENTORY_INSUFFICIENT') throw new CashierServiceError('No hay existencias suficientes. Solicita revisar el inventario antes de registrar el cobro.', code)
-      if (code === 'SALE_TOTAL_INVALID') {
-        throw new CashierServiceError('El total de la venta no es válido.', code)
-      }
-      if (code === 'CLAIM_REQUIRED') {
-        throw new CashierServiceError('Se requiere reservar la venta para cobro antes de confirmar el pago.', code)
-      }
-      if (code === 'CLAIM_NOT_OWNED') {
-        throw new CashierServiceError('La reserva de cobro para esta venta pertenece a otro cajero o no es válida.', code)
-      }
-      if (code === 'CLAIM_EXPIRED') {
-        throw new CashierServiceError('Tu reserva de cobro para esta venta ha expirado.', code)
-      }
-      if (code === 'CASH_AMOUNT_INSUFFICIENT') {
-        throw new CashierServiceError('La cantidad de efectivo recibida es insuficiente.', code)
-      }
-      if (code === 'TRANSFER_REFERENCE_REQUIRED') {
-        throw new CashierServiceError('La referencia de transferencia bancaria es obligatoria.', code)
-      }
-      if (code === 'PAYMENT_DATA_INVALID') {
-        throw new CashierServiceError('Los datos del pago son inválidos. Verifica el formato de la referencia.', code)
-      }
-      throw new CashierServiceError('No fue posible confirmar el pago de la venta.', code)
-    }
-
-    try {
-      const response = parseCashierConfirmResponse(data)
-      const normalizedReference = params.reference?.trim() || null
-      if (
-        response.sale.id !== params.saleId
-        || response.payment.sale_id !== params.saleId
-        || response.payment.idempotency_key !== params.idempotencyKey
-        || response.payment.method !== params.method
-        || response.payment.reference !== normalizedReference
-      ) {
-        throw new Error('La confirmación no corresponde al intento enviado.')
-      }
-      if (params.method === 'CASH' && response.payment.amount_received_cents !== params.amountReceivedCents) {
-        throw new Error('El efectivo confirmado no corresponde al intento enviado.')
-      }
-      return response
-    } catch (parseError) {
-      throw new CashierServiceError(
-        parseError instanceof Error ? parseError.message : 'La respuesta de confirmación del backend es incompatible.',
-        'INCOMPATIBLE_RESPONSE',
-      )
-    }
-  } catch (error) {
-    if (error instanceof CashierServiceError) throw error
-    if (signal.aborted && !callerSignal?.aborted) {
-      throw new CashierServiceError('Tiempo de espera agotado al conectar con el servidor.', 'TIMEOUT')
-    }
-    throw new CashierServiceError('No fue posible confirmar el pago de la venta.', 'UNKNOWN')
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
+export function confirmSalePayment(params: ConfirmPaymentParams, signal?: AbortSignal) {
+  return boundary(async () => {
+    const { token, context } = requireBackendAccess()
+    if (!context.branch?.is_active) throw new Error('branch')
+    const attempt = createBackendPaymentAttempt(backendId(params.saleId), context.user.id, context.branch.id,
+      { claim_token: params.claimToken, method: params.method, amount_received_cents: params.amountReceivedCents ?? null, reference: params.reference ?? null })
+    const original = Object.freeze({ ...attempt, key: await backendKey(params.idempotencyKey, 'payment') })
+    const result = await createBackendCashierService().pay(token, original, signal)
+    return parseCashierConfirmResponse({ idempotent_replay: result.idempotent_replay,
+      sale: { id: apiId(result.sale.id), folio: result.sale.folio, branch_id: apiId(result.sale.branch_id), status: result.sale.status, total_cents: result.sale.total_cents },
+      payment: { id: apiId(result.payment.id), sale_id: params.saleId, cashier_id: apiId(result.payment.cashier_id), idempotency_key: params.idempotencyKey,
+        method: result.payment.method, amount_due_cents: result.payment.amount_due_cents, amount_received_cents: result.payment.amount_received_cents,
+        change_cents: result.payment.change_cents, reference: result.payment.reference, created_at: result.payment.created_at } })
+  }, signal)
 }
-
-export async function getCashierPaymentResult(
-  saleId: string,
-  idempotencyKey: string,
-  callerSignal?: AbortSignal,
-): Promise<CashierPaymentResultResponse> {
-  const timeoutController = new AbortController()
-  const timeoutId = window.setTimeout(() => timeoutController.abort(), CASHIER_TIMEOUT_MS)
-  const signal = callerSignal
-    ? AbortSignal.any([callerSignal, timeoutController.signal])
-    : timeoutController.signal
-
-  try {
-    const client = getSupabaseClient()
-    const rpcParams = {
-      p_sale_id: saleId,
-      p_idempotency_key: idempotencyKey,
+export function getCashierPaymentResult(saleId: string, idempotencyKey: string, signal?: AbortSignal): Promise<CashierPaymentResultResponse> {
+  return boundary(async () => {
+    const { token, context } = requireBackendAccess()
+    if (!context.branch?.is_active) throw new Error('branch')
+    const id = backendId(saleId), key = await backendKey(idempotencyKey, 'payment')
+    let result: Record<string, unknown>
+    try { result = await backendHttp(`cashier/sales/${id}/payment-result`, 'POST', {}, signal, key) }
+    catch (error) {
+      if (!(error instanceof BackendHttpError) || error.status !== 404 || error.code !== 'PAYMENT_NOT_FOUND') throw error
+      const detail = await backendHttp(`cashier/sales/${id}?view=operations`, 'GET', undefined, signal)
+      return parseCashierPaymentResultResponse({ schemaVersion: 1, status: 'NOT_FOUND', serverTime: utc(object(detail.operation).server_time) })
     }
-
-    const { data, error } = await client
-      .rpc('get_cashier_payment_result', rpcParams)
-      .abortSignal(signal)
-
-    if (error) {
-      const code = error.message
-      if (code === 'CASHIER_UNAUTHORIZED') {
-        throw new CashierServiceError('Acceso denegado. No tienes permisos para operar como cajero.', code)
-      }
-      if (code === 'PAYMENT_RESULT_INVALID') {
-        throw new CashierServiceError('Los datos de recuperación de pago son inválidos.', code)
-      }
-      throw new CashierServiceError('No fue posible consultar el resultado del cobro.', code)
-    }
-
-    try {
-      return parseCashierPaymentResultResponse(data)
-    } catch (parseError) {
-      throw new CashierServiceError(
-        parseError instanceof Error ? parseError.message : 'La respuesta de recuperación del backend es incompatible.',
-        'INCOMPATIBLE_RESPONSE',
-      )
-    }
-  } catch (error) {
-    if (error instanceof CashierServiceError) throw error
-    if (signal.aborted && !callerSignal?.aborted) {
-      throw new CashierServiceError('Tiempo de espera agotado al conectar con el servidor.', 'TIMEOUT')
-    }
-    throw new CashierServiceError('No fue posible consultar el resultado del cobro.', 'UNKNOWN')
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
+    const receipt = parseBackendPaymentReceipt(result, { saleId: id, cashierId: context.user.id, branchId: context.branch.id })
+    const canonical = await createBackendCashierService().receipt(token, receipt.payment.id, { userId: context.user.id, branchId: context.branch.id }, signal)
+    const detail = await backendHttp(`cashier/sales/${id}?view=operations`, 'GET', undefined, signal), metadata = object(detail.operation)
+    return parseCashierPaymentResultResponse({ schemaVersion: 1, status: 'SUCCEEDED',
+      sale: { id: saleId, folio: canonical.sale.folio, createdAt: utc(metadata.created_at), totalCents: canonical.sale.total_cents, createdByLabel: metadata.created_by_label },
+      items: canonical.items.map(row => itemView(row)), branch: { name: canonical.branch.name },
+      payment: { method: canonical.payment.method, amountReceivedCents: canonical.payment.method === 'CASH' ? canonical.payment.amount_received_cents : null,
+        changeCents: canonical.payment.method === 'CASH' ? canonical.payment.change_cents : null, reference: canonical.payment.reference, createdAt: canonical.payment.created_at },
+      serverTime: utc(metadata.server_time) })
+  }, signal)
 }

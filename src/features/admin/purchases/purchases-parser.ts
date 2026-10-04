@@ -261,7 +261,7 @@ export function calculateExpectedTotalCents(items: { quantity: number; unitCostC
 
 export function validateSupplierCode(code: string): boolean {
   const trimmed = code.trim().toUpperCase()
-  return /^[A-Z0-9-]+$/.test(trimmed) && trimmed.length >= 2 && trimmed.length <= 50
+  return /^[A-Z0-9-]+$/.test(trimmed) && trimmed.length >= 2 && trimmed.length <= 32
 }
 
 export function sanitizeFileName(fileName: string): string {
@@ -274,8 +274,8 @@ export function validatePurchaseLines(items: PurchaseSourceItem[]): string | nul
     return 'Debes incluir al menos un renglón en la compra.'
   }
 
-  if (items.length > 250) {
-    return 'No puedes registrar más de 250 renglones por compra.'
+  if (items.length > 100) {
+    return 'No puedes registrar más de 100 renglones por compra.'
   }
 
   const seenLineNumbers = new Set<number>()

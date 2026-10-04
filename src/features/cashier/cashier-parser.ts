@@ -60,7 +60,9 @@ function readNullableTimestamp(value: unknown, field: string): string | null {
 
 function readUuid(value: unknown, field: string): string {
   const uuid = readString(value, field)
-  if (!UUID_PATTERN.test(uuid)) {
+  const secret = /claim_token$|idempotency_key$/.test(field)
+  const integerId = !secret && /^[1-9][0-9]*$/.test(uuid) && Number(uuid) <= 4294967295
+  if (!UUID_PATTERN.test(uuid) && !integerId && !(secret && /^[a-f0-9]{64}$/.test(uuid))) {
     throw new CashierValidationError(`El campo ${field} no es un UUID válido.`)
   }
   return uuid

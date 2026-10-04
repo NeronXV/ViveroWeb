@@ -11,8 +11,8 @@ export function readReceiptReferences(value: string | null): ReceiptReference[] 
   return rows.map((row: unknown) => {
     if (!row || typeof row !== 'object') throw new Error('Historial local incompatible.')
     const entry = row as Record<string, unknown>
-    if (typeof entry.saleId !== 'string' || !uuid.test(entry.saleId)
-      || typeof entry.idempotencyKey !== 'string' || !uuid.test(entry.idempotencyKey)
+    if (typeof entry.saleId !== 'string' || !(uuid.test(entry.saleId) || (/^[1-9][0-9]*$/.test(entry.saleId) && Number(entry.saleId) <= 4294967295))
+      || typeof entry.idempotencyKey !== 'string' || !(uuid.test(entry.idempotencyKey) || /^[a-f0-9]{64}$/.test(entry.idempotencyKey))
       || typeof entry.folio !== 'string' || !entry.folio || entry.folio.length > 100) throw new Error('Historial local incompatible.')
     return { saleId: entry.saleId, idempotencyKey: entry.idempotencyKey, folio: entry.folio }
   })

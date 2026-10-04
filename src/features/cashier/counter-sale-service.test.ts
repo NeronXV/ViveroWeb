@@ -1,56 +1,58 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
-import { prepareCounterSale, counterStorageKey } from './counter-sale'
-import { readCounterPending, submitCounterSale, finishCounterSale, CounterRejected } from './counter-sale-service'
-const { rpc, abortSignal } = vi.hoisted(() => ({ rpc: vi.fn(), abortSignal: vi.fn() }))
-vi.mock('../../lib/supabase/client', () => ({ getSupabaseClient: () => ({ rpc }) }))
-const user = '10000000-0000-4000-8000-000000000001', branch = '20000000-0000-4000-8000-000000000001'
-const product = { id: '30000000-0000-4000-8000-000000000001', name: 'Ejemplo', code: 'P-1', priceCents: 15000 }
-const request = () => prepareCounterSale([{ product, quantity: 1 }], user, branch, null, 'abcd1234-0000-4000-8000-000000000001')
-let storage: Map<string, string>
+import { beforeEach, afterEach, expect, it, vi } from 'vitest'
+import { createBackendCounterAttempt } from './backend-counter-sale-service'
+import { bindBackendSession } from '../auth/backend-runtime'
+import { readCounterPending, submitCounterSale, finishCounterSale, retireCounterSale } from './counter-sale-service'
+const request = vi.fn(), storage = new Map<string, string>()
+const attempt = () => createBackendCounterAttempt(4, 1, { items: [{ product_id: 2, quantity: 1 }], expected_total_cents: 100, customer_id: 8 })
+const receipt = { schema_version: 1, id: 3, folio: 'VD-' + 'A'.repeat(24), branch_id: 1, created_by: 4, status: 'SENT_TO_CASHIER', subtotal_cents: 100, discount_cents: 0, total_cents: 100, created_at: '2026-10-01T12:00:00Z', idempotent_replay: true }
 beforeEach(() => {
- storage = new Map(); vi.clearAllMocks()
- vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) })
- vi.stubGlobal('navigator', { locks: { request: (_key: string, run: () => unknown) => run() } })
- rpc.mockReturnValue({ abortSignal })
+  storage.clear(); request.mockReset(); vi.stubGlobal('fetch', request)
+  vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) })
+  vi.stubGlobal('navigator', { locks: { request: (_key: string, run: () => unknown) => run() } })
+  bindBackendSession(() => ({ session: { accessToken: 'a'.repeat(43), userId: 4, expiresAt: Date.now() + 60000 }, accessStatus: 'ready', context: { user: { id: 4 }, branch: { id: 1, is_active: true } } } as never))
 })
 afterEach(() => vi.unstubAllGlobals())
-describe('envío recuperable', () => {
- it('guarda antes de llamar a la red y conserva el intento ante timeout', async () => {
-  abortSignal.mockImplementation(async () => { expect(readCounterPending(user, branch)).toEqual(request()); throw new Error('timeout') })
-  await expect(submitCounterSale(request())).rejects.toThrow('timeout')
-  expect(readCounterPending(user, branch)).toEqual(request())
- })
- it('reintenta con el mismo identificador y payload después de recargar', async () => {
-  abortSignal.mockResolvedValue({ data: null, error: { code: '500' } })
-  await expect(submitCounterSale(request())).rejects.toThrow()
-  await expect(submitCounterSale(readCounterPending(user, branch)!)).rejects.toThrow()
-  expect(rpc.mock.calls[0]).toEqual(rpc.mock.calls[1])
-  expect(rpc.mock.calls[0][1]).toEqual({ p_sale_id: request().id, p_folio: request().folio, p_items: request().items, p_customer_id: null })
- })
- it('bloquea un carrito distinto si hay un intento guardado', async () => {
-  storage.set(counterStorageKey(user, branch), JSON.stringify(request()))
-  await expect(submitCounterSale({ ...request(), id: 'abcd1234-0000-4000-8000-000000000002' })).rejects.toThrow('otro intento')
-  expect(rpc).not.toHaveBeenCalled()
- })
- it('no envía si no puede guardar la recuperación', async () => {
-  vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => { throw new Error('storage blocked') } })
-  await expect(submitCounterSale(request())).rejects.toThrow()
-  expect(rpc).not.toHaveBeenCalled()
- })
- it('un rechazo de validación permite corregir el carrito', async () => {
-  abortSignal.mockResolvedValue({ data: null, error: { code: '22023' } })
-  await expect(submitCounterSale(request())).rejects.toBeInstanceOf(CounterRejected)
-  expect(readCounterPending(user, branch)).toBeNull()
- })
- it('retiene la recuperación si la respuesta es incompatible', async () => {
-  abortSignal.mockResolvedValue({ data: {}, error: null })
-  await expect(submitCounterSale(request())).rejects.toThrow()
-  expect(readCounterPending(user, branch)).toEqual(request())
- })
- it('solo elimina la recuperación de la venta confirmada', () => {
-  storage.set(counterStorageKey(user, branch), JSON.stringify(request()))
-  finishCounterSale({ ...request(), id: 'abcd1234-0000-4000-8000-000000000002' })
-  expect(readCounterPending(user, branch)).not.toBeNull()
-  finishCounterSale(request()); expect(readCounterPending(user, branch)).toBeNull()
- })
+it('persists original customer/items before POST and recovers after response loss', async () => {
+  const saved = attempt()
+  request.mockImplementationOnce(async () => { expect(readCounterPending('4', '1')).toEqual(saved); throw new TypeError('offline') })
+  await expect(submitCounterSale(saved)).rejects.toThrow()
+  request.mockResolvedValueOnce(Response.json(receipt))
+  expect((await submitCounterSale(readCounterPending('4', '1')!)).id).toBe(3)
+  expect(request.mock.calls[1][0]).toBe('/api/v1/sales/recover')
+  expect(request.mock.calls[1][1].headers['Idempotency-Key']).toBe(saved.key)
+})
+it('resends only after authoritative not-found, preserving the original body and key', async () => {
+  const saved = attempt(); request.mockRejectedValueOnce(new TypeError('offline'))
+  await expect(submitCounterSale(saved)).rejects.toThrow()
+  request.mockResolvedValueOnce(Response.json({ error: 'SALE_NOT_FOUND' }, { status: 404 })).mockResolvedValueOnce(Response.json(receipt))
+  await submitCounterSale(saved)
+  expect(request.mock.calls[2][1].body).toBe(saved.body)
+  expect(request.mock.calls[2][1].headers['Idempotency-Key']).toBe(saved.key)
+})
+it('does not discard rejected attempts until the server fences the key', async () => {
+  const saved = attempt(); request.mockResolvedValueOnce(Response.json({ error: 'SALE_PRICE_CHANGED' }, { status: 409 }))
+  await expect(submitCounterSale(saved)).rejects.toThrow()
+  expect(readCounterPending('4','1')).toEqual(saved)
+  request.mockResolvedValueOnce(Response.json({ schema_version: 1, status: 'RETIRED', sale: null }))
+  expect(await retireCounterSale(saved)).toBeNull()
+  expect(readCounterPending('4','1')).toBeNull()
+})
+it('returns a committed sale instead of discarding it when retirement loses the race', async () => {
+  const saved = attempt(); request.mockRejectedValueOnce(new TypeError('offline'))
+  await expect(submitCounterSale(saved)).rejects.toThrow()
+  request.mockResolvedValueOnce(Response.json({ schema_version: 1, status: 'COMMITTED', sale: receipt }))
+  expect((await retireCounterSale(saved))?.id).toBe(3)
+})
+it('blocks another attempt and cannot clear its saved record', async () => {
+  const saved = attempt(); request.mockRejectedValueOnce(new TypeError('offline'))
+  await expect(submitCounterSale(saved)).rejects.toThrow()
+  await expect(submitCounterSale(attempt())).rejects.toThrow()
+  finishCounterSale(attempt())
+  expect(request).toHaveBeenCalledTimes(1)
+  expect(readCounterPending('4','1')).toEqual(saved)
+})
+it('blocks transmission when persistent storage fails', async () => {
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} })
+  await expect(submitCounterSale(attempt())).rejects.toThrow()
+  expect(request).not.toHaveBeenCalled()
 })

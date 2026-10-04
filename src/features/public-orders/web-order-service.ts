@@ -1,104 +1,62 @@
-import { getSupabaseClient } from '../../lib/supabase/client'
-import {
-  parseAdminWebOrders,
-  parseWebOrderCheckout,
-  parsePublicOrderOptions,
-  parseSubmitWebOrderResult,
-  parseWebOrderStatusResult,
-} from './web-order-parser'
-import type {
-  AdminWebOrdersResponse,
-  PublicOrderOptions,
-  SubmitWebOrderInput,
-  SubmitWebOrderResult,
-  WebOrderStatus,
-  WebOrderStatusResult,
-} from './web-order-types'
-
-const ORDER_TIMEOUT_MS = 10_000
+import { backendId, requireBackendAccess } from '../auth/backend-runtime'
+import { apiId, backendHttp, BackendHttpError, object, utc } from '../../lib/backend-http'
+import { createBackendAdminOrderService, parseBackendAdminOrderDetail, BackendAdminOrderError } from './backend-admin-order-service'
+import type { AdminWebOrder, AdminWebOrdersResponse, WebOrderStatus, WebOrderStatusResult } from './web-order-types'
 
 export class WebOrderServiceError extends Error {
-  constructor(message: string, public readonly code?: string) {
-    super(message)
-    this.name = 'WebOrderServiceError'
+  constructor(message: string, public readonly code?: string) { super(message); this.name = 'WebOrderServiceError' }
+}
+async function request<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  try { return await action() } catch (error) {
+    if (signal?.aborted) throw new DOMException('Operación cancelada.', 'AbortError')
+    if (error instanceof BackendAdminOrderError || error instanceof BackendHttpError) throw new WebOrderServiceError(error.message, error.code)
+    throw new WebOrderServiceError('No se confirmó la operación. Actualiza el pedido antes de continuar.', 'INCOMPATIBLE_RESPONSE')
   }
 }
-
-async function request<T>(
-  rpc: 'get_public_web_order_options' | 'submit_web_order' | 'get_admin_web_orders' | 'set_admin_web_order_status' | 'send_web_order_to_cashier',
-  parameters: Record<string, unknown>,
-  parser: (value: unknown) => T,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const timeout = new AbortController()
-  const timeoutId = window.setTimeout(() => timeout.abort(), ORDER_TIMEOUT_MS)
-  const signal = callerSignal ? AbortSignal.any([callerSignal, timeout.signal]) : timeout.signal
-  try {
-    const { data, error } = await getSupabaseClient().rpc(rpc, parameters).abortSignal(signal)
-    if (error) {
-      const code = error.message
-      if (code === 'WEB_ORDER_PAYMENT_REQUIRED') throw new WebOrderServiceError('Primero cobra la venta en Caja; después podrás completar la entrega.', code)
-      if (code === 'WEB_ORDER_ALREADY_IN_CASHIER') throw new WebOrderServiceError('El pedido ya está en Caja. No se puede cancelar desde esta pantalla.', code)
-      if (error.code === 'PGRST202' || error.code === '42883') throw new WebOrderServiceError('El servicio de pedidos todavía no está habilitado en este entorno.', 'CONTRACT_UNAVAILABLE')
-      if (code === 'WEB_ORDER_RATE_LIMITED') throw new WebOrderServiceError('Ya recibimos varios pedidos con este contacto. Espera unos minutos antes de intentar nuevamente.', code)
-      if (code === 'WEB_ORDER_BRANCH_UNAVAILABLE') throw new WebOrderServiceError('La sucursal seleccionada ya no está disponible.', code)
-      if (code === 'WEB_ORDER_ITEMS_UNAVAILABLE') throw new WebOrderServiceError('Uno de los productos ya no está disponible. Actualiza el catálogo.', code)
-      if (code === 'WEB_ORDER_ADMIN_UNAUTHORIZED') throw new WebOrderServiceError('No tienes permiso para consultar o actualizar estos pedidos.', code)
-      if (code === 'WEB_ORDER_STATUS_INVALID') throw new WebOrderServiceError('Ese cambio de estado ya no está permitido. Actualiza la lista.', code)
-      throw new WebOrderServiceError('No fue posible completar la operación de pedido.', code)
-    }
-    try {
-      return parser(data)
-    } catch {
-      throw new WebOrderServiceError('El servidor devolvió una respuesta de pedidos incompatible.', 'INCOMPATIBLE_RESPONSE')
-    }
-  } catch (error) {
-    if (error instanceof WebOrderServiceError) throw error
-    if (callerSignal?.aborted) throw new DOMException('Operación cancelada.', 'AbortError')
-    if (signal.aborted) throw new WebOrderServiceError('El servicio de pedidos tardó demasiado en responder.', 'TIMEOUT')
-    throw new WebOrderServiceError('No fue posible conectar con el servicio de pedidos.', 'UNKNOWN')
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
+async function detail(id: number, signal?: AbortSignal): Promise<{ order: AdminWebOrder; serverTime: string }> {
+  const raw = await backendHttp(`admin/web-orders/${id}?view=operations`, 'GET', undefined, signal)
+  const checked = parseBackendAdminOrderDetail({ schema_version: raw.schema_version, order: raw.order, items: raw.items, history: raw.history }, id)
+  const operation = object(raw.operation), branch = object(operation.branch), row = checked.order
+  if (branch.id !== row.branch_id || typeof branch.code !== 'string' || typeof branch.name !== 'string' || typeof operation.order_number !== 'string') throw new BackendHttpError(502, 'INCOMPATIBLE_RESPONSE')
+  let checkout: AdminWebOrder['checkout'] = null
+  if (operation.checkout !== null) {
+    const sale = object(operation.checkout)
+    if (sale.id !== row.cashier_sale_id || !Number.isSafeInteger(sale.total_cents) || sale.total_cents !== row.total_cents || typeof sale.folio !== 'string' || !['SENT_TO_CASHIER', 'PAYMENT_PENDING', 'PAID', 'DELIVERED', 'CANCELLED'].includes(String(sale.status))) throw new BackendHttpError(502, 'INCOMPATIBLE_RESPONSE')
+    checkout = { saleId: apiId(sale.id), folio: sale.folio, status: String(sale.status), totalCents: sale.total_cents as number }
+  } else if (row.cashier_sale_id !== null) throw new BackendHttpError(502, 'INCOMPATIBLE_RESPONSE')
+  return { serverTime: utc(operation.server_time), order: { id: String(row.id), orderNumber: operation.order_number, revision: row.revision,
+    branch: { id: String(branch.id), code: branch.code, name: branch.name }, customer: { name: row.customer_name, phone: row.customer_phone, email: row.customer_email },
+    notes: row.notes, subtotalCents: row.subtotal_cents, discountCents: row.discount_cents, totalCents: row.total_cents, status: row.status,
+    createdAt: row.created_at, updatedAt: row.updated_at, checkout,
+    items: checked.items.map(item => ({ productId: String(item.product_id), name: item.product_name, code: item.internal_code, quantity: item.quantity,
+      listPriceCents: item.list_price_cents, unitPriceCents: item.unit_price_cents, promotionName: item.promotion_name, lineTotalCents: item.line_total_cents })) } }
 }
-
-export function loadPublicOrderOptions(signal?: AbortSignal): Promise<PublicOrderOptions> {
-  return request('get_public_web_order_options', {}, parsePublicOrderOptions, signal)
-}
-
-export function submitWebOrder(input: SubmitWebOrderInput, signal?: AbortSignal): Promise<SubmitWebOrderResult> {
-  return request('submit_web_order', {
-    p_order_id: input.orderId,
-    p_branch_id: input.branchId,
-    p_customer_name: input.customerName,
-    p_customer_phone: input.customerPhone,
-    p_customer_email: input.customerEmail,
-    p_notes: input.notes,
-    p_items: input.items.map((item) => ({ product_id: item.productId, quantity: item.quantity })),
-  }, parseSubmitWebOrderResult, signal)
-}
-
 export function loadAdminWebOrders(signal?: AbortSignal): Promise<AdminWebOrdersResponse> {
-  return request('get_admin_web_orders', {
-    p_limit: 100,
-    p_after_created_at: null,
-    p_after_id: null,
-    p_status: null,
-  }, parseAdminWebOrders, signal)
+  return request(async () => {
+    const { token } = requireBackendAccess()
+    const result = await createBackendAdminOrderService().list(token, { limit: 100 }, signal)
+    const items: AdminWebOrder[] = []
+    let serverTime: string | undefined
+    // Bound concurrency to the API connection pool; each detail is scoped again on the server.
+    for (const row of result.items) { const saved = await detail(row.id, signal); items.push(saved.order); serverTime = saved.serverTime }
+    return { schemaVersion: 1, items, page: { limit: 100, hasMore: result.next_before_id !== null,
+      nextCursor: result.next_before_id === null ? null : { id: String(result.next_before_id), createdAt: items.at(-1)!.createdAt } }, ...(serverTime ? { serverTime } : {}) }
+  }, signal)
 }
-
-export function setAdminWebOrderStatus(
-  orderId: string,
-  nextStatus: WebOrderStatus,
-  signal?: AbortSignal,
-): Promise<WebOrderStatusResult> {
-  return request('set_admin_web_order_status', {
-    p_order_id: orderId,
-    p_status: nextStatus,
-    p_observation: null,
-  }, parseWebOrderStatusResult, signal)
+export function setAdminWebOrderStatus(orderId: string, nextStatus: WebOrderStatus, expectedRevision: number, signal?: AbortSignal): Promise<WebOrderStatusResult> {
+  return request(async () => {
+    const { token } = requireBackendAccess(), id = backendId(orderId)
+    if (nextStatus === 'PENDING') throw new BackendAdminOrderError(400, 'WEB_ORDER_STATUS_INVALID')
+    const result = await createBackendAdminOrderService().update(token, id, { status: nextStatus, expected_revision: expectedRevision, observation: null }, signal)
+    const saved = await detail(id, signal)
+    if (saved.order.status !== result.status || saved.order.revision !== result.revision) throw new BackendAdminOrderError(409, 'WEB_ORDER_VERSION_CONFLICT')
+    return { schemaVersion: 1, orderId, status: saved.order.status, revision: result.revision, updatedAt: saved.order.updatedAt, idempotentReplay: result.idempotent_replay }
+  }, signal)
 }
-
 export function sendWebOrderToCashier(orderId: string) {
-  return request('send_web_order_to_cashier', { p_order_id: orderId }, parseWebOrderCheckout)
+  return request(async () => {
+    const { token } = requireBackendAccess()
+    const result = await createBackendAdminOrderService().sendToCashier(token, backendId(orderId))
+    return { saleId: String(result.sale_id), folio: result.folio, status: result.status, totalCents: result.total_cents }
+  })
 }

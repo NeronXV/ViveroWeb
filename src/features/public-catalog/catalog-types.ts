@@ -3,7 +3,7 @@ export interface PublicCatalogCategory {
   name: string
 }
 
-export interface PublicCatalogImage {
+export type PublicCatalogImage = { authority: 'backend-api'; url: string; altText: string | null } | {
   bucketName: 'catalog-images'
   storagePath: string
   altText: string | null

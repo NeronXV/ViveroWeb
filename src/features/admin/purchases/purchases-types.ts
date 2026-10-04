@@ -98,6 +98,7 @@ export interface SetSupplierPresentationInput {
 }
 
 export interface ResolvePurchaseItemInput {
+  purchaseId: string
   itemId: string
   resolution: 'MATCHED' | 'IGNORED'
   productId: string | null

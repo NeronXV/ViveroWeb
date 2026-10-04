@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { formatCents, parsePesosToCents } from './cashier-money'
 import {
+  attachPaymentFailure,
   attachSucceededResult,
   createPaymentAttempt,
   getPaymentAttemptStorageKey,
@@ -18,6 +19,25 @@ const OTHER_USER_ID = '22000000-0000-0000-0000-000000000002'
 const SALE_ID = '52000000-0000-0000-0000-000000000001'
 const IDEMPOTENCY_KEY = '73000000-0000-0000-0000-000000000001'
 const CLAIM_TOKEN = '83000000-0000-0000-0000-000000000001'
+
+it('preserves the original locked payload after a definitive inventory rejection', () => {
+  const confirming = { ...createPaymentAttempt(USER_ID, SALE_ID, IDEMPOTENCY_KEY), status: 'CONFIRMING' as const,
+    claimToken: CLAIM_TOKEN, claimExpiresAt: '2026-10-01T12:05:00Z', method: 'CASH' as const, amountReceivedCents: 1200 }
+  const rejected = attachPaymentFailure(confirming, { status: 409, code: 'INVENTORY_INSUFFICIENT' }, 'Faltan existencias.')
+  expect(rejected).toEqual({ ...confirming, status: 'CLAIMED', errorMsg: 'Faltan existencias.' })
+  const storage = createStorage()
+  savePaymentAttempt(storage, rejected)
+  expect(loadPaymentAttempt(storage, USER_ID, SALE_ID)).toEqual(rejected)
+  expect(confirming.status).toBe('CONFIRMING')
+})
+
+it('keeps network and unexpected server failures uncertain without unlocking a new payment', () => {
+  const confirming = { ...createPaymentAttempt(USER_ID, SALE_ID, IDEMPOTENCY_KEY), status: 'CONFIRMING' as const,
+    claimToken: CLAIM_TOKEN, claimExpiresAt: '2026-10-01T12:05:00Z', method: 'CASH' as const, amountReceivedCents: 1200 }
+  for (const failure of [null, { status: 0 }, { status: 503, code: 'INVENTORY_INSUFFICIENT' }]) {
+    expect(attachPaymentFailure(confirming, failure, 'Consultar resultado.')).toEqual({ ...confirming, status: 'UNCERTAIN', errorMsg: 'Consultar resultado.' })
+  }
+})
 
 function createStorage() {
   const values = new Map<string, string>()

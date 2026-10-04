@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import type { PublicCatalogProduct } from '../public-catalog/catalog-types'
 import type { PublicCartItem } from './web-order-types'
 
-const STORAGE_KEY = 'viveroweb_public_cart_v1'
+// Preserve the Supabase cart at its original key; never send its UUIDs to API.
+const STORAGE_KEY = 'viveroweb_public_cart_backend_v1'
 
 function readCart(): PublicCartItem[] {
   try {
@@ -15,6 +16,7 @@ function readCart(): PublicCartItem[] {
         && (candidate.quantity ?? 0) > 0
         && (candidate.quantity ?? 0) <= 100
         && typeof candidate.product?.id === 'string'
+        && /^[1-9][0-9]*$/.test(candidate.product.id) && Number(candidate.product.id) <= 4294967295
         && typeof candidate.product?.name === 'string'
         && Number.isSafeInteger(candidate.product?.price?.amountCents)
     })

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { addCounterProduct, prepareCounterSale, validQuantity, type CounterLine, type CounterSubmission } from './counter-sale'
-import { CounterRejected, finishCounterSale, lookupCounterProduct, readCounterPending, searchCounterProducts, submitCounterSale } from './counter-sale-service'
+import { addCounterProduct, validQuantity, type CounterLine } from './counter-sale'
+import { quoteCounterSale, retireCounterSale, finishCounterSale, lookupCounterProduct, readCounterPending, searchCounterProducts, submitCounterSale } from './counter-sale-service'
+import type { BackendCounterAttempt } from './backend-counter-sale-service'
 import { searchCustomers } from '../admin/admin-customers-service'
 import type { AdminCustomer } from '../admin/admin-customers-types'
 import { formatCents } from './cashier-money'
@@ -12,7 +13,8 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
     try { return { pending: readCounterPending(userId, branchId), error: '' } }
     catch { return { pending: null, error: 'No se pudo leer el intento guardado. No borres los datos del navegador; solicita revisar las ventas pendientes.' } }
   })
-  const [pending, setPending] = useState<CounterSubmission | null>(boot.pending)
+  const [pending, setPending] = useState<BackendCounterAttempt | null>(boot.pending)
+  const [quoted, setQuoted] = useState<BackendCounterAttempt | null>(null)
   const [lines, setLines] = useState<CounterLine[]>([])
   const [query, setQuery] = useState(''), [mode, setMode] = useState('name')
   const [results, setResults] = useState<Awaited<ReturnType<typeof searchCounterProducts>>>([])
@@ -46,6 +48,7 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
   const add = async (code: string) => {
     const product = await lookupCounterProduct(code)
     if (!active.current) return
+    if (lines.length >= 25 && !lines.some(line => line.product.id === product.id)) throw new Error('La venta admite hasta 25 productos distintos.')
     setLines(addCounterProduct(lines, product))
     setNotice(product.name + ' agregado.'); setQuery(''); inputRef.current?.focus()
   }
@@ -58,30 +61,31 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
     })
   }
   const submit = () => void act(async () => {
-    const request = pending ?? prepareCounterSale(lines, userId, branchId, customer?.id ?? null, crypto.randomUUID())
-    setPending(request)
-    try {
-      const result = await submitCounterSale(request)
-      if (!active.current) return
-      finishCounterSale(request)
-      onCreated(result.id)
-    } catch (reason) {
-      if (reason instanceof CounterRejected && active.current) setPending(null)
-      throw reason
+    if (!pending && !quoted) {
+      const quote = await quoteCounterSale(lines, userId, branchId, customer?.id ?? null)
+      if (active.current) setQuoted(quote)
+      return
     }
+    const request = pending ?? quoted!
+    setPending(request); setQuoted(null)
+    const result = await submitCounterSale(request)
+    if (!active.current) return
+    finishCounterSale(request)
+    onCreated(String(result.id))
   })
   const total = lines.reduce((sum, line) => sum + line.product.priceCents * line.quantity, 0)
-  const valid = lines.length > 0 && lines.every(line => validQuantity(line.quantity)) && Number.isSafeInteger(total) && total > 0
+  const valid = lines.length > 0 && lines.length <= 25 && lines.every(line => validQuantity(line.quantity)) && Number.isSafeInteger(total) && total > 0
   return <section className="counter-sale" aria-labelledby="counter-title" aria-busy={busy}>
     <div className="section-header-row"><div><p className="eyebrow">Venta de mostrador</p><h2 id="counter-title">Nueva venta</h2>
       <p>Agrega los productos del cliente y continúa al cobro.</p></div>
       <button type="button" className="retry-btn-secondary" disabled={busy} onClick={onClose}>{pending ? 'Volver a fila (intento guardado)' : 'Cerrar / descartar carrito'}</button></div>
     {error && <p className="admin-page-error" role="alert">{error}</p>}
     {notice && <p className="form-notice" role="status">{notice}</p>}
-    {pending ? <div className="counter-pending"><h3>Venta pendiente de confirmar</h3>
-      <p>Folio: <strong>{pending.folio}</strong>. Recuperaremos el mismo intento para evitar duplicar la venta.</p>
+    {(pending || quoted) ? <div className="counter-pending"><h3>{pending ? 'Venta pendiente de confirmar' : 'Confirma la cotización'}</h3>
+      <p>Total confirmado por el servidor: <strong>{formatCents(JSON.parse((pending ?? quoted!).body).expected_total_cents)}</strong>. El folio se asigna al registrar la venta.</p>
       <p>El carrito no se puede modificar hasta conocer el resultado. Este paso todavía no cobra al cliente.</p>
-      <button className="catalog-action" disabled={busy || Boolean(boot.error)} onClick={submit}>{busy ? 'Consultando…' : 'Recuperar venta y abrir cobro'}</button></div> :
+      <button className="catalog-action" disabled={busy || Boolean(boot.error)} onClick={submit}>{busy ? 'Consultando…' : pending ? 'Recuperar venta y abrir cobro' : 'Confirmar venta y abrir cobro'}</button>
+      <button type="button" disabled={busy} onClick={() => { if (!pending) { setQuoted(null); return } void act(async () => { const result = await retireCounterSale(pending); if (!active.current) return; if (result) onCreated(String(result.id)); else { setPending(null); setNotice('El intento quedó retirado. Puedes modificar el carrito y cotizar de nuevo.') } }) }}>{pending ? 'Resolver intento para volver al carrito' : 'Editar carrito'}</button></div> :
     <div className="counter-grid">
       <div className="counter-search">
         <form className="dashboard-form" onSubmit={find}><fieldset disabled={busy || Boolean(boot.error)}>
@@ -117,7 +121,7 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
         </details>
         <div className="counter-total"><span>Total estimado</span><strong>{Number.isSafeInteger(total) ? formatCents(total) : 'Revisa cantidades'}</strong></div>
         <p className="counter-hint">Caja mostrará el total definitivo con los precios y promociones vigentes al enviar. El inventario se valida según la configuración de tu sucursal.</p>
-        <button className="catalog-action counter-submit" disabled={busy || !valid || Boolean(boot.error)} onClick={submit}>{busy ? 'Preparando…' : 'Continuar al cobro'}</button>
+        <button className="catalog-action counter-submit" disabled={busy || !valid || Boolean(boot.error)} onClick={submit}>{busy ? 'Preparando…' : 'Cotizar venta'}</button>
       </div>
     </div>}
   </section>

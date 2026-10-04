@@ -1,44 +1,49 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { getSupabaseClient } from '../../lib/supabase/client'
+import { accountRecovery, recoveryToken } from './account-links-service'
+import { useAuth } from './useAuth'
 export function PasswordRecoveryPage() {
-  const [ready, setReady] = useState(false), [loading, setLoading] = useState(true)
+  const { signOut, status } = useAuth()
+  const [token, setToken] = useState(() => recoveryToken(window.location.hash))
+  const ready = Boolean(token)
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState(''), [error, setError] = useState('')
+  const pending = useRef<AbortController | null>(null)
   useEffect(() => {
-    let active = true
-    const client = getSupabaseClient()
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => { if (active) setReady(Boolean(session)) })
-    client.auth.getSession().then(({ data }) => { if (active) { setReady(Boolean(data.session)); setLoading(false) } })
-      .catch(() => { if (active) { setError('No se pudo revisar el enlace.'); setLoading(false) } })
-    return () => { active = false; subscription.unsubscribe() }
+    window.history.replaceState(window.history.state, '', window.location.pathname)
+    return () => { pending.current?.abort() }
   }, [])
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (busy) return
-    const form = event.currentTarget, values = new FormData(form), client = getSupabaseClient()
+    const form = event.currentTarget, values = new FormData(form), controller = new AbortController()
+    pending.current = controller
     setError(''); setNotice(''); setBusy(true)
     try {
-      if (ready) {
+      if (token) {
         const password = String(values.get('password'))
-        if (password.length < 8 || password !== values.get('confirm')) throw new Error('Las contraseñas deben coincidir y tener al menos 8 caracteres.')
-        const { error: failure } = await client.auth.updateUser({ password })
-        if (failure) throw new Error('No se pudo guardar la contraseña. Solicita otro enlace si venció.')
-        setNotice('Contraseña guardada. Ya puedes iniciar sesión en Web o Android.'); form.reset()
+        if ([...password].length < 15 || [...password].length > 128 || password !== values.get('confirm')) throw new Error('Las contraseñas deben coincidir y tener de 15 a 128 caracteres.')
+        await accountRecovery('password', { token, password }, controller.signal)
+        if (controller.signal.aborted) return
+        if (status === 'authenticated') await signOut()
+        if (controller.signal.aborted) return
+        setToken(null)
+        setNotice('Contraseña guardada. Inicia sesión nuevamente.'); form.reset()
       } else {
-        const { error: failure } = await client.auth.resetPasswordForEmail(String(values.get('email')).trim(), { redirectTo: window.location.origin + '/recuperar' })
-        if (failure) throw new Error('No se pudo solicitar el enlace. Intenta más tarde.')
-        setNotice('Si la cuenta existe, recibirás un enlace para recuperar el acceso.')
+        await accountRecovery('recovery', { email: String(values.get('email')).trim() }, controller.signal)
+        if (controller.signal.aborted) return
+        setNotice('Si la cuenta está habilitada, recibirás un enlace. Si no llega, solicita otro más tarde.')
       }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se completó la solicitud.') }
-    finally { setBusy(false) }
+    } catch (reason) { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'No se completó la solicitud.') }
+    finally { if (!controller.signal.aborted) setBusy(false) }
   }
   return <main className="internal-page auth-page"><section className="login-card"><h1>{ready ? 'Establecer contraseña' : 'Recuperar acceso'}</h1>
-    {loading ? <p role="status">Revisando enlace…</p> : <form onSubmit={submit}><fieldset disabled={busy}>
-      {ready ? <><label>Nueva contraseña<input name="password" type="password" autoComplete="new-password" minLength={8} required /></label>
-        <label>Confirmar contraseña<input name="confirm" type="password" autoComplete="new-password" minLength={8} required /></label></> :
+    <form onSubmit={submit}><fieldset disabled={busy}>
+      {ready ? <><label>Nueva contraseña<input name="password" type="password" autoComplete="new-password" minLength={15} required /></label>
+        <label>Confirmar contraseña<input name="confirm" type="password" autoComplete="new-password" minLength={15} required /></label></> :
         <label>Correo electrónico<input name="email" type="email" autoComplete="email" required /></label>}
       <button className="catalog-action">{ready ? 'Guardar contraseña' : 'Enviar enlace'}</button>
-    </fieldset></form>}
+    </fieldset></form>
+    {token && <button type="button" disabled={busy} onClick={() => { setToken(null); setError(''); setNotice('') }}>Solicitar otro enlace</button>}
     <p role="status">{notice}</p>{error && <p role="alert">{error}</p>}<Link to="/login">Volver al acceso</Link>
   </section></main>
 }

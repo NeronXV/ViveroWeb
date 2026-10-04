@@ -1,5 +1,15 @@
 # Estado actual del proyecto
 
+Checkpoint de Git del 3 de octubre de 2026: la Web usa Backend API + MariaDB en
+https://viverodulcinea.bajastack.network. Lint, build y 471 pruebas aprobados.
+El rechazo por falta de inventario está corregido y conserva el intento original.
+Los datos se importaron al VPS; correo, copia externa cifrada y aceptación
+operativa completa siguen pendientes. Supabase se conserva para conciliación.
+Ver [README](../README.md), [rechazo de inventario](backend-web-cashier-inventory-rejection.md)
+y [guía del VPS](../../ViveroApp/docs/vps-multiproject-operations.md).
+
+## Registro histórico de septiembre
+
 Última revisión documental: 2026-09-01.
 
 ## Objetivo actual
