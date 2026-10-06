@@ -49,6 +49,7 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   PURCHASE_CONFIRMATION_CONFLICT: 'Conflicto al confirmar la recepción de la compra.',
   PURCHASE_MOVEMENT_CONFLICT: 'No fue posible registrar los movimientos de inventario.',
   PURCHASE_PRODUCT_UNAVAILABLE: 'El producto seleccionado no está disponible o está inactivo.',
+  PURCHASE_ATTEMPT_RETIRED: 'Este intento ya fue resuelto. Puedes corregir los datos y crear otro borrador.',
 }
 
 export function mapBackendError(rawError: { message?: string; code?: string; details?: string } | null | undefined): PurchaseServiceError {
@@ -156,6 +157,34 @@ async function durable(operation: string, body: unknown, key: string, signal?: A
 }
 export async function recoverSupplierPurchaseDraft(signal?: AbortSignal): Promise<SupplierPurchaseDetail | null> {
   return request(() => durable('draft', null, '', signal, true))
+}
+/** Fence the original key before freeing the slot; keep the full request as an archive. */
+export async function retireSupplierPurchaseDraft(signal?: AbortSignal): Promise<SupplierPurchaseDetail | null> {
+  return request(async () => {
+    const slot = journalKey('draft')
+    if (!navigator.locks) throw new PurchaseServiceError('Se requiere un navegador con bloqueo seguro de operaciones.', 'LOCK_UNAVAILABLE')
+    return navigator.locks.request(slot, async () => {
+      const encoded = localStorage.getItem(slot)
+      if (encoded === null) return null
+      const stored = object(JSON.parse(encoded))
+      if (typeof stored.key !== 'string' || !/^[A-Za-z0-9._:-]{16,128}$/.test(stored.key) || typeof stored.body !== 'string') throw new Error('Invalid attempt')
+      const root = await backendHttp('supplier-purchases/retire', 'POST', {}, signal, stored.key)
+      if (journalKey('draft') !== slot || localStorage.getItem(slot) !== encoded) throw new Error('Identity or attempt changed')
+      if (root.schema_version !== 1) throw new Error('Invalid retirement')
+      if (root.status === 'COMMITTED') {
+        const result = detail(object(root.receipt))
+        if (result.branchId !== String(requireBackendAccess().context.branch?.id) || result.expectedTotalCents !== object(JSON.parse(stored.body)).expected_total_cents) throw new Error('Receipt mismatch')
+        localStorage.removeItem(slot)
+        return result
+      }
+      if (root.status !== 'RETIRED' || root.receipt !== null) throw new Error('Invalid retirement')
+      const archive = `${slot}:retired:${stored.key}`
+      localStorage.setItem(archive, encoded)
+      if (localStorage.getItem(archive) !== encoded) throw new PurchaseServiceError('No se pudo conservar el borrador. El intento sigue guardado.', 'STORAGE_FAILED')
+      localStorage.removeItem(slot)
+      return null
+    })
+  })
 }
 export async function fetchSuppliers(signal?: AbortSignal): Promise<Supplier[]> {
   return request(async () => {

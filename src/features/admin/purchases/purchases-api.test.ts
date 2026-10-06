@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { bindBackendSession } from '../../auth/backend-runtime'
-import { createSupplierPurchaseDraft, recoverSupplierPurchaseDraft, fetchSupplierPurchases, resolveSupplierPurchaseItem, fetchSuppliers } from './purchases-service'
+import { createSupplierPurchaseDraft, recoverSupplierPurchaseDraft, retireSupplierPurchaseDraft, fetchSupplierPurchases, resolveSupplierPurchaseItem, fetchSuppliers } from './purchases-service'
 const http = vi.fn(), saved = new Map<string, string>()
 const time = '2026-10-01T12:00:00.000Z'
 const purchase = { id: 8, branch_id: 1, supplier: { id: 2, name: 'Demo', code: 'DEMO' }, document_date: '2026-10-01', external_reference: null, payment_terms: 'CASH', expected_total_cents: 100,
@@ -32,6 +32,47 @@ it('blocks another draft and retains its original data after a server rejection'
   await expect(createSupplierPurchaseDraft(input)).rejects.toThrow()
   await expect(createSupplierPurchaseDraft({ ...input, expectedTotalCents: 200 })).rejects.toMatchObject({ code: 'PENDING_PURCHASE' })
   expect(http).toHaveBeenCalledTimes(1); expect(saved.size).toBe(1)
+})
+it('fences a rejected key before releasing the slot and archives all original source data', async () => {
+  http.mockResolvedValueOnce(Response.json({ error: 'SUPPLIER_UNAVAILABLE' }, { status: 409 }))
+  await expect(createSupplierPurchaseDraft(input)).rejects.toThrow()
+  const original = [...saved.values()][0]
+  http.mockResolvedValueOnce(Response.json({ schema_version: 1, status: 'RETIRED', receipt: null }))
+  expect(await retireSupplierPurchaseDraft()).toBeNull()
+  expect(http.mock.calls[1][0]).toBe('/api/v1/supplier-purchases/retire')
+  expect(http.mock.calls[1][1].headers['Idempotency-Key']).toBe(input.idempotencyKey)
+  expect([...saved.values()]).toEqual([original])
+  expect([...saved.keys()][0]).toContain(':retired:')
+  http.mockResolvedValueOnce(Response.json({ schema_version: 1, purchase }))
+  await createSupplierPurchaseDraft({ ...input, idempotencyKey: 'corrected-draft-attempt-0002' })
+  expect(http.mock.calls[2][1].headers['Idempotency-Key']).toBe('corrected-draft-attempt-0002')
+})
+it('keeps the pending key after lost retirement responses or incompatible replies', async () => {
+  http.mockRejectedValueOnce(new Error('lost draft'))
+  await expect(createSupplierPurchaseDraft(input)).rejects.toThrow()
+  const before = [...saved.entries()]
+  http.mockRejectedValueOnce(new Error('lost retirement'))
+  await expect(retireSupplierPurchaseDraft()).rejects.toThrow()
+  expect([...saved.entries()]).toEqual(before)
+  http.mockResolvedValueOnce(Response.json({ schema_version: 1, status: 'UNKNOWN', receipt: null }))
+  await expect(retireSupplierPurchaseDraft()).rejects.toThrow()
+  expect([...saved.entries()]).toEqual(before)
+})
+it('recovers a committed draft instead of allowing a replacement', async () => {
+  http.mockRejectedValueOnce(new Error('lost response'))
+  await expect(createSupplierPurchaseDraft(input)).rejects.toThrow()
+  http.mockResolvedValueOnce(Response.json({ schema_version: 1, status: 'COMMITTED', receipt: { schema_version: 1, purchase } }))
+  expect(await retireSupplierPurchaseDraft()).toMatchObject({ id: '8' })
+  expect(saved.size).toBe(0)
+})
+it('keeps the original pending draft if its archive cannot be saved', async () => {
+  http.mockRejectedValueOnce(new Error('lost response'))
+  await expect(createSupplierPurchaseDraft(input)).rejects.toThrow()
+  vi.stubGlobal('localStorage', { getItem: (key: string) => saved.get(key) ?? null,
+    setItem: (key: string, value: string) => { if (!key.includes(':retired:')) saved.set(key, value) }, removeItem: (key: string) => saved.delete(key) })
+  http.mockResolvedValueOnce(Response.json({ schema_version: 1, status: 'RETIRED', receipt: null }))
+  await expect(retireSupplierPurchaseDraft()).rejects.toMatchObject({ code: 'STORAGE_FAILED' })
+  expect(saved.size).toBe(1)
 })
 it('uses authoritative list counts, dates and supplier rather than synthesizing metadata', async () => {
   http.mockResolvedValueOnce(Response.json({ schema_version: 1, branch_id: 1, items: [purchase], next_after_id: null }))

@@ -1,36 +1,24 @@
 # Vivero Dulcinea Web
 
-## Estado actual — 3 de octubre de 2026
+Estado local de migración (2026-10-02): sesión, catálogo/pedidos, Caja,
+mostrador, administración de catálogo/imágenes/promociones y compras/proveedores
+usan Backend API, junto con invitaciones, recuperación y newsletter. El bundle
+generado ya no incluye Supabase. [Contrato de boletín](../ViveroApp/docs/backend-newsletter.md). Correo configurable y pruebas: [backend-account-links.md](../ViveroApp/docs/backend-account-links.md). No es un corte
+operativo completo. El Dockerfile construye Web sin copiar archivos `.env` a la
+imagen; el perfil VPS compartido se encuentra en ViveroApp.
+Estado y evidencia: [backend-complete-cutover.md](../ViveroApp/docs/backend-complete-cutover.md).
 
-La Web operativa está en https://viverodulcinea.bajastack.network y consume la API
-oficial de ViveroApp, con MariaDB y Docker. Sesión, catálogo/pedidos, caja,
-mostrador, administración de catálogo/imágenes/promociones, clientes, personal,
-compras/proveedores y contratos de recuperación/newsletter usan la API.
-El bundle activo no incluye Supabase. El envío real de correo sigue pendiente.
+## Migración oficial a Backend API + MariaDB
 
-El rechazo `409 INVENTORY_INSUFFICIENT` conserva el intento de cobro y muestra
-falta de existencias; los errores inciertos siguen requiriendo conciliación con
-la clave original. No borrar localStorage para reintentar. El origen anterior
-conserva acceso temporal a caja para recuperar intentos guardados allí.
-
-La configuración de desarrollo usa `BACKEND_PROXY_TARGET` en un archivo privado;
-el navegador consume `/api/v1` por el mismo origen, sin contraseñas de base ni
-claves administrativas en Vite. Docker construye sin incluir archivos `.env`.
-La infraestructura compartida vive en el checkout vecino `ViveroApp/infra/docker`.
-
-Validación local para este checkpoint: `npm run lint`, `npm test` (471 pruebas,
-44 archivos) y `npm run build` correctos. La aceptación humana completa de Web
-y Android sigue pendiente; Supabase se conserva para conciliación histórica.
-
-- [Sesión y permisos API](docs/backend-web-session.md).
-- [Rechazo de cobro por inventario](docs/backend-web-cashier-inventory-rejection.md).
-- [Corte de catálogo](docs/backend-catalog-cutover.md).
-- [Operación del VPS](../ViveroApp/docs/vps-multiproject-operations.md).
-- [Dominio definitivo](../ViveroApp/docs/vps-canonical-domain.md).
-
-## Referencia histórica del MVP con Supabase
-
-Las secciones siguientes describen el checkpoint anterior, no el destino activo.
+El destino compartido de Web, Android y AppCliente es la API de `ViveroApp/backend/`,
+con esquema en `ViveroApp/database/mysql/` y entorno local en
+`ViveroApp/infra/docker/`. Consultar la
+[guía de fase 1](../ViveroApp/docs/backend-api-mariadb.md) y el
+[mapa de módulos](../ViveroApp/docs/supabase-migration-map.md) en el checkout vecino.
+Este repositorio no aloja otro backend. En esta primera fase la Web conserva
+Supabase: cambiar únicamente el catálogo enviaría IDs enteros a pedidos/caja que
+todavía esperan UUID. La conexión se hará después de preparar permisos de API y
+el corte coordinado de esos contratos. No añadir el token local del backend a Vite.
 
 Aplicación web de Vivero Dulcinea construida con React, TypeScript y Vite. El catálogo público, la autenticación, el contexto de acceso, Caja y parte de Administración usan contratos reales de Supabase; los módulos aún demostrativos se identifican de forma explícita.
 

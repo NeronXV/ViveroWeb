@@ -1,7 +1,7 @@
 import { ProductQrLabelCard } from '../ProductQrLabelCard'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { centsToPesos, centsToFormattedMxn, pesosToCents, calculateExpectedTotalCents, validatePurchaseLines, sanitizeFileName } from './purchases-parser'
-import { confirmSupplierPurchase, recoverSupplierPurchaseDraft, createSupplierPurchaseDraft, fetchSupplierPurchaseDetail, resolveSupplierPurchaseItem, setSupplierPresentation } from './purchases-service'
+import { confirmSupplierPurchase, recoverSupplierPurchaseDraft, retireSupplierPurchaseDraft, createSupplierPurchaseDraft, fetchSupplierPurchaseDetail, resolveSupplierPurchaseItem, setSupplierPresentation } from './purchases-service'
 import { extractFromLocalPdf, parseCsv, parseManualOrPasteJson } from './purchases-extractor'
 import { SupplierCreateModal } from './SupplierCreateModal'
 import { SupplierPresentationModal } from './SupplierPresentationModal'
@@ -412,6 +412,19 @@ export function PurchaseDraftWizard({
         catch (error) { setDraftError(error instanceof Error ? error.message : 'No se confirmó el borrador pendiente.') }
         finally { setIsCreatingDraft(false) }
       }}>Recuperar borrador pendiente</button>}
+      {!purchaseDetail && draftError && <button type="button" disabled={isCreatingDraft} onClick={async () => {
+        setIsCreatingDraft(true)
+        try {
+          const recovered = await retireSupplierPurchaseDraft()
+          if (recovered) { setPurchaseDetail(recovered); setStep(recovered.status === 'RECEIVED' ? 6 : 4); setDraftError(null) }
+          else {
+            idempotencyKeyRef.current = crypto.randomUUID()
+            setStep(1)
+            setDraftError('Intento resuelto. Los datos originales se conservaron en este navegador. Revisa el proveedor y los renglones antes de registrar otro borrador.')
+          }
+        } catch (error) { setDraftError(error instanceof Error ? error.message : 'No se confirmó la resolución del intento. Conservamos el borrador pendiente.') }
+        finally { setIsCreatingDraft(false) }
+      }}>Resolver intento y corregir borrador</button>}
       {draftError && <div className="admin-dialog-error" role="alert">{draftError}</div>}
       {confirmError && <div className="admin-dialog-error" role="alert">{confirmError}</div>}
 

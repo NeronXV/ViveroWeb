@@ -1,14 +1,12 @@
 # Estado actual del proyecto
 
-Checkpoint de Git del 3 de octubre de 2026: la Web usa Backend API + MariaDB en
-https://viverodulcinea.bajastack.network. Lint, build y 471 pruebas aprobados.
-El rechazo por falta de inventario está corregido y conserva el intento original.
-Los datos se importaron al VPS; correo, copia externa cifrada y aceptación
-operativa completa siguen pendientes. Supabase se conserva para conciliación.
-Ver [README](../README.md), [rechazo de inventario](backend-web-cashier-inventory-rejection.md)
-y [guía del VPS](../../ViveroApp/docs/vps-multiproject-operations.md).
+Estado de migración vigente (2026-10-02): recuperación e invitaciones usan la API
+oficial, junto con newsletter (migración 025). Web pasó 468 pruebas, build y lint;
+el bundle ya no incluye SDK Supabase. Correo real y datos históricos siguen pendientes;
+Android/Cliente y datos reales siguen pendientes. Ver [estado compartido](../../ViveroApp/docs/backend-complete-cutover.md)
+[newsletter](../../ViveroApp/docs/backend-newsletter.md) y [contratos de acceso](../../ViveroApp/docs/backend-account-links.md).
+La revisión de septiembre siguiente se conserva como evidencia histórica.
 
-## Registro histórico de septiembre
 
 Última revisión documental: 2026-09-01.
 

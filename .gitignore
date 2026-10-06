@@ -19,5 +19,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Auditorías internas temporales
+docs/VIVERO_DULCINEA_*.md
+
 .DS_Store
 Thumbs.db
