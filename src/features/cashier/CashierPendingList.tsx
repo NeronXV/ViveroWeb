@@ -2,9 +2,18 @@ import type { CashierSale } from './cashier-types'
 import { formatCents } from './cashier-money'
 import { cashierClaimLabel, cashierOriginLabel } from './cashier-desk-state'
 
-export function CashierPendingList({ sales, locked, onCharge, onDetail }: {
+export function CashierPendingList({ sales, locked, onCharge, onDetail, compact = false, selectedId }: {
   sales: CashierSale[]; locked: boolean; onCharge: (id: string) => void; onDetail: (id: string) => void
+  compact?: boolean; selectedId?: string | null
 }) {
+  if (compact) return <ul className="desk-sales pos-pending-list" aria-label="Ventas pendientes">{sales.map(sale => <li key={sale.id}>
+    <button type="button" className="pos-pending-row" aria-label={`Ver detalle ${sale.folio}`} aria-pressed={selectedId === sale.id} disabled={locked} onClick={() => onDetail(sale.id)}>
+      <span className="pos-row-top"><strong>{sale.folio}</strong><b>${formatCents(sale.totalCents)}</b></span>
+      <span className="pos-row-origin">{cashierOriginLabel(sale.origin)} · {sale.itemCount} {sale.itemCount === 1 ? 'producto' : 'productos'}</span>
+      <span className="pos-row-bottom"><span className={`desk-state ${sale.claimState === 'AVAILABLE' ? '' : 'desk-state-attention'}`}>{cashierClaimLabel(sale.claimState)}</span>
+        <span className="pos-row-detail">Ver detalle <span aria-hidden="true">→</span></span></span>
+    </button>
+  </li>)}</ul>
   return <ul className="desk-sales" aria-label="Ventas pendientes">{sales.map(sale => <li key={sale.id}>
     <article className="desk-sale" aria-label={`Venta ${sale.folio}`}>
       <div className="desk-sale-identity"><span className="desk-sale-icon" aria-hidden="true">{sale.origin === 'WEB_ORDER' ? '↗' : '❧'}</span>

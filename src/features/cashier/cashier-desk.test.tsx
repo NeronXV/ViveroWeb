@@ -18,6 +18,13 @@ function memory() {
   return { get length() { return values.size }, key: (i: number) => [...values.keys()][i] ?? null, getItem: (k: string) => values.get(k) ?? null,
     setItem: (k: string, v: string) => { values.set(k, v) }, removeItem: (k: string) => { values.delete(k) }, values }
 }
+it('POS selection is an explicit detail action, with no duplicated charge action in rows', () => {
+  const html = renderToStaticMarkup(<CashierPendingList compact selectedId="8" sales={[sale]} locked={false} onCharge={() => { throw new Error('Selecting never claims') }} onDetail={() => {}} />)
+  expect(html).toContain('aria-label="Ver detalle VD-0008"')
+  expect(html).toContain('aria-pressed="true"')
+  expect(html).not.toContain('Cobrar venta')
+  expect(renderToStaticMarkup(<CashierPendingList compact sales={[sale]} locked onCharge={() => {}} onDetail={() => {}} />)).toContain('disabled=""')
+})
 it('pending rows have separate charge/detail actions and accurate origin without technical states', () => {
   const html = renderToStaticMarkup(<CashierPendingList sales={[{ ...sale, origin: 'WEB_ORDER' }, { ...sale, id: '9', folio: 'VD-0009', origin: 'DIRECT_SALE', claimState: 'CLAIMED_BY_OTHER' }]} locked={false} onCharge={() => {}} onDetail={() => {}} />)
   expect(html).toContain('VD-0008'); expect(html).toContain('610.00'); expect(html).toContain('Pedido web'); expect(html).toContain('Venta directa')

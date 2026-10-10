@@ -16,7 +16,7 @@ export function CashierPaymentPanel(props: CashierPaymentPanelProps) {
   if (!attempt) return <div className="desk-card" role="status">Preparando el cobro…</div>
   const message = cashierWorkerMessage(attempt.errorMsg)
   if (attempt.status === 'SUCCEEDED' && attempt.paymentResult) return <section className="desk-card desk-success" aria-label="Pago confirmado">
-    <span className="desk-success-mark" aria-hidden="true">✓</span><h2>Pago confirmado</h2><p role="status">El comprobante está listo. Puedes imprimirlo sin repetir el cobro.</p>
+    <span className="desk-success-mark" aria-hidden="true">✓</span><h2>Pago registrado</h2><p role="status">El comprobante está listo. Puedes imprimirlo sin repetir el cobro.</p>
     <CashierPrintableTicket result={attempt.paymentResult} />
     <button className="desk-secondary" type="button" onClick={props.onFinish}>Volver a ventas pendientes</button>
   </section>

@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { createBackendCounterAttempt } from './backend-counter-sale-service'
 import { bindBackendSession } from '../auth/backend-runtime'
-import { readCounterPending, submitCounterSale, finishCounterSale, retireCounterSale } from './counter-sale-service'
+import { readCounterPending, submitCounterSale, finishCounterSale, retireCounterSale, searchCounterProducts, listCounterCategories } from './counter-sale-service'
 const request = vi.fn(), storage = new Map<string, string>()
 const attempt = () => createBackendCounterAttempt(4, 1, { items: [{ product_id: 2, quantity: 1 }], expected_total_cents: 100, customer_id: 8 })
 const receipt = { schema_version: 1, id: 3, folio: 'VD-' + 'A'.repeat(24), branch_id: 1, created_by: 4, status: 'SENT_TO_CASHIER', subtotal_cents: 100, discount_cents: 0, total_cents: 100, created_at: '2026-10-01T12:00:00Z', idempotent_replay: true }
@@ -12,6 +12,25 @@ beforeEach(() => {
   bindBackendSession(() => ({ session: { accessToken: 'a'.repeat(43), userId: 4, expiresAt: Date.now() + 60000 }, accessStatus: 'ready', context: { user: { id: 4 }, branch: { id: 1, is_active: true } } } as never))
 })
 afterEach(() => vi.unstubAllGlobals())
+it('reads existing catalog photos and effective prices with the category filter, without writing a sale', async () => {
+  const product = { id: 2, internal_code: 'MON-002', barcode: null, common_name: 'Monstera sintética', scientific_name: null,
+    description: '', category_id: 3, price_cents: 25000, effective_price_cents: 25000, unit: 'pieza', is_active: true,
+    watering_advice: '', light_type: 'INDIRECT', recommended_climate: '', image: { id: 6, url: '/api/v1/images/6', alt_text: null }, active_promotion: null }
+  request.mockResolvedValueOnce(Response.json({ items: [product], next_after_id: null }))
+  expect(await searchCounterProducts('monstera', new AbortController().signal, 3)).toEqual([
+    { id: '2', code: 'MON-002', name: 'Monstera sintética', priceCents: 25000, imageUrl: '/api/v1/images/6' },
+  ])
+  expect(request.mock.calls[0][0]).toBe('/api/v1/products?limit=20&category_id=3&search=monstera')
+  expect(request.mock.calls[0][1].method).toBeUndefined()
+  expect(storage.size).toBe(0)
+})
+it('reads category metadata using the existing validated catalog contract', async () => {
+  const categories = [{ id: 3, name: 'Interior', description: 'Datos sintéticos', is_active: true }]
+  request.mockResolvedValueOnce(Response.json({ items: categories, next_after_id: null }))
+  expect(await listCounterCategories(new AbortController().signal)).toEqual(categories)
+  expect(request.mock.calls[0][0]).toBe('/api/v1/categories?limit=100')
+  expect(storage.size).toBe(0)
+})
 it('persists original customer/items before POST and recovers after response loss', async () => {
   const saved = attempt()
   request.mockImplementationOnce(async () => { expect(readCounterPending('4', '1')).toEqual(saved); throw new TypeError('offline') })

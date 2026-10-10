@@ -1,0 +1,116 @@
+/* POS presentation only. Print portals retain their existing styles. */
+@media screen {
+  .cashier-pos { background: #f3f6f2; padding: 28px 24px; min-height: 100vh; }
+  .cashier-pos .desk-shell { max-width: 1480px; }
+  .cashier-pos .desk-header { gap: 16px; margin-bottom: 18px; }
+  .cashier-pos h1 { font-family: var(--font-body); font-weight: 700; font-size: clamp(1.65rem, 2.3vw, 2rem); }
+  .cashier-pos .desk-eyebrow { color: #39604b; }
+  .cashier-pos .desk-muted { font-size: .85rem; }
+  .cashier-pos :is(button, summary) { min-height: 48px; }
+  .cashier-pos :is(.desk-primary, .desk-secondary, .pos-modes button) { min-height: 48px; }
+  .cashier-pos .pos-modes { display: flex; gap: 6px; border-bottom: 1px solid #d4dfd6; margin-bottom: 22px; }
+  .cashier-pos .pos-modes button { padding: 12px 22px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: #42584b; font: 650 .95rem var(--font-body); cursor: pointer; }
+  .cashier-pos .pos-modes button[aria-pressed=true] { border-color: #174b3b; color: #174b3b; }
+  .cashier-pos .pos-modes button[aria-pressed=true]:disabled { opacity: 1; }
+  .cashier-pos .pos-workspace { display: grid; grid-template-columns: minmax(275px, .85fr) minmax(0, 2fr); align-items: start; gap: 20px; }
+  .cashier-pos .pos-workspace[hidden] { display: none; }
+  .cashier-pos .desk-card { padding: 22px; border-radius: 16px; border-color: #dce5dd; box-shadow: 0 4px 18px #183c2510; }
+  .cashier-pos .desk-section-head { margin-bottom: 18px; gap: 10px; }
+  .cashier-pos .desk-section-head h2 { font: 700 1.1rem var(--font-body); }
+  .cashier-pos .desk-section-head p { margin-top: 6px; }
+  .cashier-pos .desk-search { padding-bottom: 16px; }
+  .cashier-pos .desk-search > div { flex-wrap: wrap; gap: 6px; }
+  .cashier-pos .desk-search input { flex: 1 1 150px; min-width: 0; }
+  .cashier-pos .desk-search button { flex: 0 1 auto; }
+  .cashier-pos .pos-pending-list { max-height: 54vh; overflow-y: auto; scrollbar-gutter: stable; padding: 4px; }
+  .cashier-pos .pos-pending-list li + li { margin-top: 9px; }
+  .cashier-pos .pos-pending-row { display: grid; gap: 6px; width: 100%; padding: 12px; border: 1px solid #dbe5dd; border-radius: 12px; text-align: left; background: #fff; color: #183c2b; font: inherit; cursor: pointer; }
+  .cashier-pos .pos-pending-row:hover:not(:disabled) { background: #f0f7f1; }
+  .cashier-pos .pos-pending-row[aria-pressed=true] { border-color: #174b3b; background: #edf5ef; box-shadow: inset 3px 0 #174b3b; }
+  .cashier-pos .pos-row-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .cashier-pos .pos-row-bottom { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cashier-pos .pos-row-top strong { font-size: 1.03rem; }
+  .cashier-pos .pos-row-top b { font-size: 1.03rem; font-variant-numeric: tabular-nums; }
+  .cashier-pos .pos-row-origin, .cashier-pos .pos-row-detail { font-size: .8rem; color: #496252; }
+  .cashier-pos .pos-row-detail { justify-self: end; }
+  .cashier-pos .pos-ticket-pane { min-width: 0; }
+  .cashier-pos .pos-no-selection { min-height: 425px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; color: #496252; }
+  .cashier-pos .pos-no-selection > span { font-size: 3rem; color: #174b3b; background: #edf5ef; border-radius: 50%; padding: 16px 26px; }
+  .cashier-pos .pos-no-selection h2 { font: 650 1.25rem var(--font-body); color: #183c2b; }
+  .cashier-pos .desk-detail-layout, .cashier-pos .desk-receipt-layout { max-width: none; margin: 0; }
+  .cashier-pos .desk-payment-layout { grid-template-columns: minmax(0, 1fr) minmax(290px, 1fr); gap: 16px; }
+  .cashier-pos .desk-sale-summary h2 { font: 750 1.45rem var(--font-body); margin: 8px 0; }
+  .cashier-pos .desk-items { margin: 18px 0; max-height: 320px; overflow-y: auto; padding: 0 4px; }
+  .cashier-pos .desk-items li { padding: 15px 0; gap: 12px; }
+  .cashier-pos .desk-items strong { font-size: .92rem; }
+  .cashier-pos .desk-items b { font-size: .92rem; }
+  .cashier-pos .desk-total { background: #edf5ef; margin: 16px -6px -6px; padding: 18px 12px; border-radius: 12px; color: #174b3b; }
+  .cashier-pos .desk-detail-actions { margin: 14px 0; }
+  .cashier-pos .desk-detail-actions button { width: 100%; font-size: 1rem; min-height: 56px; }
+  .cashier-pos .desk-payment { border-top: 4px solid #174b3b; }
+  .cashier-pos .desk-payment-total { font-family: var(--font-body); font-weight: 750; margin: 10px 0 22px; }
+  .cashier-pos .desk-methods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .cashier-pos .desk-methods label { min-height: 56px; justify-content: center; flex-wrap: wrap; padding: 8px 3px; font-size: .77rem; }
+  .cashier-pos .desk-confirm { min-height: 48px; align-items: center; margin: 16px 0; }
+  .cashier-pos .desk-payment .desk-primary { min-height: 56px; }
+  .cashier-pos .cashier-ticket-print-header { position: static; inset: auto; z-index: auto; background: transparent; box-shadow: none; width: auto; padding: 0 0 .65rem; }
+  .cashier-pos .desk-success > .cashier-print-ticket { width: 100%; max-width: 320px; margin: 24px auto 18px; padding: 18px; border: 1px solid #e1e5e1; border-radius: 2px; background: #fff; color: #111; box-shadow: 0 5px 18px #183c2514; font-size: .75rem; line-height: 1.45; }
+  .cashier-pos .desk-success .cashier-ticket-print-meta,
+  .cashier-pos .desk-success .cashier-ticket-print-totals { padding: .5rem 0; }
+  .cashier-pos .desk-success > .cashier-ticket-print-button { display: block; width: 100%; max-width: 320px; min-height: 48px; margin: 0 auto; }
+  .cashier-pos .desk-success > .cashier-ticket-print-button + p { max-width: 380px; margin: 12px auto 20px; text-align: center; font-size: .78rem; line-height: 1.6; color: var(--text-secondary); }
+  .cashier-pos section[aria-label="Cancelación de venta"] .botanical-section-card { padding: 14px 20px; margin: 12px 0; border-radius: 12px; box-shadow: none; }
+  .cashier-pos section[aria-label="Cancelación de venta"] summary { min-height: 48px; display: list-item; padding: 12px 0; cursor: pointer; color: #745039; }
+  .cashier-pos .desk-tools { margin-top: 18px; gap: 12px; }
+  .cashier-pos .desk-tools .botanical-section-card { padding: 12px 20px; border-radius: 12px; }
+  .cashier-pos .counter-sale { border: 0; background: transparent; padding: 0; }
+  .cashier-pos .counter-sale > .section-header-row { padding: 0; margin-bottom: 18px; }
+  .cashier-pos .counter-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr); gap: 20px; align-items: start; }
+  .cashier-pos :is(.counter-search,.counter-cart,.counter-pending) { background: #fff; border: 1px solid #dce5dd; border-radius: 16px; padding: 22px; box-shadow: 0 4px 18px #183c2510; min-width: 0; }
+  .cashier-pos .counter-cart { position: sticky; top: 16px; }
+  .cashier-pos .counter-search fieldset { border: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cashier-pos .counter-search legend { font-weight: 700; margin-bottom: 12px; }
+  .cashier-pos .counter-search form { margin: 0; }
+  .cashier-pos .counter-search .catalog-action { align-self: end; height: 48px; }
+  .cashier-pos .counter-search button[type=submit] { grid-column: 1 / -1; }
+  .cashier-pos .counter-results { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+  .cashier-pos .counter-results article { border: 1px solid #dce5dd; border-radius: 12px; padding: 14px; display: grid; gap: 12px; }
+  .cashier-pos .counter-results small { display: block; margin-top: 6px; }
+  .cashier-pos .counter-product-photo { width: 100%; height: 125px; object-fit: cover; border-radius: 8px; background: #edf5ef; }
+  .cashier-pos .counter-cart h3 { font: 700 1.1rem var(--font-body); margin-bottom: 12px; }
+  .cashier-pos .counter-ticket-lines { max-height: 32vh; overflow-y: auto; padding: 0 4px; }
+  .cashier-pos .counter-line { display: grid; grid-template-columns: minmax(0,1fr) 76px; gap: 10px; border-bottom: 1px solid #dce5dd; padding: 14px 0; }
+  .cashier-pos .counter-line small { display: block; margin-top: 6px; }
+  .cashier-pos .counter-line button { grid-column: 2; min-height: 48px; padding: 8px; }
+  .cashier-pos .counter-total { background: #edf5ef; border-radius: 12px; padding: 18px; margin-top: 18px; color: #174b3b; }
+  .cashier-pos .counter-total strong { font-size: 1.7rem; }
+  .cashier-pos .counter-sale :is(button,input,select) { min-height: 48px; }
+  .cashier-pos .counter-submit { width: 100%; min-height: 56px; background: #174b3b; }
+  .cashier-pos .counter-hint { font-size: .78rem; line-height: 1.6; margin: 12px 0; color: #496252; }
+  .cashier-pos .counter-results > p { grid-column: 1 / -1; }
+  .cashier-pos .pos-category-filter { margin-top: 0; display: grid; gap: 8px; font-size: .85rem; }
+  .dark-theme .cashier-pos { background: var(--bg-color); }
+  .dark-theme .cashier-pos :is(.pos-pending-row,.counter-search,.counter-cart,.counter-pending) { background: var(--surface-color); color: var(--text-primary); }
+  .dark-theme .cashier-pos :is(.pos-row-origin,.pos-row-detail,.desk-eyebrow,.pos-no-selection h2,.counter-hint) { color: var(--text-primary); }
+  .dark-theme .cashier-pos :is(.desk-total,.counter-total,.pos-pending-row[aria-pressed=true]) { background: var(--accent-light); color: var(--text-primary); }
+  @media (max-width: 1100px) { .cashier-pos .pos-workspace { grid-template-columns: minmax(230px, .7fr) minmax(0, 2fr); gap: 16px; } .cashier-pos .desk-card { padding: 16px; } .cashier-pos .desk-payment-layout { grid-template-columns: minmax(0, .85fr) minmax(0, 1fr); gap: 12px; } .cashier-pos .desk-items { max-height: 220px; } }
+  @media (max-width: 900px) {
+    .cashier-pos .pos-workspace { grid-template-columns: 1fr; }
+    .cashier-pos .counter-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr); gap: 16px; }
+    .cashier-pos .counter-search fieldset { grid-template-columns: 1fr; }
+    .cashier-pos .pos-pending-list { max-height: 165px; }
+    .cashier-pos .pos-no-selection { min-height: 220px; }
+    .cashier-pos .desk-payment { position: static; }
+  }
+  @media (max-width: 600px) {
+    .cashier-pos { padding: 16px 12px; }
+    .cashier-pos .desk-card, .cashier-pos :is(.counter-search,.counter-cart,.counter-pending) { padding: 18px; }
+    .cashier-pos .pos-modes button { padding: 12px 14px; flex: 1; }
+    .cashier-pos .counter-search fieldset, .cashier-pos .counter-results { grid-template-columns: 1fr; }
+    .cashier-pos .counter-grid { grid-template-columns: 1fr; }
+    .cashier-pos .counter-cart { position: static; }
+    .cashier-pos .desk-payment-layout { grid-template-columns: 1fr; }
+    .cashier-pos .desk-section-head { flex-direction: row; align-items: center; }
+    .cashier-pos .counter-sale > .section-header-row { flex-wrap: wrap; gap: 12px; }
+  }
+}

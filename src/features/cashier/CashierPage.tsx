@@ -19,6 +19,7 @@ import { CashierSaleSummary } from './CashierSaleSummary'
 import { CashierPaymentPanel } from './CashierPaymentPanel'
 import { interruptedCashierPayments, cashierWorkerMessage } from './cashier-desk-state'
 import './cashier-desk.css'
+import './cashier-pos.css'
 
 
 export function CashierPage() {
@@ -247,11 +248,11 @@ export function CashierPage() {
   const deskLocked = navigationLocked || actionInProgress || interrupted.length > 0 || Boolean(journalError)
   const selectedFolio = saleDetail?.sale.folio ?? attempt?.paymentResult?.sale?.folio
 
-  return <main className="internal-page cashier-desk">
+  return <main className="internal-page cashier-desk cashier-pos">
     <div className="internal-shell desk-shell">
       <header className="desk-header">
         <div><p className="desk-eyebrow">Vivero Dulcinea · Caja</p>
-          <h1 ref={headingRef} tabIndex={-1}>{selectedSaleId ? attempt?.status === 'SUCCEEDED' ? 'Pago confirmado' : attempt?.status === 'UNCERTAIN' || attempt?.status === 'CONFIRMING' ? 'Comprobar pago' : paymentView ? 'Cobrar venta' : 'Detalle de venta' : 'Ventas pendientes'}</h1>
+          <h1 ref={headingRef} tabIndex={-1}>{showComposer ? 'Venta directa' : 'Cobrar pendientes'}</h1>
           <p className="desk-muted">{branchName} · {cashierName}{selectedFolio ? ` · ${selectedFolio}` : ''}</p></div>
         <nav aria-label="Navegación de Caja" className="desk-header-actions">
           {selectedSaleId ? <button type="button" className="desk-secondary" disabled={deskLocked} onClick={() => void handleCloseDetail()}>Volver a pendientes</button>
@@ -259,15 +260,19 @@ export function CashierPage() {
           <button type="button" className="desk-secondary" disabled={deskLocked} onClick={() => void handleSignOut()}>Cerrar sesión</button>
         </nav>
       </header>
+      <nav className="pos-modes" aria-label="Modo de venta">
+        <button type="button" aria-pressed={!showComposer} disabled={showComposer || deskLocked} onClick={() => setCreatingSale(false)}>Cobrar pendientes</button>
+        {canCreateSale && <button type="button" aria-pressed={showComposer} disabled={Boolean(selectedSaleId) || showComposer || deskLocked} onClick={() => setCreatingSale(true)}>Venta directa</button>}
+      </nav>
       {journalError && <p className="desk-warning" role="alert">{journalError}</p>}
       {interrupted.length > 0 && <p className="desk-warning" role="alert">Hay un pago por comprobar. No registres otro cobro ni vuelvas a recibir dinero para esta venta.</p>}
       {anotherInterruptedPayment && selectedSaleId && interruptedId && <button type="button" className="desk-primary" disabled={navigationLocked || actionInProgress}
         onClick={() => void handleSelectSale(interruptedId, 'charge')}>Comprobar pago pendiente</button>}
       {newComandasNotice && <p className="desk-notice" role="status">{newComandasNotice.replace(/comandas?/g, 'ventas')}</p>}
-      {!selectedSaleId && !showComposer && <section className="desk-card desk-pending" aria-labelledby="desk-pending-title" inert={cancellationLocked}>
+      <div className="pos-workspace" hidden={showComposer}>
+      {!showComposer && <section className="desk-card desk-pending" aria-labelledby="desk-pending-title" inert={cancellationLocked}>
         <div className="desk-section-head"><div><h2 id="desk-pending-title">Por cobrar</h2><p className="desk-muted">Selecciona una venta para atender al cliente.</p></div>
           <div className="desk-header-actions">
-            {canCreateSale && <button type="button" className="desk-secondary" disabled={deskLocked} onClick={() => setCreatingSale(true)}>Nueva venta</button>}
             <button type="button" className="desk-secondary" disabled={isSalesLoading || isSalesUpdating || deskLocked} onClick={refreshSales}>Actualizar</button>
           </div></div>
         <form className="desk-search" role="search" onSubmit={event => { event.preventDefault(); if (!deskLocked) setSearchFolio(searchText.trim()) }}>
@@ -281,12 +286,12 @@ export function CashierPage() {
         {isSalesLoading && <p role="status" className="desk-empty">Cargando ventas…</p>}
         {isSalesError && !sales.length && <div className="desk-warning" role="alert"><p>{cashierWorkerMessage(salesErrorMsg)}</p><button className="desk-secondary" type="button" onClick={refreshSales}>Volver a intentar</button></div>}
         {!isSalesLoading && !isSalesError && !sales.length && <div className="desk-empty"><span aria-hidden="true">❧</span><h3>{searchFolio ? 'Sin coincidencias' : 'Todo al día'}</h3><p>{searchFolio ? 'No hay una venta pendiente con ese folio en esta sucursal.' : 'No hay ventas pendientes de cobro en esta sucursal.'}</p></div>}
-        <CashierPendingList sales={sales} locked={deskLocked || isSalesLoading} onCharge={id => void handleSelectSale(id, 'charge')} onDetail={id => void handleSelectSale(id, 'detail')} />
+        <CashierPendingList compact selectedId={selectedSaleId} sales={sales} locked={deskLocked || isSalesLoading} onCharge={id => void handleSelectSale(id, 'charge')} onDetail={id => void handleSelectSale(id, 'detail')} />
         {hasMore && <button type="button" className="desk-secondary desk-full" disabled={isLoadingMore || deskLocked} onClick={loadMore}>{isLoadingMore ? 'Cargando…' : 'Ver más ventas'}</button>}
         <p className="desk-updated" role="status">{isSalesUpdating ? 'Actualizando ventas…' : lastUpdatedAt ? `Actualizado a las ${lastUpdatedAt}` : 'Las ventas se actualizan automáticamente.'}</p>
       </section>}
-      {showComposer && userId && accessContext?.branch && <CounterSaleComposer key={userId + accessContext.branch.id} userId={userId} branchId={accessContext.branch.id}
-        onClose={() => setCreatingSale(false)} onCreated={saleId => { setCreatingSale(false); setView('charge'); setOpenRequest(saleId); openedRequest.current = null; setSelectedSaleId(saleId); refreshSales() }} />}
+      <section className="pos-ticket-pane" aria-label="Venta seleccionada">
+      {!selectedSaleId && <div className="desk-card pos-no-selection"><span aria-hidden="true">❧</span><h2>Selecciona una venta para continuar</h2><p>Consulta sus productos y total antes de abrir el cobro.</p></div>}
       {selectedSaleId && <div className={attempt?.status === 'SUCCEEDED' ? 'desk-receipt-layout' : paymentView ? 'desk-payment-layout' : 'desk-detail-layout'} inert={cancellationLocked}>
         <div hidden={attempt?.status === 'SUCCEEDED'}>
           {isDetailLoading && <section className="desk-card" role="status">Cargando productos de la venta…</section>}
@@ -305,6 +310,10 @@ export function CashierPage() {
       {!showComposer && userId && <CashierSaleCancellation key={`${userId}:${accessContext?.branch?.id}`}
         sale={saleDetail?.sale ?? null} available={!actionInProgress && !journalError && interrupted.length === 0 && attempt?.status === 'CLAIMING'}
         onLocked={setCancellationLocked} onFinished={() => { setRecoverySaleId(null); setSelectedSaleId(null); clearDetail(); refreshSales() }} />}
+      </section>
+      </div>
+      {showComposer && userId && accessContext?.branch && <CounterSaleComposer key={userId + accessContext.branch.id} userId={userId} branchId={accessContext.branch.id}
+        onClose={() => setCreatingSale(false)} onCreated={saleId => { setCreatingSale(false); setView('charge'); setOpenRequest(saleId); openedRequest.current = null; setSelectedSaleId(saleId); refreshSales() }} />}
       {!showComposer && <div className="desk-tools">
         {userId && accessContext?.branch && <CashierReceiptHistory key={`${userId}:${accessContext.branch.id}`} userId={userId} branchId={accessContext.branch.id} attempt={attempt} locked={isCriticalPaymentActive} compact />}
         <CashierOperations key={userId} locked={isCriticalPaymentActive} />

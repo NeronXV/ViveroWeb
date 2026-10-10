@@ -1,4 +1,4 @@
-export interface CounterProduct { id: string; code: string; name: string; priceCents: number }
+export interface CounterProduct { id: string; code: string; name: string; priceCents: number; imageUrl?: string }
 export interface CounterLine { product: CounterProduct; quantity: number }
 export interface CounterSubmission {
   id: string; folio: string; userId: string; branchId: string; customerId: string | null;

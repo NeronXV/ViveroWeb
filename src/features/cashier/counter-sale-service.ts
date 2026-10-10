@@ -2,15 +2,18 @@ import { backendId, requireBackendAccess } from '../auth/backend-runtime'
 import { createBackendCatalogService } from '../public-catalog/backend-catalog-service'
 import { BackendCounterError, createBackendCounterAttempt, createBackendCounterSaleService, readBackendCounterAttempt, finishBackendCounterAttempt, type BackendCounterAttempt } from './backend-counter-sale-service'
 import type { CounterLine } from './counter-sale'
-export async function searchCounterProducts(query: string, signal: AbortSignal) {
+export async function searchCounterProducts(query: string, signal: AbortSignal, categoryId?: number) {
   if (query.trim().length < 2) throw new Error('Escribe al menos dos caracteres.')
-  const page = await createBackendCatalogService().products({ search: query, limit: 20 }, signal)
-  return page.items.map(p => ({ id: String(p.id), code: p.internal_code, name: p.common_name }))
+  const page = await createBackendCatalogService().products({ search: query, limit: 20, categoryId }, signal)
+  return page.items.map(p => ({ id: String(p.id), code: p.internal_code, name: p.common_name, priceCents: p.effective_price_cents, imageUrl: p.image?.url }))
+}
+export async function listCounterCategories(signal: AbortSignal) {
+  return (await createBackendCatalogService().categories({ limit: 100 }, signal)).items
 }
 export async function lookupCounterProduct(code: string) {
   const product = await createBackendCounterSaleService().scan(requireBackendAccess().token, code)
   if (!product) throw new Error('No se encontró un producto activo con ese código.')
-  return { id: String(product.id), code: product.internal_code, name: product.common_name, priceCents: product.effective_price_cents }
+  return { id: String(product.id), code: product.internal_code, name: product.common_name, priceCents: product.effective_price_cents, imageUrl: product.image?.url }
 }
 function access(userId: number, branchId: number) {
   const { token, context } = requireBackendAccess()
