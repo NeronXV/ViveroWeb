@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { bindBackendSession } from '../../auth/backend-runtime'
-import { createSupplierPurchaseDraft, recoverSupplierPurchaseDraft, retireSupplierPurchaseDraft, fetchSupplierPurchases, resolveSupplierPurchaseItem, fetchSuppliers } from './purchases-service'
+import { createSupplierPurchaseDraft, recoverSupplierPurchaseDraft, readPendingSupplierPurchaseDraft, retireSupplierPurchaseDraft, fetchSupplierPurchases, resolveSupplierPurchaseItem, fetchSuppliers } from './purchases-service'
 const http = vi.fn(), saved = new Map<string, string>()
 const time = '2026-10-01T12:00:00.000Z'
 const purchase = { id: 8, branch_id: 1, supplier: { id: 2, name: 'Demo', code: 'DEMO' }, document_date: '2026-10-01', external_reference: null, payment_terms: 'CASH', expected_total_cents: 100,
@@ -73,6 +73,35 @@ it('keeps the original pending draft if its archive cannot be saved', async () =
   http.mockResolvedValueOnce(Response.json({ schema_version: 1, status: 'RETIRED', receipt: null }))
   await expect(retireSupplierPurchaseDraft()).rejects.toMatchObject({ code: 'STORAGE_FAILED' })
   expect(saved.size).toBe(1)
+})
+it('restores the original captured form after reopening without sending it again', async () => {
+  http.mockRejectedValueOnce(new Error('lost response'))
+  await expect(createSupplierPurchaseDraft(input)).rejects.toThrow()
+  const captured = readPendingSupplierPurchaseDraft()
+  expect(captured).toEqual(input)
+  expect(http).toHaveBeenCalledTimes(1)
+  http.mockResolvedValueOnce(Response.json({ schema_version: 1, status: 'RETIRED', receipt: null }))
+  await retireSupplierPurchaseDraft(undefined, captured!.idempotencyKey)
+  expect(captured!.items).toEqual(input.items)
+  expect(readPendingSupplierPurchaseDraft()).toBeNull()
+})
+it('does not retire a different key changed by another tab', async () => {
+  http.mockRejectedValueOnce(new Error('lost response'))
+  await expect(createSupplierPurchaseDraft(input)).rejects.toThrow()
+  const before = [...saved.entries()]
+  await expect(retireSupplierPurchaseDraft(undefined, 'different-tab-key-0001')).rejects.toMatchObject({ code: 'PENDING_PURCHASE' })
+  expect(http).toHaveBeenCalledTimes(1)
+  expect([...saved.entries()]).toEqual(before)
+})
+it('keeps a malformed journal and shows a safe error without submitting it', async () => {
+  saved.set('viveroweb_backend_purchase_v1:4:1:draft', '{invalid private draft')
+  expect(readPendingSupplierPurchaseDraft).toThrow('No se pudieron recuperar los datos originales.')
+  expect(saved.size).toBe(1)
+  expect(http).not.toHaveBeenCalled()
+})
+it('does not treat a concurrently cleared draft as a retired attempt', async () => {
+  await expect(retireSupplierPurchaseDraft(undefined, input.idempotencyKey)).rejects.toMatchObject({ code: 'PENDING_PURCHASE' })
+  expect(http).not.toHaveBeenCalled()
 })
 it('uses authoritative list counts, dates and supplier rather than synthesizing metadata', async () => {
   http.mockResolvedValueOnce(Response.json({ schema_version: 1, branch_id: 1, items: [purchase], next_after_id: null }))

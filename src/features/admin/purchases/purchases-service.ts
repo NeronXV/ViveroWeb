@@ -4,6 +4,8 @@ import {
   parseSupplier,
   parseSupplierPurchaseDetail,
   parseSupplierPurchasesResponse,
+  calculateExpectedTotalCents,
+  validatePurchaseLines,
 } from './purchases-parser'
 import type {
   ConfirmPurchaseInput,
@@ -158,16 +160,47 @@ async function durable(operation: string, body: unknown, key: string, signal?: A
 export async function recoverSupplierPurchaseDraft(signal?: AbortSignal): Promise<SupplierPurchaseDetail | null> {
   return request(() => durable('draft', null, '', signal, true))
 }
+/** Restore captured data after reopening, without resubmitting it. */
+export function readPendingSupplierPurchaseDraft(): CreatePurchaseDraftInput | null {
+  try { return readPendingDraftData() }
+  catch { throw new PurchaseServiceError('No se pudieron recuperar los datos originales. Conservamos el intento para revisión.', 'INVALID_ATTEMPT') }
+}
+function readPendingDraftData(): CreatePurchaseDraftInput | null {
+  const encoded = localStorage.getItem(journalKey('draft'))
+  if (encoded === null) return null
+  const stored = object(JSON.parse(encoded))
+  if (typeof stored.key !== 'string' || !/^[A-Za-z0-9._:-]{16,128}$/.test(stored.key) || typeof stored.body !== 'string') throw new PurchaseServiceError('No se pudieron leer los datos originales. Conservamos el intento.', 'INVALID_ATTEMPT')
+  const body = object(JSON.parse(stored.body))
+  const optionalText = (value: unknown): string | null => {
+    if (value === null || typeof value === 'string') return value
+    throw new PurchaseServiceError('El borrador guardado requiere revisión. Conservamos el intento.', 'INVALID_ATTEMPT')
+  }
+  if (typeof body.document_date !== 'string' || !['CASH', 'CREDIT', 'OTHER'].includes(String(body.payment_terms)) || !Number.isSafeInteger(body.expected_total_cents)) throw new Error('Invalid saved draft')
+  const items = list(body.items).map(item => {
+    if (!Number.isSafeInteger(item.line_number) || typeof item.raw_description !== 'string' || typeof item.container_code !== 'string' || !Number.isSafeInteger(item.quantity) || !Number.isSafeInteger(item.unit_cost_cents)) throw new Error('Invalid saved line')
+    return { lineNumber: item.line_number as number, rawDescription: item.raw_description, containerCode: item.container_code,
+      suggestedCommonName: optionalText(item.suggested_common_name), suggestedPresentation: optionalText(item.suggested_presentation),
+      quantity: item.quantity as number, unitCostCents: item.unit_cost_cents as number }
+  })
+  if (validatePurchaseLines(items) || calculateExpectedTotalCents(items) !== body.expected_total_cents) throw new Error('Invalid saved total')
+  return { supplierId: apiId(body.supplier_id), documentDate: body.document_date, externalReference: optionalText(body.external_reference),
+    paymentTerms: body.payment_terms as CreatePurchaseDraftInput['paymentTerms'], expectedTotalCents: body.expected_total_cents as number,
+    sourceFileName: optionalText(body.source_file_name), items, idempotencyKey: stored.key }
+}
 /** Fence the original key before freeing the slot; keep the full request as an archive. */
-export async function retireSupplierPurchaseDraft(signal?: AbortSignal): Promise<SupplierPurchaseDetail | null> {
+export async function retireSupplierPurchaseDraft(signal?: AbortSignal, expectedKey?: string): Promise<SupplierPurchaseDetail | null> {
   return request(async () => {
     const slot = journalKey('draft')
     if (!navigator.locks) throw new PurchaseServiceError('Se requiere un navegador con bloqueo seguro de operaciones.', 'LOCK_UNAVAILABLE')
     return navigator.locks.request(slot, async () => {
       const encoded = localStorage.getItem(slot)
-      if (encoded === null) return null
+      if (encoded === null) {
+        if (expectedKey !== undefined) throw new PurchaseServiceError('El intento ya cambió en otra pestaña. Consulta el resultado antes de registrar otra compra.', 'PENDING_PURCHASE')
+        return null
+      }
       const stored = object(JSON.parse(encoded))
       if (typeof stored.key !== 'string' || !/^[A-Za-z0-9._:-]{16,128}$/.test(stored.key) || typeof stored.body !== 'string') throw new Error('Invalid attempt')
+      if (expectedKey !== undefined && stored.key !== expectedKey) throw new PurchaseServiceError('El borrador cambió en otra pestaña. Recupera el intento actual.', 'PENDING_PURCHASE')
       const root = await backendHttp('supplier-purchases/retire', 'POST', {}, signal, stored.key)
       if (journalKey('draft') !== slot || localStorage.getItem(slot) !== encoded) throw new Error('Identity or attempt changed')
       if (root.schema_version !== 1) throw new Error('Invalid retirement')

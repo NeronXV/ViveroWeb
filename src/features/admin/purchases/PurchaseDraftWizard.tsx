@@ -1,7 +1,7 @@
 import { ProductQrLabelCard } from '../ProductQrLabelCard'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { centsToPesos, centsToFormattedMxn, pesosToCents, calculateExpectedTotalCents, validatePurchaseLines, sanitizeFileName } from './purchases-parser'
-import { confirmSupplierPurchase, recoverSupplierPurchaseDraft, retireSupplierPurchaseDraft, createSupplierPurchaseDraft, fetchSupplierPurchaseDetail, resolveSupplierPurchaseItem, setSupplierPresentation } from './purchases-service'
+import { confirmSupplierPurchase, recoverSupplierPurchaseDraft, readPendingSupplierPurchaseDraft, retireSupplierPurchaseDraft, createSupplierPurchaseDraft, fetchSupplierPurchaseDetail, resolveSupplierPurchaseItem, setSupplierPresentation } from './purchases-service'
 import { extractFromLocalPdf, parseCsv, parseManualOrPasteJson } from './purchases-extractor'
 import { SupplierCreateModal } from './SupplierCreateModal'
 import { SupplierPresentationModal } from './SupplierPresentationModal'
@@ -415,9 +415,17 @@ export function PurchaseDraftWizard({
       {!purchaseDetail && draftError && <button type="button" disabled={isCreatingDraft} onClick={async () => {
         setIsCreatingDraft(true)
         try {
-          const recovered = await retireSupplierPurchaseDraft()
+          const captured = readPendingSupplierPurchaseDraft()
+          if (!captured) { setDraftError('No hay un intento pendiente en esta sucursal.'); return }
+          const recovered = await retireSupplierPurchaseDraft(undefined, captured.idempotencyKey)
           if (recovered) { setPurchaseDetail(recovered); setStep(recovered.status === 'RECEIVED' ? 6 : 4); setDraftError(null) }
           else {
+            setSelectedSupplierId(captured.supplierId)
+            setDocumentDate(captured.documentDate)
+            setExternalReference(captured.externalReference ?? '')
+            setPaymentTerms(captured.paymentTerms)
+            setSourceFileName(captured.sourceFileName)
+            setItems(captured.items)
             idempotencyKeyRef.current = crypto.randomUUID()
             setStep(1)
             setDraftError('Intento resuelto. Los datos originales se conservaron en este navegador. Revisa el proveedor y los renglones antes de registrar otro borrador.')
