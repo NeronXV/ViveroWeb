@@ -144,6 +144,7 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
           <p>Primero se consultará el resultado; solo si no existe se reenviará el mismo pedido.</p>
           <button type="button" className="checkout-btn" disabled={submitting} onClick={() => void recoverPending()}>{submitting ? 'Consultando…' : 'Recuperar o reenviar pedido original'}</button>
           <p role="alert">{error}</p>
+          {error && <p>Si el problema continúa, contacta al vivero e indica la hora del intento y este mensaje. No borres los datos del navegador ni envíes el pedido desde otro dispositivo: podría duplicarse.</p>}
         </div>
       ) : (
         <form className="web-order-form" onSubmit={submit} aria-busy={submitting}>

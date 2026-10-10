@@ -100,3 +100,20 @@ it('validates options and propagates abort as an uncertain submission', async ()
   await expect(service.submit(createBackendOrderAttempt(submission), controller.signal)).rejects.toMatchObject({ resultUncertain: true })
   expect((request.mock.calls[1][1]?.signal as AbortSignal).aborted).toBe(true)
 })
+
+it('distinguishes contact rejection, access denial and server failure without exposing arbitrary server messages', async () => {
+  const attempt = createBackendOrderAttempt(submission)
+  for (const [status, error, code, uncertain] of [
+    [400, 'WEB_ORDER_CUSTOMER_INVALID', 'WEB_ORDER_CUSTOMER_INVALID', false],
+    [401, 'PRIVATE_SERVER_DETAIL', 'PUBLIC_ACCESS_DENIED', true],
+    [403, 'BROWSER_ORIGIN_FORBIDDEN', 'BROWSER_ORIGIN_FORBIDDEN', false],
+    [503, 'WEB_ORDER_BUSY', 'WEB_ORDER_BUSY', true],
+    [503, 'PRIVATE_SERVER_DETAIL', 'REQUEST_FAILED', true],
+  ] as const) {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(response({ error }, status))
+    await expect(createBackendOrderService(request).submit(attempt)).rejects.toMatchObject({ code, httpStatus: status, resultUncertain: uncertain })
+    try { await createBackendOrderService(request).submit(attempt) } catch (failure) {
+      expect((failure as Error).message).not.toContain('PRIVATE_SERVER_DETAIL')
+    }
+  }
+})

@@ -36,6 +36,44 @@ it('retains the original attempt if the receipt fetch fails, then recovers and d
   expect(String(request.mock.calls[1][0])).not.toContain(attempt.key)
 })
 
+it('confirms a successful submission and saves its ticket before releasing the durable attempt', async () => {
+  const saved = storage(), attempt = createBackendOrderAttempt(input)
+  const request = vi.fn<typeof fetch>().mockResolvedValueOnce(response(order, 201)).mockResolvedValueOnce(response(ticket))
+  expect((await createBackendOrderCoordinator(saved, createBackendOrderService(request, true), lock).send(attempt)).ticket).toEqual(ticket)
+  expect(readBackendOrderAttempt(saved)).toBeNull()
+  expect(readBackendOrderTicket(saved)).toEqual(ticket)
+})
+
+it('does not repost an accepted order when only the ticket returns not-found, is invalid or loses its response', async () => {
+  for (const failure of [response({ error: 'WEB_ORDER_NOT_FOUND' }, 404), response({ ...ticket, total_cents: 999 }), null]) {
+    const saved = storage(), attempt = createBackendOrderAttempt(input)
+    saveBackendOrderAttempt(saved, attempt)
+    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(response(order))
+    if (failure) request.mockResolvedValueOnce(failure)
+    else request.mockRejectedValueOnce(new Error('offline'))
+    const reopened = readBackendOrderAttempt(saved)!
+    await expect(createBackendOrderCoordinator(saved, createBackendOrderService(request, true), lock).recover(reopened))
+      .rejects.toMatchObject({ code: 'TICKET_UNAVAILABLE', resultUncertain: true })
+    expect(readBackendOrderAttempt(saved)).toEqual(attempt)
+    expect(request.mock.calls.map(call => call[0])).toEqual(['/api/v1/web-orders/recover', '/api/v1/web-orders/ticket'])
+    expect(request.mock.calls.every(call => (call[1]?.headers as Record<string, string>)['Idempotency-Key'] === attempt.key)).toBe(true)
+    request.mockResolvedValueOnce(response(order)).mockResolvedValueOnce(response(ticket))
+    await createBackendOrderCoordinator(saved, createBackendOrderService(request, true), lock).recover(reopened)
+    expect(readBackendOrderAttempt(saved)).toBeNull()
+    expect(readBackendOrderTicket(saved)).toEqual(ticket)
+  }
+})
+
+it('retains a rejected original attempt and blocks any replacement key until its result is resolved', async () => {
+  const saved = storage(), attempt = createBackendOrderAttempt(input)
+  const request = vi.fn<typeof fetch>().mockResolvedValueOnce(response({ error: 'WEB_ORDER_CUSTOMER_INVALID' }, 400))
+  const coordinator = createBackendOrderCoordinator(saved, createBackendOrderService(request, true), lock)
+  await expect(coordinator.send(attempt)).rejects.toMatchObject({ code: 'WEB_ORDER_CUSTOMER_INVALID' })
+  expect(readBackendOrderAttempt(saved)).toEqual(attempt)
+  await expect(coordinator.send(createBackendOrderAttempt(input))).rejects.toThrow('Existe un pedido pendiente')
+  expect(request).toHaveBeenCalledTimes(1)
+})
+
 it('keeps recovery available if durable receipt storage fails or the returned branch/items differ', async () => {
   for (const invalid of [null, { ...ticket, branch: { ...ticket.branch, id: 2 } }, { ...ticket, items: [{ ...ticket.items[0], product_id: 3 }] }]) {
     const saved = storage(), attempt = createBackendOrderAttempt(input)

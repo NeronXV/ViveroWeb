@@ -31,6 +31,18 @@ export interface BackendOrderAttempt { readonly key: string; readonly body: stri
 const ATTEMPT_STORAGE_KEY = 'viveroweb_backend_order_attempt_v1'
 
 const messages: Record<string, string> = {
+  CONNECTION_FAILED: 'No se pudo conectar con la tienda. Revisa tu conexión y vuelve a recuperar el mismo pedido.',
+  INCOMPATIBLE_RESPONSE: 'La respuesta de la tienda no pudo verificarse. El intento se conserva; solicita ayuda al vivero antes de enviar otro pedido.',
+  TICKET_UNAVAILABLE: 'El servidor confirmó el pedido, pero no se pudo recuperar su comprobante. Recupera el mismo pedido; no lo envíes como uno nuevo.',
+  WEB_ORDER_CUSTOMER_INVALID: 'El servidor rechazó los datos de contacto. El intento se conserva; solicita al vivero que revise el resultado antes de enviar otro pedido.',
+  WEB_ORDER_INVALID: 'El servidor rechazó el contenido del intento. Se conserva para revisión; no envíes otro pedido todavía.',
+  WEB_ORDER_ITEMS_INVALID: 'El servidor rechazó los productos o cantidades del intento. Se conserva para revisión.',
+  WEB_ORDER_TOTAL_INVALID: 'El servidor no pudo validar el total. Se conserva el intento para revisión.',
+  WEB_ORDER_BUSY: 'La tienda está procesando pedidos. Espera un momento y recupera el mismo intento.',
+  WEB_ORDER_RESULT_UNCERTAIN: 'La tienda todavía no pudo confirmar el resultado. Conserva el intento y recupera el mismo pedido.',
+  FOLIO_FORMAT_UNAVAILABLE: 'No se pudo recuperar el folio del pedido. Conserva el intento y vuelve a recuperarlo.',
+  BROWSER_ORIGIN_FORBIDDEN: 'La tienda rechazó el acceso desde esta dirección. Conserva el intento y solicita ayuda al vivero.',
+  PUBLIC_ACCESS_DENIED: 'No se pudo acceder al servicio público de pedidos. Conserva el intento y solicita ayuda al vivero; no necesitas iniciar sesión para comprar.',
   WEB_ORDER_PRICE_CHANGED: 'El precio cambió. Solicita una nueva cotización antes de confirmar.',
   WEB_ORDER_BRANCH_UNAVAILABLE: 'La sucursal seleccionada ya no está disponible.',
   WEB_ORDER_ITEMS_UNAVAILABLE: 'Uno de los productos ya no está disponible.',
@@ -39,9 +51,9 @@ const messages: Record<string, string> = {
   WEB_ORDER_NOT_FOUND: 'No se encontró un pedido confirmado para este intento.',
 }
 export class BackendOrderError extends Error {
-  constructor(public readonly code: string, public readonly resultUncertain = false) {
-    super(resultUncertain ? 'No se pudo confirmar el resultado. Conserva el intento y recupera el pedido.'
-      : messages[code] ?? 'No fue posible completar la operación de pedido.')
+  constructor(public readonly code: string, public readonly resultUncertain = false, public readonly httpStatus?: number) {
+    super(messages[code] ?? (resultUncertain ? 'No se pudo confirmar el resultado. Conserva el intento y recupera el pedido.'
+      : 'No fue posible completar la operación de pedido.'))
   }
 }
 function fail(): never { throw new BackendOrderError('INCOMPATIBLE_RESPONSE') }
@@ -177,8 +189,9 @@ export function createBackendOrderService(request: typeof fetch = fetch, include
     let value: unknown
     try { value = await response.json() } catch { throw new BackendOrderError('INCOMPATIBLE_RESPONSE', writing) }
     if (!response.ok) {
-      const code = value && typeof value === 'object' && 'error' in value && typeof value.error === 'string' ? value.error : 'REQUEST_FAILED'
-      throw new BackendOrderError(Object.hasOwn(messages, code) ? code : 'REQUEST_FAILED', writing && (response.status >= 500 || !Object.hasOwn(messages, code)))
+      const reported = value && typeof value === 'object' && 'error' in value && typeof value.error === 'string' ? value.error : 'REQUEST_FAILED'
+      const code = Object.hasOwn(messages, reported) ? reported : [401, 403].includes(response.status) ? 'PUBLIC_ACCESS_DENIED' : 'REQUEST_FAILED'
+      throw new BackendOrderError(code, writing && (response.status >= 500 || !Object.hasOwn(messages, reported)), response.status)
     }
     return value
   }
@@ -197,11 +210,12 @@ export function createBackendOrderService(request: typeof fetch = fetch, include
     async submit(attempt: BackendOrderAttempt, signal?: AbortSignal) {
       const checked = validateAttempt(attempt)
       const result = await call('', 'POST', checked.body, checked.key, signal, true)
+      let receipt: BackendOrderReceipt
       try {
-        const receipt = parseBackendOrderReceipt(result)
+        receipt = parseBackendOrderReceipt(result)
         if (receipt.total_cents !== submission(JSON.parse(checked.body)).expected_total_cents) fail()
-        return includeTicket ? await withTicket(receipt, checked.key, signal) : receipt
       } catch { throw new BackendOrderError('INCOMPATIBLE_RESPONSE', true) }
+      return includeTicket ? withTicket(receipt, checked.key, signal) : receipt
     },
     async recover(recoveryKey: string, signal?: AbortSignal) {
       key(recoveryKey)
@@ -210,8 +224,14 @@ export function createBackendOrderService(request: typeof fetch = fetch, include
     },
   }
   async function withTicket(receipt: BackendOrderReceipt, recoveryKey: string, signal?: AbortSignal): Promise<BackendOrderReceipt> {
-    const ticket = parseBackendOrderTicket(await call('/ticket', 'POST', '{}', recoveryKey, signal))
-    if (ticket.order.id !== receipt.id || ticket.order.total_cents !== receipt.total_cents || ticket.order.created_at !== receipt.created_at) fail()
-    return { ...receipt, ticket }
+    try {
+      const ticket = parseBackendOrderTicket(await call('/ticket', 'POST', '{}', recoveryKey, signal))
+      if (ticket.order.id !== receipt.id || ticket.order.total_cents !== receipt.total_cents || ticket.order.created_at !== receipt.created_at) fail()
+      return { ...receipt, ticket }
+    } catch (error) {
+      // A validated receipt already confirms acceptance. A ticket failure must
+      // not be misreported as a malformed submission or authorize a new key.
+      throw new BackendOrderError('TICKET_UNAVAILABLE', true, error instanceof BackendOrderError ? error.httpStatus : undefined)
+    }
   }
 }
