@@ -3,15 +3,14 @@
 .admin-task-shell .dashboard-sidebar nav { display: block; }
 .admin-task-shell .admin-session-menu > summary { display: block; min-height: 48px; padding: 12px; cursor: pointer; border: 1px solid #d8e1d0; border-radius: 12px; color: var(--text-secondary); font-size: .8rem; }
 .admin-task-shell .admin-session-menu[open] .dashboard-header-actions { padding-top: 12px; flex-wrap: wrap; }
-.admin-task-tabs { display: grid; gap: 8px; }
-.admin-task-shell .admin-task-button { display: block; width: 100%; min-height: 48px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: #dce7d8; padding: 12px 16px; text-align: left; font: inherit; font-weight: 650; cursor: pointer; }
-.admin-task-shell .admin-task-button.active { background: #3b5440; color: #fff; border-color: #71826a; }
-.admin-task-options { margin-top: 14px; border-top: 1px solid #ffffff26; padding-top: 8px; }
-.admin-task-shell .admin-options-toggle { display: none; }
+.admin-task-group { margin-bottom: 16px; }
+.admin-task-shell .admin-task-heading { margin: 0 0 4px; padding: 8px 12px; color: #d2b783; font: 650 .72rem var(--font-body); text-transform: uppercase; letter-spacing: .12em; }
+.admin-task-group.active .admin-task-heading { color: #f0d39a; }
 .admin-task-links { display: grid; gap: 4px; }
-.admin-task-shell .admin-task-links button { color: #dce7d8; padding: 12px; min-height: 48px; text-align: left; border: 0; border-radius: 10px; background: transparent; cursor: pointer; font: inherit; font-size: .8rem; }
+.admin-task-shell .admin-task-links button, .admin-task-shell .admin-task-links a { display: flex; align-items: center; color: #dce7d8; padding: 12px; min-height: 48px; text-align: left; border: 1px solid transparent; border-radius: 10px; background: transparent; cursor: pointer; font: inherit; font-size: .8rem; text-decoration: none; overflow-wrap: anywhere; }
 .admin-task-shell .admin-task-links button[aria-current=page] { background: #ffffff12; color: #fff; }
-.admin-task-shell .admin-task-navigation button:focus-visible { outline: 3px solid #b4c9a0; outline-offset: 2px; }
+.admin-task-shell .admin-task-navigation :is(button, a):focus-visible { outline: 3px solid #b4c9a0; outline-offset: 2px; }
+.admin-task-shell .admin-task-links :is(button, a):hover { background: #ffffff12; }
 .count-review-cards { list-style: none; padding: 0; margin-block: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 12px; }
 .count-review-card { min-width: 0; border: 1px solid #dbe2d2; border-radius: 14px; padding: 14px; background: #fffefa; color: #253d32; }
 .count-review-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
@@ -39,12 +38,8 @@
   .admin-task-shell .dashboard-body { display: block; }
   .admin-task-shell .dashboard-sidebar { width: 100%; min-width: 0; padding: 8px 12px; }
   .admin-task-shell .admin-sidebar-brand, .admin-task-shell .admin-nav-caption, .admin-task-shell .admin-sidebar-context { display: none; }
-  .admin-task-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
-  .admin-task-shell .admin-task-button { width: auto; flex: 1 1 auto; text-align: center; font-size: .82rem; padding: 12px; }
-  .admin-task-options { margin-top: 0; padding-top: 0; border: 0; }
-  .admin-task-shell .admin-options-toggle { display: flex; justify-content: space-between; width: 100%; min-height: 48px; background: transparent; color: #dce7d8; border: 0; font: inherit; font-size: .78rem; padding: 12px; cursor: pointer; }
-  .admin-task-links { display: none; }
-  .admin-task-links.expanded { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+  .admin-task-shell .dashboard-sidebar .admin-task-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .admin-task-group { min-width: 0; margin-bottom: 0; }
   .admin-task-shell .dashboard-header { padding: 8px 12px; flex-wrap: wrap; gap: 8px; }
   .admin-task-shell .dashboard-header h2 { font-size: 1rem; }
   .admin-task-shell .dashboard-header .dashboard-kicker, .admin-task-shell .dashboard-header .demo-copy { display: none; }
@@ -93,8 +88,6 @@
   .admin-task-shell .plant-save-actions { margin-block: 12px 4px; }
 }
 @media (max-width: 600px) {
-  .admin-task-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .admin-task-shell .admin-task-button { width: 100%; overflow-wrap: anywhere; }
   .admin-task-shell { padding: 8px !important; }
   .admin-task-shell .dashboard-content { padding: 8px; }
   .admin-task-shell .admin-content-context { display: none; }

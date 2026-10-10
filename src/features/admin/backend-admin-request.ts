@@ -5,6 +5,15 @@ type Params = Record<string, unknown>
 const id = (value: unknown) => backendId(String(value))
 const role = (r: Record<string, unknown>) => r.role_name === null ? null : { name: r.role_name, displayName: r.role_display_name }
 const branchRow = (r: Record<string, unknown>) => ({ id: apiId(r.id), code: r.code, name: r.name, is_active: r.is_active, created_at: utc(r.created_at), updated_at: utc(r.updated_at) })
+// mysql2 serializes BIGINT COUNT(*) as strings. Reject malformed or unsafe counts.
+export function directoryCount(value: unknown): number {
+  if (typeof value !== 'number' && !(typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value))) {
+    throw new Error('No se pudo validar el conteo de Sucursales. Actualiza o contacta al administrador.')
+  }
+  const count = Number(value)
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error('No se pudo validar el conteo de Sucursales. Actualiza o contacta al administrador.')
+  return count
+}
 export async function backendAdminRequest(operation: string, p: Params, signal?: AbortSignal): Promise<unknown> {
   const call = (path: string, method = 'GET', body?: unknown, key?: string) => backendHttp(path, method, body, signal, key)
   const now = new Date().toISOString()
@@ -17,7 +26,7 @@ export async function backendAdminRequest(operation: string, p: Params, signal?:
     const items = list(r.items).map(row => staff ? {
       id: apiId(row.id), fullName: row.full_name, isActive: row.is_active, updatedAt: utc(row.updated_at), role: role(row),
       branch: row.branch_id === null ? null : { id: apiId(row.branch_id), code: row.branch_code, name: row.branch_name, isActive: row.branch_active },
-    } : { id: apiId(row.id), code: row.code, name: row.name, isActive: row.is_active, updatedAt: utc(row.updated_at), activeStaffCount: row.active_staff_count, pendingSaleCount: row.pending_sale_count })
+    } : { id: apiId(row.id), code: row.code, name: row.name, isActive: row.is_active, updatedAt: utc(row.updated_at), activeStaffCount: directoryCount(row.active_staff_count), pendingSaleCount: directoryCount(row.pending_sale_count) })
     return { schemaVersion: 1, items, serverTime: now, page: { limit: p.p_limit ?? 50, hasMore: r.next_after_id !== null,
       nextCursor: r.next_after_id === null ? null : staff ? { id: apiId(r.next_after_id), fullName: 'id' } : { id: apiId(r.next_after_id), code: 'ID' } } }
   }

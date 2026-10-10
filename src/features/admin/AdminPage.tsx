@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import { AccessDenied } from '../access/AccessDenied'
 import { hasCapability } from '../access/access-helpers'
-import { ADMIN_MODULE_RULES, getAuthorizedAdminModules, type AdminModuleId } from '../access/access-rules'
+import { ADMIN_MODULE_RULES, canEnterCashier, getAuthorizedAdminModules, type AdminModuleId } from '../access/access-rules'
 import type { UserAccessContext } from '../access/access-types'
 import { useAuth } from '../auth/useAuth'
 import { BranchDirectory, StaffDirectory } from './AdminDirectories'
@@ -12,7 +12,6 @@ import { useAdminReports } from './useAdminReports'
 import { useAdminBranches } from './useAdminDirectories'
 import { AdminPlants } from './plants/AdminPlants'
 import { AdminNavigation } from './AdminNavigation'
-import { useInventoryPermissions } from './useInventoryPermissions'
 import { adminTasks } from '../access/admin-navigation'
 import './admin-navigation.css'
 import { AdminCustomers } from './AdminCustomers'
@@ -44,14 +43,14 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab') as AdminModuleId | null
   const firstAuthorizedTab = authorizedTabs.includes('inventario') ? 'inventario' : authorizedTabs[0]
-  const [tab, setTab] = useState<AdminModuleId>(() => requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab)
+  const tab = requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab
   const [preselectedStockProductId, setPreselectedStockProductId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const { darkTheme, toggleTheme } = useDemoStore()
   const { signOut } = useAuth()
   const navigate = useNavigate()
-  const inventoryPermissions = useInventoryPermissions(hasCapability(context, 'MANAGE_INVENTORY') && !!context.branch?.isActive)
-  const activeTask = adminTasks(authorizedTabs, inventoryPermissions.canReceive).find(task => task.modules.includes(tab))
+  const canCashier = canEnterCashier(context)
+  const activeTask = adminTasks(authorizedTabs, canCashier).find(task => task.modules.includes(tab))
   const plantWork = useRef({ dirty: false, busy: false })
   const allowSessionAction = () => {
     if (tab !== 'inventario') return true
@@ -93,14 +92,6 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
     refresh: refreshReports,
   } = useAdminReports(context.branch?.id ?? null)
 
-  useEffect(() => {
-    const nextTab = requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab
-    if (nextTab) setTab(nextTab)
-  }, [authorizedTabs, context.userId, requestedTab, firstAuthorizedTab])
-
-
-
-
   const selectTab = (nextTab: AdminModuleId) => {
     if (!authorizedTabs.includes(nextTab)) return
     const next = new URLSearchParams(searchParams)
@@ -117,7 +108,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const totalDiscountsReal = dailySales.reduce((sum, item) => sum + item.discountCents, 0) / 100
 
   return (
-    <main className={`internal-page admin-workspace admin-task-shell ${tab === 'inventario' ? 'admin-plants-active' : ''}`}>
+    <main className="internal-page admin-workspace admin-task-shell">
       <div className="dashboard-panel open embedded">
         <div className="dashboard-header">
           <div className="dashboard-title-area">
@@ -152,7 +143,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               <span>Vivero Dulcinea<small>Administración</small></span>
             </Link>
             <p className="admin-nav-caption">Tu vivero, en orden</p>
-            <AdminNavigation authorized={authorizedTabs} tab={tab} canReceive={inventoryPermissions.canReceive} onSelect={selectTab} />
+            <AdminNavigation authorized={authorizedTabs} tab={tab} canCashier={canCashier} onSelect={selectTab} />
             <div className="admin-sidebar-context">
               <span>Sucursal</span>
               <strong>{context.branch?.name ?? 'Sin sucursal asignada'}</strong>
@@ -166,7 +157,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               <span>Vivero Dulcinea</span>
             </div>
             {notice && <p className="form-notice" aria-live="polite">{notice}</p>}
-            <div id="admin-task-panel" role="tabpanel" aria-labelledby={`admin-task-${activeTask?.id}`} tabIndex={0}>
+            <div id="admin-task-panel" role="region" aria-labelledby={`admin-task-${activeTask?.id}`}>
 
               {tab === 'sucursales' && authorizedTabs.includes('sucursales') && <BranchDirectory active />}
 

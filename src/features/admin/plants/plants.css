@@ -13,13 +13,7 @@
 }
 .plants-workspace * { box-sizing: border-box; }
 .plants-workspace header { position: static; inset: auto; z-index: auto; width: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; }
-.admin-plants-active .dashboard-panel.embedded { height: auto; min-height: 100dvh; overflow: visible; }
-.admin-plants-active .dashboard-body { overflow: visible; }
-.admin-plants-active .dashboard-content { overflow: visible; }
 .admin-session-menu > summary { display: none; }
-.admin-plants-active .admin-session-menu > summary { display: block; cursor: pointer; min-height: 48px; padding: 12px; border: 1px solid #d8e1d0; border-radius: 10px; font-size: .78rem; color: var(--text-secondary); }
-.admin-plants-active .admin-session-menu[open] .dashboard-header-actions { padding-top: 12px; }
-.admin-plants-active .admin-content-context { margin-bottom: 16px; }
 .plants-workspace h3, .plants-workspace h4 { font-family: var(--font-body); }
 .plants-workspace h3, .plants-workspace h4, .plants-workspace p { margin: 0; }
 .plants-workspace h3 { font-size: clamp(1.65rem, 2.6vw, 2.25rem); letter-spacing: -.045em; line-height: 1.15; color: var(--plant-green); }
@@ -122,27 +116,9 @@
 .plants-workspace [aria-busy=true] { cursor: progress; }
 @media (min-width: 1400px) { .plants-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 1024px) {
-  .admin-plants-active .dashboard-body { grid-template-columns: 1fr; display: block; }
-  .admin-plants-active .dashboard-sidebar { width: 100%; min-width: 0; padding: 12px 16px; }
-  .admin-plants-active .dashboard-sidebar nav { display: block; min-width: 0; }
-  .admin-plants-active .dashboard-sidebar nav ul { display: flex; flex-direction: row; overflow-x: auto; gap: 8px; padding-bottom: 4px; }
-  .admin-plants-active .dashboard-sidebar nav li { flex-shrink: 0; }
-  .admin-plants-active .dashboard-sidebar nav li:has(button:disabled) { display: none; }
-  .admin-plants-active .admin-sidebar-brand, .admin-plants-active .admin-nav-caption, .admin-plants-active .admin-sidebar-context { display: none; }
-  .admin-plants-active .dashboard-content { padding: 16px; width: 100%; min-width: 0; }
-  .admin-plants-active .dashboard-header { padding: 16px; flex-wrap: wrap; }
-  .admin-plants-active .dashboard-header h2 { font-size: 1rem; }
-  .admin-plants-active .dashboard-header .demo-copy, .admin-plants-active .dashboard-header .dashboard-kicker { display: none; }
-  .admin-plants-active .dashboard-header-actions { gap: 6px; flex-wrap: wrap; }
-  .admin-plants-active .dashboard-header-actions .logout-btn { display: inline-flex; width: auto; flex: 0 1 auto; }
-  .admin-plants-active .dashboard-header-actions .logout-btn { font-size: .72rem; min-height: 44px; padding: 8px; }
-  .admin-plants-active .admin-content-context { font-size: .72rem; padding-bottom: 12px; }
   .plant-detail-layout { gap: 20px; }
 }
 @media (max-width: 600px) {
-  .admin-plants-active { padding: 8px !important; }
-  .admin-plants-active .dashboard-content { padding: 8px; }
-  .admin-plants-active .admin-content-context { display: none; }
   .plants-workspace { border-radius: 18px; padding: 16px; }
   .plants-header { flex-direction: column; gap: 12px; margin-bottom: 18px; }
   .plants-header h3 + p { font-size: .82rem; }
