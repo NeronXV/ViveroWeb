@@ -1,0 +1,109 @@
+.admin-task-shell .dashboard-panel.embedded { height: auto; min-height: 100dvh; overflow: visible; }
+.admin-task-shell .dashboard-body, .admin-task-shell .dashboard-content { overflow: visible; min-width: 0; }
+.admin-task-shell .dashboard-sidebar nav { display: block; }
+.admin-task-shell .admin-session-menu > summary { display: block; min-height: 48px; padding: 12px; cursor: pointer; border: 1px solid #d8e1d0; border-radius: 12px; color: var(--text-secondary); font-size: .8rem; }
+.admin-task-shell .admin-session-menu[open] .dashboard-header-actions { padding-top: 12px; flex-wrap: wrap; }
+.admin-task-tabs { display: grid; gap: 8px; }
+.admin-task-shell .admin-task-button { display: block; width: 100%; min-height: 48px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: #dce7d8; padding: 12px 16px; text-align: left; font: inherit; font-weight: 650; cursor: pointer; }
+.admin-task-shell .admin-task-button.active { background: #3b5440; color: #fff; border-color: #71826a; }
+.admin-task-options { margin-top: 14px; border-top: 1px solid #ffffff26; padding-top: 8px; }
+.admin-task-shell .admin-options-toggle { display: none; }
+.admin-task-links { display: grid; gap: 4px; }
+.admin-task-shell .admin-task-links button { color: #dce7d8; padding: 12px; min-height: 48px; text-align: left; border: 0; border-radius: 10px; background: transparent; cursor: pointer; font: inherit; font-size: .8rem; }
+.admin-task-shell .admin-task-links button[aria-current=page] { background: #ffffff12; color: #fff; }
+.admin-task-shell .admin-task-navigation button:focus-visible { outline: 3px solid #b4c9a0; outline-offset: 2px; }
+.count-review-cards { list-style: none; padding: 0; margin-block: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 12px; }
+.count-review-card { min-width: 0; border: 1px solid #dbe2d2; border-radius: 14px; padding: 14px; background: #fffefa; color: #253d32; }
+.count-review-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.count-review-heading span { font-size: .7rem; color: #735922; background: #f5edd7; padding: 5px 8px; border-radius: 6px; }
+.count-review-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-block: 12px; }
+.count-review-card dt { color: #65715f; font-size: .7rem; line-height: 1.4; }
+.count-review-card dd { margin: 4px 0 0; font-size: 1.25rem; font-weight: 700; overflow-wrap: anywhere; }
+.count-review-reason { font-size: .8rem; color: #65715f; overflow-wrap: anywhere; padding-bottom: 12px; }
+.inventory-count-review > form { display: grid; gap: 12px; padding: 16px; background: #f1f3e9; border-radius: 12px; }
+.inventory-count-review > form input { width: 100%; min-height: 48px; }
+.plants-owner-review { border: 1px solid #dbe2d2; border-radius: 14px; margin-bottom: 20px; padding: 0 16px; background: #ecf1e4; }
+.plants-owner-review[open] { padding-bottom: 16px; }
+.plants-detail-workspace .plants-header { margin-bottom: 4px; align-items: center; }
+.plants-detail-workspace .plants-header > div { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.plants-detail-workspace .plants-branch { font-size: .7rem; padding: 8px 12px; }
+.plants-detail-workspace .plant-preparation { padding: 12px; margin-block: 12px; }
+.plants-detail-workspace .plant-preparation p { display: none; }
+.plants-detail-workspace .plant-stock-box { padding: 12px; margin-block: 12px; }
+.plants-detail-workspace .plant-edit-form legend { padding: 10px 0; }
+.plants-detail-workspace .plant-price-field { padding: 12px; }
+.plants-detail-workspace .plant-save-actions { margin-block: 14px 8px; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.plants-detail-workspace .plant-save-actions .plants-primary { font-size: 1rem; box-shadow: 0 3px 10px #204e401c; }
+.plants-detail-workspace .plant-save-actions .plants-text-button { padding-inline: 12px; text-align: center; font-size: .82rem; }
+@media (max-width: 1024px) {
+  .admin-task-shell .dashboard-body { display: block; }
+  .admin-task-shell .dashboard-sidebar { width: 100%; min-width: 0; padding: 8px 12px; }
+  .admin-task-shell .admin-sidebar-brand, .admin-task-shell .admin-nav-caption, .admin-task-shell .admin-sidebar-context { display: none; }
+  .admin-task-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+  .admin-task-shell .admin-task-button { width: auto; flex: 1 1 auto; text-align: center; font-size: .82rem; padding: 12px; }
+  .admin-task-options { margin-top: 0; padding-top: 0; border: 0; }
+  .admin-task-shell .admin-options-toggle { display: flex; justify-content: space-between; width: 100%; min-height: 48px; background: transparent; color: #dce7d8; border: 0; font: inherit; font-size: .78rem; padding: 12px; cursor: pointer; }
+  .admin-task-links { display: none; }
+  .admin-task-links.expanded { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+  .admin-task-shell .dashboard-header { padding: 8px 12px; flex-wrap: wrap; gap: 8px; }
+  .admin-task-shell .dashboard-header h2 { font-size: 1rem; }
+  .admin-task-shell .dashboard-header .dashboard-kicker, .admin-task-shell .dashboard-header .demo-copy { display: none; }
+  .admin-task-shell .dashboard-content { width: 100%; padding: 16px; }
+}
+
+/* Final refinement of the existing panel; no changes to shared POS styles. */
+.admin-task-shell .dashboard-header h2 { font-family: var(--font-body); font-weight: 650; letter-spacing: -.025em; }
+.admin-task-shell .dashboard-header .demo-copy { display: none; }
+.admin-task-shell .dashboard-header { padding-block: 12px; align-items: center; }
+.admin-task-shell .plants-workspace { padding: clamp(14px, 1.8vw, 24px); }
+.admin-task-shell .plants-header { margin-bottom: 18px; }
+.admin-task-shell .plants-header h3 + p { margin-top: 5px; }
+.admin-task-shell .plants-filters { padding: 16px; gap: 12px; }
+.admin-task-shell .plants-list-heading { padding-block: 8px; }
+.admin-task-shell .plants-grid { gap: 16px; }
+.admin-task-shell .plant-card { box-shadow: 0 3px 12px #203e2e05; }
+.admin-task-shell .plant-card-pending { border-color: #ddcfad; }
+.admin-task-shell .plant-card-pending .plant-state { background: #f4ead2; color: #6d521e; }
+.admin-task-shell .plant-detail-layout { gap: 20px; }
+.admin-task-shell .plant-stock-box { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px; }
+.admin-task-shell .plant-stock-box > small { grid-column: 1 / -1; }
+.admin-task-shell .plant-edit-form fieldset { gap: 12px; }
+.admin-task-shell .plant-price-field input { font-size: 1.2rem !important; }
+.admin-task-shell .plant-work-actions { gap: 8px; padding-top: 12px; }
+.admin-task-shell .plants-advanced { margin-top: 24px; }
+.admin-task-shell .inventory-count-review > h4 { margin-bottom: 6px; }
+.admin-task-shell .inventory-count-review > p { font-size: .8rem; line-height: 1.5; }
+.admin-task-shell .count-review-card .count-review-action { min-height: 48px; background: #204e40; border-color: #204e40; color: #fff; padding: 12px 16px; border-radius: 10px; }
+.admin-task-shell .count-review-action:hover:not(:disabled) { background: #153a2e; }
+@media (max-width: 600px) {
+  .admin-task-shell .dashboard-header { padding-block: 8px; }
+  .admin-task-shell .dashboard-header h2 { font-size: .95rem; }
+  .admin-task-shell .dashboard-title-area { align-items: center; }
+  .admin-task-shell .dashboard-header h2 { margin: 0; }
+  .admin-task-shell .admin-session-menu > summary { font-size: .76rem; padding-inline: 12px; }
+  .admin-task-shell .plants-header { gap: 8px; margin-bottom: 14px; }
+  .admin-task-shell .plants-filters { padding: 12px; gap: 10px; }
+  .admin-task-shell .plant-card .plant-photo { min-height: 165px; }
+  .admin-task-shell .plant-card-content { padding: 12px; gap: 6px; }
+  .admin-task-shell .plants-detail-workspace .plants-header { margin-bottom: 0; }
+  .admin-task-shell .plant-photo-panel { padding: 8px; }
+  .admin-task-shell .plant-photo-hero { aspect-ratio: 3 / 2; }
+  .admin-task-shell .plant-identity h4 { font-size: 1.5rem; }
+  .admin-task-shell .plant-more-details { margin-top: 12px; }
+  .admin-task-shell .plant-save-actions { margin-block: 12px 4px; }
+}
+@media (max-width: 600px) {
+  .admin-task-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-task-shell .admin-task-button { width: 100%; overflow-wrap: anywhere; }
+  .admin-task-shell { padding: 8px !important; }
+  .admin-task-shell .dashboard-content { padding: 8px; }
+  .admin-task-shell .admin-content-context { display: none; }
+  .plants-detail-workspace .plant-detail-layout { gap: 16px; }
+  .plants-detail-workspace .plant-photo-panel { padding: 10px; }
+  .plants-detail-workspace .plant-photo-hero { aspect-ratio: 3 / 2; max-height: 240px; }
+  .plants-detail-workspace .plant-photo-actions { margin-top: 10px; }
+  .plants-detail-workspace .plant-photo-panel > .plants-helper { font-size: .68rem; margin-top: 8px !important; }
+  .plants-detail-workspace .plant-current-price { margin-block: 8px; }
+  .plants-detail-workspace .plant-stock-box small { font-size: .68rem; }
+  .plants-detail-workspace .plant-save-actions { grid-template-columns: 1fr; gap: 0; }
+}

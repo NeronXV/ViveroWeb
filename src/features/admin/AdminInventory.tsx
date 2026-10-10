@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { AdminServiceError, fetchInventoryHistory, reconcileInventoryCount, recordInventoryReception } from './admin-service'
+import { AdminServiceError, fetchInventoryHistory, recordInventoryReception } from './admin-service'
+import { recordInventoryCountObservation, fetchCountBaseline, type CountBaseline } from './inventory-preparation-service'
+import { useInventoryPermissions } from './useInventoryPermissions'
+import { InventoryCountReview } from './InventoryCountReview'
+import { useAuth } from '../auth/useAuth'
 import type { InventoryMovement } from './admin-types'
 import { InventoryActivation } from './InventoryActivation'
 import { useAdminInventory } from './useAdminInventory'
@@ -18,18 +22,21 @@ export function AdminInventory({
   onManageProducts?: () => void
 }) {
   const inventory = useAdminInventory(active)
+  const { accessContext } = useAuth()
+  const permissions = useInventoryPermissions(active)
+  const [countRevision, setCountRevision] = useState(0)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [history, setHistory] = useState<{ productName: string; items: InventoryMovement[]; hasMore: boolean } | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
   const receptionAttempt = useRef<{ fingerprint: string; key: string } | null>(null)
-  const countAttempt = useRef<{ fingerprint: string; key: string } | null>(null)
 
   // Modales de acciones rápidas
   const [isReceptionModalOpen, setIsReceptionModalOpen] = useState(false)
   const [isCountModalOpen, setIsCountModalOpen] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string>('')
+  const [countBaseline, setCountBaseline] = useState<CountBaseline | null>(null)
 
   // Filtros de búsqueda
   const [searchQuery, setSearchQuery] = useState('')
@@ -49,11 +56,21 @@ export function AdminInventory({
   }, [inventory.products])
 
   useEffect(() => {
-    if (active && initialProductId && inventory.status === 'ready' && inventory.products.length > 0) {
-      openReception(initialProductId)
+    if (!isCountModalOpen || !selectedProductId) return
+    const controller = new AbortController()
+    setCountBaseline(null)
+    fetchCountBaseline(selectedProductId, controller.signal).then(value => {
+      if (!controller.signal.aborted) setCountBaseline(value)
+    }).catch(error => { if (!controller.signal.aborted) setMutationError(error instanceof Error ? error.message : 'No se pudieron consultar las existencias.') })
+    return () => controller.abort()
+  }, [isCountModalOpen, selectedProductId, accessContext?.userId, accessContext?.branch?.id])
+
+  useEffect(() => {
+    if (active && initialProductId && permissions.canRecordCount && inventory.status === 'ready' && inventory.products.length > 0) {
+      openCount(initialProductId)
       onClearInitialProductId?.()
     }
-  }, [active, initialProductId, inventory.status, inventory.products.length, onClearInitialProductId, openReception])
+  }, [active, initialProductId, permissions.canRecordCount, inventory.status, inventory.products.length, onClearInitialProductId, openCount])
 
   const submitReception = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -85,33 +102,29 @@ export function AdminInventory({
 
   const submitCount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (saving) return
+    if (saving || !countBaseline || countBaseline.productId !== selectedProductId) return
     const form = event.currentTarget
     const data = new FormData(form)
     const productId = String(data.get('productId'))
     const countedQuantity = Number(data.get('countedQuantity'))
     const reason = String(data.get('reason') ?? '').trim()
-    const fingerprint = JSON.stringify({ productId, countedQuantity, reason })
-    if (countAttempt.current?.fingerprint !== fingerprint) {
-      countAttempt.current = { fingerprint, key: crypto.randomUUID() }
-    }
     setSaving(true)
     setNotice(null)
     setMutationError(null)
     try {
-      const result = await reconcileInventoryCount({
+      await recordInventoryCountObservation({
         productId,
         countedQuantity,
         reason,
-        idempotencyKey: countAttempt.current.key,
+        baseline: countBaseline,
       })
-      countAttempt.current = null
       setIsCountModalOpen(false)
-      const adjustment = result.adjustmentQuantity ?? 0
-      setNotice(`Conteo conciliado. Ajuste: ${adjustment > 0 ? '+' : ''}${adjustment}; existencia final: ${result.totalQuantity}.`)
+      setNotice('Conteo guardado para revisión. Las existencias no han cambiado.')
+      setCountRevision(value => value + 1)
       inventory.refresh()
     } catch (error) {
-      setMutationError(error instanceof AdminServiceError ? error.message : 'No fue posible conciliar el conteo.')
+      setMutationError(error instanceof Error ? error.message : 'No se confirmó el conteo. Comprueba su resultado antes de repetirlo.')
+      setCountRevision(value => value + 1)
     } finally {
       setSaving(false)
     }
@@ -174,7 +187,7 @@ export function AdminInventory({
 
   return (
     <section className="db-tab-content active" aria-busy={inventory.status === 'loading' || saving}>
-      <InventoryActivation />
+      <InventoryActivation canActivate={permissions.canReceive} />
       {/* Cabecera Principal */}
       <div className="section-header-row">
         <div>
@@ -194,21 +207,21 @@ export function AdminInventory({
               <span>🌿</span> + Nueva Planta / Producto
             </button>
           )}
-          <button
+          {permissions.canReceive && <button
             type="button"
             className="catalog-action secondary"
             onClick={() => openReception()}
             disabled={inventory.products.length === 0}
           >
             📥 Registrar Entrada
-          </button>
+          </button>}
           <button
             type="button"
             className="catalog-action secondary"
             onClick={() => openCount()}
-            disabled={inventory.products.length === 0}
+            disabled={!permissions.canRecordCount || inventory.products.length === 0}
           >
-            📝 Conciliar Conteo
+            📝 Registrar conteo
           </button>
           <button
             type="button"
@@ -378,19 +391,20 @@ export function AdminInventory({
                         </td>
                         <td>
                           <div className="stock-row-actions">
-                            <button
+                            {permissions.canReceive && <button
                               type="button"
                               className="mini-action-btn primary"
                               onClick={() => openReception(item.productId)}
                               title="Registrar entrada de mercancía"
                             >
                               📥 Entrada
-                            </button>
+                            </button>}
                             <button
                               type="button"
                               className="mini-action-btn"
                               onClick={() => openCount(item.productId)}
-                              title="Conciliar conteo físico"
+                              disabled={!permissions.canRecordCount}
+                              title="Registrar observación de conteo"
                             >
                               📝 Conteo
                             </button>
@@ -415,6 +429,8 @@ export function AdminInventory({
         </>
       )}
 
+      <InventoryCountReview key={`${accessContext?.userId}:${accessContext?.branch?.id}`} products={inventory.products} canApprove={permissions.canApproveCounts} revision={countRevision}
+        onChanged={() => { setCountRevision(value => value + 1); inventory.refresh() }} />
       {/* Modal: Registrar Entrada / Recepción */}
       {isReceptionModalOpen && (
         <div className="admin-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="reception-modal-title">
@@ -484,7 +500,7 @@ export function AdminInventory({
                 >
                   Cancelar
                 </button>
-                <button type="submit" className="catalog-action" disabled={saving}>
+                <button type="submit" className="catalog-action" disabled={saving || !permissions.canReceive}>
                   {saving ? 'Registrando…' : 'Confirmar Entrada'}
                 </button>
               </div>
@@ -498,19 +514,20 @@ export function AdminInventory({
         <div className="admin-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="count-modal-title">
           <div className="admin-modal-content" style={{ maxWidth: '520px' }}>
             <div className="admin-modal-header">
-              <h3 id="count-modal-title">📝 Conciliar Conteo Físico</h3>
+              <h3 id="count-modal-title">📝 Registrar conteo físico</h3>
               <button type="button" className="admin-modal-close" onClick={() => setIsCountModalOpen(false)}>
                 &times;
               </button>
             </div>
 
             <p className="real-data-copy" style={{ margin: '0.5rem 0 1rem' }}>
-              El sistema calculará y guardará la diferencia auditada como un ajuste en la base de datos.
+              Guardaremos la cantidad observada. Las existencias cambiarán únicamente después de la aprobación de un propietario.
             </p>
 
             {mutationError && <div className="admin-dialog-error" role="alert">{mutationError}</div>}
 
-            <form onSubmit={submitCount}>
+            {!countBaseline && <p role="status">Consultando las existencias antes de registrar el conteo…</p>}
+            <form onSubmit={submitCount} key={selectedProductId}>
               <div className="admin-form-group form-group">
                 <label htmlFor="modal-count-product">Planta o Producto *</label>
                 <select
@@ -546,7 +563,7 @@ export function AdminInventory({
               </div>
 
               <div className="admin-form-group form-group">
-                <label htmlFor="modal-count-reason">Motivo del Ajuste / Conteo *</label>
+                <label htmlFor="modal-count-reason">Motivo u observación del conteo *</label>
                 <textarea
                   id="modal-count-reason"
                   name="reason"
@@ -568,8 +585,8 @@ export function AdminInventory({
                 >
                   Cancelar
                 </button>
-                <button type="submit" className="catalog-action" disabled={saving}>
-                  {saving ? 'Guardando…' : 'Conciliar Saldo'}
+                <button type="submit" className="catalog-action" disabled={saving || !permissions.canRecordCount || !countBaseline || countBaseline.productId !== selectedProductId}>
+                  {saving ? 'Guardando…' : 'Guardar conteo para revisión'}
                 </button>
               </div>
             </form>

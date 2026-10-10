@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import { AccessDenied } from '../access/AccessDenied'
@@ -10,7 +10,11 @@ import { BranchDirectory, StaffDirectory } from './AdminDirectories'
 import { AdminInventory } from './AdminInventory'
 import { useAdminReports } from './useAdminReports'
 import { useAdminBranches } from './useAdminDirectories'
-import { AdminCatalog } from './AdminCatalog'
+import { AdminPlants } from './plants/AdminPlants'
+import { AdminNavigation } from './AdminNavigation'
+import { useInventoryPermissions } from './useInventoryPermissions'
+import { adminTasks } from '../access/admin-navigation'
+import './admin-navigation.css'
 import { AdminCustomers } from './AdminCustomers'
 import { AdminPromotions } from './AdminPromotions'
 import { StaffInvitation } from './StaffInvitation'
@@ -19,6 +23,11 @@ import { AdminOrders } from './AdminOrders'
 import { PurchasesDashboard } from './purchases'
 import { useDemoStore } from '../../app/providers/DemoStore'
 import logo from '../../assets/isotipo-flor.svg'
+
+function AdminSessionActions({ compact, role, children }: { compact: boolean; role: string; children: ReactNode }) {
+  const actions = <div className="dashboard-header-actions">{children}</div>
+  return compact ? <details className="admin-session-menu"><summary title={role}>Mi sesión</summary>{actions}</details> : actions
+}
 
 export function AdminPage() {
   const { accessContext, refreshAccessContext } = useAuth()
@@ -32,17 +41,26 @@ export function AdminPage() {
 }
 
 function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { context: UserAccessContext; authorizedTabs: AdminModuleId[]; onRefreshAccess: () => void }) {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab') as AdminModuleId | null
-  const firstAuthorizedTab = authorizedTabs[0]
+  const firstAuthorizedTab = authorizedTabs.includes('inventario') ? 'inventario' : authorizedTabs[0]
   const [tab, setTab] = useState<AdminModuleId>(() => requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab)
   const [preselectedStockProductId, setPreselectedStockProductId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const { darkTheme, toggleTheme } = useDemoStore()
   const { signOut } = useAuth()
   const navigate = useNavigate()
+  const inventoryPermissions = useInventoryPermissions(hasCapability(context, 'MANAGE_INVENTORY') && !!context.branch?.isActive)
+  const activeTask = adminTasks(authorizedTabs, inventoryPermissions.canReceive).find(task => task.modules.includes(tab))
+  const plantWork = useRef({ dirty: false, busy: false })
+  const allowSessionAction = () => {
+    if (tab !== 'inventario') return true
+    if (plantWork.current.busy) { setNotice('Espera a que termine la operación antes de cambiar tu sesión.'); return false }
+    return !plantWork.current.dirty || window.confirm('Tienes cambios de la planta sin guardar. ¿Quieres descartarlos y continuar con esta acción de sesión?')
+  }
 
   const handleSignOut = async () => {
+    if (!allowSessionAction()) return
     if (await signOut()) {
       navigate('/login', { replace: true })
     }
@@ -76,33 +94,20 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   } = useAdminReports(context.branch?.id ?? null)
 
   useEffect(() => {
-    const nextTab = requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : authorizedTabs[0]
+    const nextTab = requestedTab && authorizedTabs.includes(requestedTab) ? requestedTab : firstAuthorizedTab
     if (nextTab) setTab(nextTab)
-  }, [authorizedTabs, context.userId, requestedTab])
+  }, [authorizedTabs, context.userId, requestedTab, firstAuthorizedTab])
 
 
 
 
   const selectTab = (nextTab: AdminModuleId) => {
     if (!authorizedTabs.includes(nextTab)) return
-    setTab(nextTab)
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', nextTab)
+    next.delete('plant'); next.delete('view')
+    setSearchParams(next)
     setNotice('')
-  }
-
-  const navigateTabs = (event: KeyboardEvent<HTMLButtonElement>, currentTab: AdminModuleId) => {
-    const currentIndex = authorizedTabs.indexOf(currentTab)
-    let nextIndex: number | null = null
-
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % authorizedTabs.length
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + authorizedTabs.length) % authorizedTabs.length
-    if (event.key === 'Home') nextIndex = 0
-    if (event.key === 'End') nextIndex = authorizedTabs.length - 1
-    if (nextIndex === null) return
-
-    event.preventDefault()
-    const nextTab = authorizedTabs[nextIndex]
-    selectTab(nextTab)
-    requestAnimationFrame(() => document.getElementById(`admin-tab-${nextTab}`)?.focus())
   }
 
   // Cálculos acumulativos reales en centavos para el Stats-Grid de Ventas
@@ -112,18 +117,18 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const totalDiscountsReal = dailySales.reduce((sum, item) => sum + item.discountCents, 0) / 100
 
   return (
-    <main className="internal-page admin-workspace">
+    <main className={`internal-page admin-workspace admin-task-shell ${tab === 'inventario' ? 'admin-plants-active' : ''}`}>
       <div className="dashboard-panel open embedded">
         <div className="dashboard-header">
           <div className="dashboard-title-area">
             <span className="dashboard-brand-mark" aria-hidden="true">VD</span>
             <div>
               <p className="dashboard-kicker">Administración interna</p>
-              <h2 ref={headingRef} tabIndex={-1}>Panel Vivero Dulcinea</h2>
+              <h2 ref={headingRef} tabIndex={-1}>Vivero Dulcinea</h2>
               <p className="demo-copy">Gestión de productos, pedidos y operación de sucursal.</p>
             </div>
           </div>
-          <div className="dashboard-header-actions">
+          <AdminSessionActions compact role={context.role?.displayName ?? 'Administración'}>
             <button
               type="button"
               className="theme-toggle-btn-admin"
@@ -135,9 +140,9 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
             </button>
             <span className="role-badge-db admin">{context.role?.displayName ?? 'Administración'}</span>
             <Link className="logout-btn" to="/panel">Volver al panel</Link>
-            <button type="button" className="logout-btn" onClick={onRefreshAccess}>Actualizar acceso</button>
+            <button type="button" className="logout-btn" onClick={() => { if (allowSessionAction()) onRefreshAccess() }}>Actualizar acceso</button>
             <button type="button" className="logout-btn" onClick={handleSignOut}>Cerrar sesión</button>
-          </div>
+          </AdminSessionActions>
         </div>
 
         <div className="dashboard-body">
@@ -147,35 +152,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               <span>Vivero Dulcinea<small>Administración</small></span>
             </Link>
             <p className="admin-nav-caption">Tu vivero, en orden</p>
-            <nav aria-label="Módulos administrativos">
-              <ul role="tablist" aria-orientation="vertical">
-                {ADMIN_MODULE_RULES.map((item) => {
-                  const authorized = authorizedTabs.includes(item.id)
-                  const explanation = item.pendingBackendPermission ? 'Pendiente de permiso backend' : 'No disponible con tus capacidades actuales'
-                  return (
-                    <li key={item.id} role="presentation">
-                      <button
-                        id={`admin-tab-${item.id}`}
-                        type="button"
-                        role="tab"
-                        className={`db-nav-item ${tab === item.id ? 'active' : ''}`}
-                        onClick={() => selectTab(item.id)}
-                        onKeyDown={(event) => navigateTabs(event, item.id)}
-                        disabled={!authorized}
-                        aria-disabled={!authorized}
-                        aria-selected={authorized && tab === item.id}
-                        aria-controls={authorized ? `admin-panel-${item.id}` : undefined}
-                        tabIndex={authorized && tab === item.id ? 0 : -1}
-                        title={!authorized ? explanation : undefined}
-                      >
-                        <span className="admin-nav-label">{item.label.replace(/^[^\p{L}\p{N}]+/u, '')}</span>
-                        {!authorized && <span className="module-lock-reason">{explanation}</span>}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </nav>
+            <AdminNavigation authorized={authorizedTabs} tab={tab} canReceive={inventoryPermissions.canReceive} onSelect={selectTab} />
             <div className="admin-sidebar-context">
               <span>Sucursal</span>
               <strong>{context.branch?.name ?? 'Sin sucursal asignada'}</strong>
@@ -189,14 +166,15 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
               <span>Vivero Dulcinea</span>
             </div>
             {notice && <p className="form-notice" aria-live="polite">{notice}</p>}
-            <div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`} tabIndex={0}>
+            <div id="admin-task-panel" role="tabpanel" aria-labelledby={`admin-task-${activeTask?.id}`} tabIndex={0}>
 
               {tab === 'sucursales' && authorizedTabs.includes('sucursales') && <BranchDirectory active />}
 
               {tab === 'inventario' && authorizedTabs.includes('inventario') && (
-                <AdminCatalog
-                  active={tab === 'inventario'}
-                  onContinueToInventory={authorizedTabs.includes('stock') ? (productId?: string) => {
+                <AdminPlants
+                  onWorkingState={(dirty, busy) => { plantWork.current = { dirty, busy } }}
+                  onReception={authorizedTabs.includes('compras') ? () => selectTab('compras') : undefined}
+                  onInventory={authorizedTabs.includes('stock') ? (productId?: string) => {
                     if (productId) setPreselectedStockProductId(productId)
                     selectTab('stock')
                   } : undefined}

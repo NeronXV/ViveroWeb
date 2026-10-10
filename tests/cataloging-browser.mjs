@@ -1,0 +1,62 @@
+// Real mobile browser against the isolated synthetic API/database fixture only.
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+if(process.env.CATALOGING_BROWSER_SCOPE!=='native-synthetic-034' || process.env.CATALOGING_BROWSER_ORIGIN!=='http://127.0.0.1:42551')throw new Error('Isolated local fixture required');
+const require=createRequire(join(process.env.BROWSER_TEST_MODULES,'package.json'));
+const {chromium}=require('playwright'),sharp=require('sharp');
+const output=process.env.CATALOGING_OUTPUT_DIR;await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true,channel:'chrome'});
+const failures=[],checks=[];
+const origin=process.env.CATALOGING_BROWSER_ORIGIN;
+const stamp=async page=>page.evaluate(()=>{const d=document.createElement('div');d.textContent='ENSAYO LOCAL · DATOS SINTÉTICOS';d.style.cssText='background:#f5e8c9;color:#574621;padding:8px;text-align:center;font:600 12px system-ui';document.body.prepend(d)});
+async function login(role){
+  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  await context.route('**/*',r=>r.request().url().startsWith(origin+'/')||r.request().url().startsWith('blob:') ? r.continue():r.abort());
+  const page=await context.newPage();page.on('pageerror',e=>failures.push(String(e)));
+  await page.goto(origin+'/login?returnTo=/admin');
+  await page.getByLabel('Correo electrónico').fill(`${role}-034@example.invalid`);
+  await page.getByLabel('Contraseña',{exact:true}).fill('Synthetic-cataloging-password-034');
+  await page.getByRole('button',{name:/Iniciar sesión/i}).click();
+  await page.getByRole('tab',{name:'Plantas',exact:true}).click();
+  await page.locator('.plants-owner-review').filter({has:page.getByText('Revisión de plantas y nuevas fichas',{exact:true})}).locator('summary').click();
+  await page.getByRole('button',{name:'Nueva planta',exact:true}).waitFor();return {page,context};
+}
+try{
+  const {page:manager}=await login('manager');
+  await manager.getByRole('button',{name:'Nueva planta',exact:true}).click();
+  await manager.getByLabel('Nombre original del documento').fill('Planta móvil sintética original');
+  await manager.getByLabel('Nombre comercial por confirmar').fill('Planta móvil sintética');
+  await manager.getByLabel('Presentación literal').fill('B02');
+  await manager.getByLabel('SKU interno por confirmar').fill('MOBILE-SYNTHETIC-034');
+  await manager.locator('.cataloging-board').getByLabel('Categoría',{exact:true}).selectOption('1');
+  await manager.getByRole('button',{name:'Guardar avances',exact:true}).click();
+  await manager.getByText('Avances guardados en el servidor.',{exact:true}).waitFor();checks.push('mobile draft save to actual MariaDB');
+  const png=await sharp({create:{width:100,height:100,channels:3,background:'#52784e'}}).png().toBuffer();
+  await manager.locator('.cataloging-board input[type=file]').last().setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:png});
+  await manager.getByRole('button',{name:'Guardar fotografía',exact:true}).click();
+  await manager.getByText('Fotografía guardada.',{exact:true}).waitFor();checks.push('actual normalized photo persisted');
+  await stamp(manager);await manager.screenshot({path:join(output,'catalogacion-movil.png'),fullPage:true});
+  assert.ok(await manager.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'mobile horizontal overflow');
+  await manager.getByRole('button',{name:'Enviar a revisión',exact:true}).click();
+  await manager.getByText(/En revisión · Revisión/).waitFor();checks.push('submission remains isolated from sales and inventory');
+  const {page:owner}=await login('owner');
+  await owner.locator('.cataloging-board').getByLabel('Buscar nombre o SKU').fill('Planta móvil sintética');
+  await owner.getByRole('button',{name:/Planta móvil sintética.*Completar ficha/}).click();
+  await stamp(owner);await owner.screenshot({path:join(output,'revision-propietario-movil.png'),fullPage:true});
+  owner.on('dialog',d=>d.accept());
+  await owner.getByRole('button',{name:'Confirmar y preparar ficha inactiva',exact:true}).click();
+  await owner.getByRole('button',{name:'Abrir ficha de Planta móvil sintética · B02',exact:true}).waitFor();
+  await owner.getByRole('button',{name:'Abrir ficha de Planta móvil sintética · B02',exact:true}).click();
+  await owner.getByText('Precio pendiente',{exact:true}).first().waitFor();
+  assert.equal(await owner.getByRole('button',{name:'Habilitar venta en esta sucursal',exact:true}).count(),0);checks.push('owner prepared inactive product under migration 033');
+  await owner.getByRole('button',{name:'Registrar conteo',exact:true}).click();
+  await owner.getByLabel('Cantidad contada').fill('0');
+  await owner.getByLabel('Observaciones del conteo').fill('Conteo físico sintético inicial');
+  await owner.getByRole('button',{name:'Enviar conteo',exact:true}).click();
+  await owner.getByText('Conteo enviado. Quedó pendiente de aprobación; las existencias no cambiaron.',{exact:true}).waitFor();checks.push('actual count observation submitted, no balance mutation');
+  assert.deepEqual(failures,[]);
+  await writeFile(join(output,'browser-result.json'),JSON.stringify({passed:true,checks,failures},null,2),{flag:'wx'});
+  console.log(JSON.stringify({passed:true,checks}));
+}finally{await browser.close();}

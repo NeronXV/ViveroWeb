@@ -1,4 +1,5 @@
 import { ProductQrLabelCard } from '../ProductQrLabelCard'
+import { useInventoryPermissions } from '../useInventoryPermissions'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { centsToPesos, centsToFormattedMxn, pesosToCents, calculateExpectedTotalCents, validatePurchaseLines, sanitizeFileName } from './purchases-parser'
 import { confirmSupplierPurchase, recoverSupplierPurchaseDraft, readPendingSupplierPurchaseDraft, retireSupplierPurchaseDraft, createSupplierPurchaseDraft, fetchSupplierPurchaseDetail, resolveSupplierPurchaseItem, setSupplierPresentation } from './purchases-service'
@@ -37,6 +38,7 @@ export function PurchaseDraftWizard({
   onNavigateToCatalog,
   onCancel,
 }: PurchaseDraftWizardProps) {
+  const inventoryPermissions = useInventoryPermissions()
   // Navigation step
   const [step, setStep] = useState<WizardStep>(initialPurchaseId ? 4 : 1)
 
@@ -1108,9 +1110,9 @@ export function PurchaseDraftWizard({
               className="submit-db-btn"
               style={{ background: '#10b981' }}
               onClick={handleConfirmReception}
-              disabled={isConfirming || purchaseDetail.unmatchedCount > 0}
+              disabled={!inventoryPermissions.canReceive || isConfirming || purchaseDetail.unmatchedCount > 0}
             >
-              {isConfirming ? 'Procesando movimientos en Supabase...' : 'Confirmar Recepción e Incrementar Stock ✓'}
+              {isConfirming ? 'Confirmando recepción…' : inventoryPermissions.canReceive ? 'Confirmar recepción' : 'Recepción reservada a propietarios'}
             </button>
           </div>
         </section>

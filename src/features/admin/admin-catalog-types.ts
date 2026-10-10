@@ -10,6 +10,8 @@ export interface AdminCategory {
 }
 
 export interface AdminProduct {
+  editRevision?: number
+  image?: { id: string; url: string; altText: string } | null
   id: string
   internalCode: string
   barcode: string | null

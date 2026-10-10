@@ -31,8 +31,14 @@ function product(row: Record<string, unknown>, categories: AdminCategory[]) {
   void _image; void _price; void _promotion
   const categoryId = apiId(row.category_id), matched = categories.find(c => c.id === categoryId)
   if (!matched) throw new Error('Missing category')
-  return parseAdminProduct({ ...fields, id: apiId(row.id), category_id: categoryId, scientific_name: row.scientific_name === '' ? null : row.scientific_name,
-    minimum_stock: typeof row.minimum_stock === 'string' ? decimal(row.minimum_stock) : row.minimum_stock, categories: { name: matched.name } })
+  let image: AdminProduct['image'] = null
+  if (_image !== null && _image !== undefined) {
+    const metadata = object(_image), id = apiId(metadata.id)
+    if (metadata.url !== `/api/v1/images/${id}` || typeof metadata.alt_text !== 'string') throw new Error('Invalid product image')
+    image = { id, url: metadata.url as string, altText: metadata.alt_text }
+  }
+  return { ...parseAdminProduct({ ...fields, id: apiId(row.id), category_id: categoryId, scientific_name: row.scientific_name === '' ? null : row.scientific_name,
+    minimum_stock: typeof row.minimum_stock === 'string' ? decimal(row.minimum_stock) : row.minimum_stock, categories: { name: matched.name } }), image }
 }
 export function fetchAdminCategories(signal?: AbortSignal): Promise<AdminCategory[]> {
   return safe(async () => (await pages('categories', new URLSearchParams(), signal)).map(category), signal)
