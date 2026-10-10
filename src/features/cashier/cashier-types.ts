@@ -2,6 +2,7 @@ export type CashierClaimState = 'AVAILABLE' | 'CLAIMED_BY_ME' | 'CLAIMED_BY_OTHE
 export type CashierPaymentMethod = 'CASH' | 'CARD' | 'TRANSFER'
 
 export interface CashierSale {
+  origin?: 'WEB_ORDER' | 'DIRECT_SALE'
   id: string
   folio: string
   createdAt: string

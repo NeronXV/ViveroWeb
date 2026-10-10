@@ -214,7 +214,7 @@ export function PanelPage() {
                         <h3>Catálogo</h3>
                       </div>
                     </div>
-                    <p>Consulta productos, precios efectivos y promociones vigentes certificadas por Supabase.</p>
+                    <p>Consulta productos, precios efectivos y promociones vigentes del catálogo.</p>
                   </div>
                   <div className="panel-card-footer">
                     <button type="button" className="panel-card-link-btn" onClick={handleOpenCatalog}>Abrir Catálogo</button>

@@ -1,9 +1,11 @@
+import { SHORT_FOLIO_HEADER } from '../../lib/folio-format'
 import { createBackendAuthService } from '../auth/backend-auth-service'
 
 export interface CashierIdentity { userId: number; branchId: number }
 export interface RefundInput { reason: string; method: 'CASH' | 'CARD' | 'TRANSFER'; restock: boolean; money_returned: true }
 export interface ClosingInput { opening_cash_cents: number; counted_cash_cents: number }
-export interface CashierOperationAttempt extends CashierIdentity { readonly key: string; readonly kind: 'refund' | 'closing'; readonly saleId: number | null; readonly body: string }
+export interface CancellationInput { reason: string }
+export interface CashierOperationAttempt extends CashierIdentity { readonly key: string; readonly kind: 'refund' | 'closing' | 'cancel'; readonly saleId: number | null; readonly body: string }
 export class BackendCashierOperationError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly resultUncertain = false) {
     super(resultUncertain ? 'No se confirmó la operación. Conserva el intento para recuperar su resultado.' : 'No fue posible completar la operación de Caja.')
@@ -31,22 +33,30 @@ function closingInput(value: unknown): ClosingInput {
   if (Object.keys(r).length !== 2) fail()
   return { opening_cash_cents: integer(r.opening_cash_cents), counted_cash_cents: integer(r.counted_cash_cents) }
 }
+function cancellationInput(value: unknown): CancellationInput {
+  const r = object(value)
+  if (Object.keys(r).length !== 1 || typeof r.reason !== 'string' || [...r.reason.trim()].length < 3 || [...r.reason.trim()].length > 240
+    || [...r.reason].some(c => c.charCodeAt(0) < 32 || (c.charCodeAt(0) >= 127 && c.charCodeAt(0) <= 159))) fail()
+  return { reason: r.reason.trim() }
+}
 function checkedAttempt(value: CashierOperationAttempt): CashierOperationAttempt {
   id(value.userId); id(value.branchId)
   if (!/^[a-f0-9]{64}$/.test(value.key) || typeof value.body !== 'string') fail()
   let body: unknown
   try { body = JSON.parse(value.body) } catch { fail() }
   if (value.kind === 'refund') { id(value.saleId); refundInput(body) }
+  else if (value.kind === 'cancel') { id(value.saleId); cancellationInput(body) }
   else if (value.kind === 'closing' && value.saleId === null) closingInput(body)
   else fail()
   return Object.freeze({ userId: value.userId, branchId: value.branchId, key: value.key, kind: value.kind, saleId: value.saleId, body: value.body })
 }
 export function createBackendCashierOperationAttempt(identity: CashierIdentity, kind: 'refund', input: RefundInput, saleId: number): CashierOperationAttempt
 export function createBackendCashierOperationAttempt(identity: CashierIdentity, kind: 'closing', input: ClosingInput): CashierOperationAttempt
-export function createBackendCashierOperationAttempt(identity: CashierIdentity, kind: 'refund' | 'closing', input: RefundInput | ClosingInput, saleId?: number): CashierOperationAttempt {
+export function createBackendCashierOperationAttempt(identity: CashierIdentity, kind: 'cancel', input: CancellationInput, saleId: number): CashierOperationAttempt
+export function createBackendCashierOperationAttempt(identity: CashierIdentity, kind: 'refund' | 'closing' | 'cancel', input: RefundInput | ClosingInput | CancellationInput, saleId?: number): CashierOperationAttempt {
   const key = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('')
   return Object.freeze(checkedAttempt({ userId: id(identity.userId), branchId: id(identity.branchId), key, kind,
-    saleId: kind === 'refund' ? id(saleId) : null, body: JSON.stringify(kind === 'refund' ? refundInput(input) : closingInput(input)) }))
+    saleId: kind === 'closing' ? null : id(saleId), body: JSON.stringify(kind === 'refund' ? refundInput(input) : kind === 'cancel' ? cancellationInput(input) : closingInput(input)) }))
 }
 function date(value: unknown) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(\d{3})?Z$/.test(value) || !Number.isFinite(Date.parse(value))) fail()
@@ -88,6 +98,18 @@ export function parseBackendRefund(value: unknown, attempt: CashierOperationAtte
   id(row.id); id(row.payment_id); integer(row.amount_cents, 1); date(row.created_at)
   if ('idempotency_key' in row || 'request_hash' in row) fail()
   return { ...r, refund: row }
+}
+export function parseBackendCancellation(value: unknown, attempt: CashierOperationAttempt) {
+  checkedAttempt(attempt)
+  const r = object(value), sale = object(r.sale), row = object(r.cancellation), input = cancellationInput(JSON.parse(attempt.body))
+  if (Object.keys(r).length !== 5 || Object.keys(sale).length !== 5 || Object.keys(row).length !== 6
+    || attempt.kind !== 'cancel' || r.schema_version !== 1 || typeof r.idempotent_replay !== 'boolean'
+    || id(sale.id) !== attempt.saleId || id(row.sale_id) !== attempt.saleId || sale.status !== 'CANCELLED'
+    || id(sale.branch_id) !== attempt.branchId || id(row.branch_id) !== attempt.branchId || id(row.cancelled_by) !== attempt.userId
+    || row.reason !== input.reason || typeof sale.folio !== 'string' || !sale.folio) fail()
+  id(row.id); integer(sale.total_cents); date(row.created_at)
+  if (r.web_order_id !== null) id(r.web_order_id)
+  return { ...r, sale, cancellation: row }
 }
 type OperationStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 type Exclusive = <T>(name: string, action: () => Promise<T>) => Promise<T>
@@ -131,7 +153,7 @@ export function createBackendCashierOperationsService(request: typeof fetch = fe
     let response: Response, value: unknown
     try {
       response = await request(`/api/v1/cashier${path}`, { method, body, signal: combined, credentials: 'omit', redirect: 'error', cache: 'no-store',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) } })
+        headers: { ...SHORT_FOLIO_HEADER, Authorization: `Bearer ${token}`, 'X-Expected-Actor-Id': String(identity.userId), 'X-Expected-Branch-Id': String(identity.branchId), 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) } })
       value = await response.json()
     } catch { throw new BackendCashierOperationError(0, 'CONNECTION_FAILED', method === 'POST' && path !== '/closings/recover') }
     if (!response.ok) throw new BackendCashierOperationError(response.status, typeof object(value).error === 'string' ? String(object(value).error) : 'REQUEST_FAILED', method === 'POST' && response.status >= 500)
@@ -171,9 +193,9 @@ export function createBackendCashierOperationsService(request: typeof fetch = fe
         storage.setItem(pendingKey(attempt), JSON.stringify({ schema_version: 1, authority: 'backend-api', attempt }))
         const saved = readBackendCashierOperationAttempt(storage, attempt)
         if (!saved || !sameAttempt(saved, attempt)) throw new BackendCashierOperationError(0, 'STORAGE_FAILED')
-        const path = attempt.kind === 'closing' ? '/closings' : `/sales/${attempt.saleId}/refunds`
+        const path = attempt.kind === 'closing' ? '/closings' : `/sales/${attempt.saleId}/${attempt.kind === 'cancel' ? 'cancel' : 'refunds'}`
         const value = await call(token, attempt, path, 'POST', attempt.body, attempt.key, signal)
-        try { return attempt.kind === 'closing' ? parseBackendClosing(value, attempt, attempt) : parseBackendRefund(value, attempt) }
+        try { return attempt.kind === 'closing' ? parseBackendClosing(value, attempt, attempt) : attempt.kind === 'cancel' ? parseBackendCancellation(value, attempt) : parseBackendRefund(value, attempt) }
         catch { throw new BackendCashierOperationError(502, 'INCOMPATIBLE_RESPONSE', true) }
       })
     },
@@ -181,6 +203,11 @@ export function createBackendCashierOperationsService(request: typeof fetch = fe
       checkedAttempt(attempt)
       if (attempt.kind !== 'closing') fail()
       return parseBackendClosing(await call(token, attempt, '/closings/recover', 'POST', '{}', attempt.key, signal), attempt, attempt)
+    },
+    async recoverCancellation(token: string, attempt: CashierOperationAttempt, signal?: AbortSignal) {
+      checkedAttempt(attempt)
+      if (attempt.kind !== 'cancel') fail()
+      return parseBackendCancellation(await call(token, attempt, `/sales/${attempt.saleId}/cancellation-result`, 'POST', '{}', attempt.key, signal), attempt)
     },
   }
 }

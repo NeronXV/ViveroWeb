@@ -7,12 +7,13 @@ import type { CashierCursor, CashierPaymentMethod, CashierPaymentResultResponse 
 export class CashierServiceError extends Error {
   constructor(message: string, public readonly code?: string, public readonly status?: number) { super(message); this.name = 'CashierServiceError' }
 }
-export interface GetSalesParams { limit?: number; cursor?: CashierCursor | null }
+export interface GetSalesParams { limit?: number; cursor?: CashierCursor | null; folio?: string }
 export interface ConfirmPaymentParams { saleId: string; claimToken: string; idempotencyKey: string; method: CashierPaymentMethod; amountReceivedCents?: number | null; reference?: string | null }
 async function boundary<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   try { return await work() }
   catch (error) {
     if (signal?.aborted) throw new DOMException('Operación cancelada.', 'AbortError')
+    if (error instanceof CashierServiceError) throw error
     if (error instanceof BackendHttpError || error instanceof BackendCashierError) throw new CashierServiceError(error.message, error.code, error.status)
     throw new CashierServiceError('No se confirmó la operación de Caja. Conserva el intento y consulta su resultado.', 'INCOMPATIBLE_RESPONSE')
   }
@@ -20,7 +21,8 @@ async function boundary<T>(work: () => Promise<T>, signal?: AbortSignal): Promis
 function saleView(row: Record<string, unknown>, metadata: Record<string, unknown>) {
   return { id: apiId(row.id), folio: row.folio, createdAt: utc(metadata.created_at), totalCents: row.total_cents,
     itemCount: metadata.item_count, status: row.status, createdByLabel: metadata.created_by_label, claimState: metadata.claim_state,
-    claimExpiresAt: metadata.claim_expires_at === null ? null : utc(metadata.claim_expires_at), serverTime: utc(metadata.server_time) }
+    claimExpiresAt: metadata.claim_expires_at === null ? null : utc(metadata.claim_expires_at), serverTime: utc(metadata.server_time),
+    ...(metadata.origin === undefined ? {} : { origin: metadata.origin }) }
 }
 function itemView(row: Record<string, unknown>) {
   return { id: apiId(row.id), productName: row.product_name, quantity: typeof row.quantity === 'number' ? row.quantity : decimal(row.quantity), unitPriceCents: row.unit_price_cents, lineTotalCents: row.line_total_cents }
@@ -29,7 +31,8 @@ export function fetchCashierSales(params: GetSalesParams, signal?: AbortSignal) 
   return boundary(async () => {
     const limit = params.limit ?? 25, query = new URLSearchParams({ limit: String(limit), view: 'operations' })
     if (params.cursor) query.set('before_id', String(backendId(params.cursor.id)))
-    const result = await backendHttp('cashier/sales?' + query, 'GET', undefined, signal)
+    if (params.folio) query.set('folio', params.folio.trim())
+    const result = await backendHttp('cashier/sales?' + query, 'GET', undefined, signal, undefined, true)
     if (result.schema_version !== 1) throw new Error('schema')
     const rows = list(result.items), items = rows.map(row => saleView(row, object(row.operation)))
     return parseCashierSalesResponse({ schemaVersion: 1, items, page: { limit, hasMore: result.next_before_id !== null,
@@ -40,7 +43,13 @@ export function fetchCashierSaleDetail(saleId: string, signal?: AbortSignal) {
   return boundary(async () => {
     const result = await backendHttp(`cashier/sales/${backendId(saleId)}?view=operations`, 'GET', undefined, signal)
     if (result.schema_version !== 1) throw new Error('schema')
-    return parseCashierSaleDetailResponse({ schemaVersion: 1, sale: saleView(object(result.sale), object(result.operation)), items: list(result.items).map(itemView) })
+    const status = object(result.sale).status
+    if (status === 'CANCELLED') throw new CashierServiceError('Esta venta ya está cancelada y no puede cobrarse.', 'SALE_CANCELLED', 409)
+    if (status === 'PAYMENT_PENDING') throw new CashierServiceError('Esta venta tiene un cobro pendiente de conciliación. Revisa su resultado antes de continuar.', 'SALE_RECONCILIATION_REQUIRED', 409)
+    if (status === 'PAID' || status === 'DELIVERED') throw new CashierServiceError('Esta venta ya fue cobrada. Consulta su comprobante o el flujo de devolución.', 'SALE_ALREADY_PAID', 409)
+    const row = object(result.sale), metadata = object(result.operation)
+    return parseCashierSaleDetailResponse({ schemaVersion: 1, sale: saleView(row, { ...metadata,
+      ...('web_order_id' in row ? { origin: row.web_order_id === null ? 'DIRECT_SALE' : 'WEB_ORDER' } : {}) }), items: list(result.items).map(itemView) })
   }, signal)
 }
 export function claimSaleForPayment(saleId: string, claimToken: string | null = null, signal?: AbortSignal) {

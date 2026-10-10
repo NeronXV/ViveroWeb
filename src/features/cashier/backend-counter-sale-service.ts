@@ -1,3 +1,4 @@
+import { SHORT_FOLIO_HEADER, isBackendSaleFolio } from '../../lib/folio-format'
 import { parseBackendOrderQuote } from '../public-orders/backend-order-service'
 import { parseBackendProduct } from '../public-catalog/backend-catalog-service'
 
@@ -68,7 +69,7 @@ export function parseBackendCounterReceipt(value: unknown, expected: BackendCoun
   const r = record(value, ['schema_version', 'id', 'folio', 'branch_id', 'created_by', 'status', 'subtotal_cents', 'discount_cents', 'total_cents', 'created_at', 'idempotent_replay'])
   const checked = attempt(expected)
   if (r.schema_version !== 1 || id(r.created_by) !== checked.userId || id(r.branch_id) !== checked.branchId || typeof r.idempotent_replay !== 'boolean'
-    || typeof r.folio !== 'string' || !/^VD-[A-F0-9]{24}$/.test(r.folio) || !['SENT_TO_CASHIER', 'PAYMENT_PENDING', 'PAID', 'CANCELLED', 'DELIVERED'].includes(String(r.status))
+    || typeof r.folio !== 'string' || !isBackendSaleFolio(r.folio) || !['SENT_TO_CASHIER', 'PAYMENT_PENDING', 'PAID', 'CANCELLED', 'DELIVERED'].includes(String(r.status))
     || typeof r.created_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(r.created_at) || !Number.isFinite(Date.parse(r.created_at))
     || new Date(r.created_at).toISOString() !== r.created_at.slice(0, -1) + '.000Z') fail()
   id(r.id)
@@ -86,7 +87,7 @@ export function createBackendCounterSaleService(request: typeof fetch = fetch, e
     let response: Response
     const timeout = AbortSignal.timeout(15000), writing = path !== '/quote' && path !== '/recover'
     try { response = await request(`/api/v1/sales${path}`, { method: 'POST', body, signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-      credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': secret(key) } : {}),
+      credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { ...SHORT_FOLIO_HEADER, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': secret(key) } : {}),
         ...(identity ? { 'X-Expected-Branch-Id': String(id(identity.branchId)), ...(identity.userId !== undefined ? { 'X-Expected-Actor-Id': String(id(identity.userId)) } : {}) } : {}) } }) }
     catch { throw new BackendCounterError(0, 'CONNECTION_FAILED', writing) }
     let value: unknown
@@ -106,7 +107,7 @@ export function createBackendCounterSaleService(request: typeof fetch = fetch, e
       let response: Response
       try { response = await request('/api/v1/products/scan', { method: 'POST', body: JSON.stringify({ code: code.trim() }),
         signal: signal ? AbortSignal.any([signal, timeout]) : timeout, credentials: 'omit', redirect: 'error', cache: 'no-store',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }) }
+        headers: { ...SHORT_FOLIO_HEADER, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }) }
       catch { throw new BackendCounterError(0, 'CONNECTION_FAILED') }
       let value: unknown
       try { value = await response.json() } catch { fail() }

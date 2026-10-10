@@ -33,6 +33,11 @@ const errors: Record<string, string> = {
   REFUND_DATA_INVALID: 'Revisa el motivo y confirma la devolución presencial del dinero.',
   REFUND_ALREADY_RECORDED: 'Esta venta ya tiene una devolución registrada. No entregues dinero otra vez.',
   IDEMPOTENCY_CONFLICT: 'El intento ya existe con otros datos. Revisa el último resultado.',
+  CANCELLATION_REASON_INVALID: 'Escribe un motivo de entre 3 y 240 caracteres.',
+  CANCELLATION_RECONCILIATION_REQUIRED: 'Esta venta tiene un cobro por revisar. Concilia su resultado y libera el cobro antes de cancelarla.',
+  CANCELLATION_REFUND_REQUIRED: 'Esta venta ya fue cobrada. Usa el flujo de devolución.',
+  SALE_ALREADY_CANCELLED: 'Esta venta ya está cancelada.',
+  CANCELLATION_IDEMPOTENCY_CONFLICT: 'El intento tiene otros datos. Conserva el pendiente y revisa su resultado.',
 }
 
 function access() {
@@ -73,14 +78,31 @@ async function execute(attempt: CashierOperationAttempt) {
   if (pending && (pending.kind !== attempt.kind || pending.saleId !== attempt.saleId || pending.body !== attempt.body)) throw new Error('Hay una operación pendiente. Recupera su resultado antes de registrar otra.')
   const original = pending ?? attempt
   let result: Record<string, unknown>
+  try {
   if (pending?.kind === 'closing') {
     try { result = await service.recoverClosing(token, original) }
     catch (error) {
       if (!(error instanceof BackendCashierOperationError) || error.status !== 404 || error.code !== 'CLOSING_NOT_FOUND') throw error
       result = await service.submit(token, original, localStorage)
     }
+  } else if (pending?.kind === 'cancel') {
+    try { result = await service.recoverCancellation(token, original) }
+    catch (error) {
+      if (!(error instanceof BackendCashierOperationError) || error.status !== 404 || error.code !== 'CANCELLATION_NOT_FOUND') throw error
+      result = await service.submit(token, original, localStorage)
+    }
   } else result = await service.submit(token, original, localStorage)
   return { result, attempt: original }
+  } catch (error) {
+    // These explicit rejections occur before cancellation commits. Network,
+    // authorization, unknown and incompatible responses retain the attempt.
+    if (original.kind === 'cancel' && error instanceof BackendCashierOperationError
+      && [400, 409].includes(error.status) && ['CANCELLATION_REASON_INVALID', 'CANCELLATION_RECONCILIATION_REQUIRED',
+        'CANCELLATION_REFUND_REQUIRED', 'SALE_ALREADY_CANCELLED'].includes(error.code)) {
+      await finishBackendCashierOperationAttempt(localStorage, original)
+    }
+    throw error
+  }
 }
 export async function closeCashier(opening: number, counted: number, key: string) {
   return safe(async () => {
@@ -113,7 +135,15 @@ export async function recoverCashierOperation() {
     if (!pending) throw new Error('No hay una operación pendiente en este navegador.')
     const { result, attempt } = await execute(pending)
     const message = pending.kind === 'closing' ? 'Corte confirmado. Diferencia: ' + cents(object(result.closing).difference_cents) + ' centavos.'
+      : pending.kind === 'cancel' ? 'Venta ' + text(object(result.sale).folio) + ' cancelada. No se modificaron existencias.'
       : 'Devolución confirmada por ' + cents(object(result.refund).amount_cents) + ' centavos. No vuelvas a entregar dinero.'
     return { message, attempt }
+  })
+}
+export async function cancelPendingSale(saleId: string, reason: string) {
+  return safe(async () => {
+    const { identity } = access()
+    const { result, attempt } = await execute(createBackendCashierOperationAttempt(identity, 'cancel', { reason }, Number(saleId)))
+    return { message: 'Venta ' + text(object(result.sale).folio) + ' cancelada. No se modificaron existencias.', attempt }
   })
 }

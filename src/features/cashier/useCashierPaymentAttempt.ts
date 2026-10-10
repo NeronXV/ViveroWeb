@@ -44,7 +44,7 @@ function isSamePayload(
   )
 }
 
-export function useCashierPaymentAttempt(userId: string | null, activeSale: CashierSale | null) {
+export function useCashierPaymentAttempt(userId: string | null, activeSale: Pick<CashierSale, 'id'> | null) {
   const saleId = activeSale?.id ?? null
   const [attempt, setAttempt] = useState<CashierPaymentAttempt | null>(null)
   const [actionInProgress, setActionInProgress] = useState(false)

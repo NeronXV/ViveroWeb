@@ -104,11 +104,14 @@ function readSale(value: unknown, indexOrLabel: number | string): CashierSale {
     'serverTime',
   ]
 
+  if (isRecord(value) && Object.hasOwn(value, 'origin')) expectedKeys.push('origin')
   if (!isRecord(value) || !hasExactKeys(value, expectedKeys)) {
     throw new CashierValidationError(`La venta ${label} no tiene la estructura esperada.`)
   }
 
   return {
+    ...(value.origin === undefined ? {} : value.origin === 'WEB_ORDER' || value.origin === 'DIRECT_SALE'
+      ? { origin: value.origin } : (() => { throw new CashierValidationError('El origen de la venta no es válido.') })()),
     id: readUuid(value.id, `${label}.id`),
     folio: readString(value.folio, `${label}.folio`),
     createdAt: readTimestamp(value.createdAt, `${label}.createdAt`),

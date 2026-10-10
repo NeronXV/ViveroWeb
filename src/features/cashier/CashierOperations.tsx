@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/useAuth'
 import { hasCapability } from '../access/access-helpers'
-import { closeCashier, loadClosing, refundSale, lookupRefund, recoverCashierOperation, completeCashierOperation, type parseClosingPreview } from './cashier-operations-service'
+import { closeCashier, loadClosing, refundSale, lookupRefund, recoverCashierOperation, completeCashierOperation, pendingCashierOperation, type parseClosingPreview } from './cashier-operations-service'
 import { formatPriceCents as formatCents } from '../public-catalog/CatalogProductCard'
 import { parsePesosToCents } from './cashier-money'
 
@@ -13,6 +13,15 @@ export function CashierOperations({ locked }: { locked: boolean }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pendingReview, setPendingReview] = useState(false)
+  useEffect(() => {
+    const check = () => {
+      try { const pending = pendingCashierOperation(); setPendingReview(Boolean(pending && pending.kind !== 'cancel')) }
+      catch { setPendingReview(true) }
+    }
+    check(); window.addEventListener('storage', check)
+    return () => window.removeEventListener('storage', check)
+  }, [busy, revision, accessContext?.userId, accessContext?.branch?.id])
   const [refundFolio, setRefundFolio] = useState('')
   const [refundable, setRefundable] = useState<Awaited<ReturnType<typeof lookupRefund>> | null>(null)
   const attempts = useRef<Record<string, { fingerprint: string; key: string }>>({})
@@ -65,11 +74,9 @@ export function CashierOperations({ locked }: { locked: boolean }) {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se confirmó la devolución.') }
     finally { setBusy(false) }
   }
-  return <details className="botanical-section-card">
-    <summary>Corte de caja y devoluciones</summary>
-    <p>Operaciones de tu usuario y sucursal que aún no están incluidas en un corte. El primer corte incluye todo tu historial sin cerrar.</p>
-    {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
-    <button type="button" className="retry-btn-secondary" disabled={busy || locked} onClick={() => setRevision((value) => value + 1)}>Actualizar resumen</button>
+  return <section className="botanical-section-card" aria-label="Cierre de caja y devoluciones">
+    {error && <p role="alert" className="desk-warning">{error}</p>}{notice && <p role="status">{notice}</p>}
+    {pendingReview && <div className="desk-warning" role="alert"><p>Hay un cierre o una devolución por confirmar. Conservamos los datos; comprueba el resultado antes de repetirla.</p>
     <button type="button" className="retry-btn-secondary" disabled={busy || locked} onClick={async () => {
       setBusy(true); setError('')
       try {
@@ -79,7 +86,13 @@ export function CashierOperations({ locked }: { locked: boolean }) {
         attempts.current = {}; setRevision(value => value + 1)
       } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se confirmó la operación pendiente.') }
       finally { setBusy(false) }
-    }}>Recuperar corte o devolución pendiente</button>
+    }}>Comprobar resultado</button>
+    </div>}
+    <details>
+    <summary>Cierre de caja y devoluciones</summary>
+    <p>Operaciones de tu usuario y sucursal que aún no están incluidas en un corte. El primer corte incluye todo tu historial sin cerrar.</p>
+    <button type="button" className="retry-btn-secondary" disabled={busy || locked} onClick={() => setRevision((value) => value + 1)}>Actualizar resumen</button>
+
     {preview && <><p>Efectivo: {formatCents(preview.payments.cash)} · Tarjeta: {formatCents(preview.payments.card)} · Transferencia: {formatCents(preview.payments.transfer)}</p>
       <p>Neto de operaciones: {formatCents(preview.payments.cash + preview.payments.card + preview.payments.transfer - preview.refunds.cash - preview.refunds.other)}</p>
       <p>Devoluciones en efectivo: {formatCents(preview.refunds.cash)} · Otras: {formatCents(preview.refunds.other)}</p>
@@ -108,5 +121,6 @@ export function CashierOperations({ locked }: { locked: boolean }) {
       <label><input type="checkbox" required /> Verifiqué el folio y ya devolví el importe completo al cliente.</label>
       <button className="catalog-action" disabled={!refundable || refundable.alreadyRefunded}>Registrar devolución total</button>
     </fieldset></form>}
-  </details>
+    </details>
+  </section>
 }

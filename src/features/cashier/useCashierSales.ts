@@ -53,8 +53,9 @@ export interface CoordinatorState {
 }
 
 export class CashierSalesCoordinator {
+  private folio: string | undefined
   private limit: number
-  private fetchCall: (params: { limit: number; cursor: CashierCursor | null }, signal: AbortSignal) => Promise<{ items: CashierSale[]; page: { nextCursor: CashierCursor | null; hasMore: boolean } }>
+  private fetchCall: (params: { limit: number; cursor: CashierCursor | null; folio?: string }, signal: AbortSignal) => Promise<{ items: CashierSale[]; page: { nextCursor: CashierCursor | null; hasMore: boolean } }>
   private onStateChange: (state: CoordinatorState) => void
 
   state: CoordinatorState = {
@@ -88,7 +89,7 @@ export class CashierSalesCoordinator {
 
   constructor(options: {
     limit: number
-    fetchCall: (params: { limit: number; cursor: CashierCursor | null }, signal: AbortSignal) => Promise<{ items: CashierSale[]; page: { nextCursor: CashierCursor | null; hasMore: boolean } }>
+    fetchCall: (params: { limit: number; cursor: CashierCursor | null; folio?: string }, signal: AbortSignal) => Promise<{ items: CashierSale[]; page: { nextCursor: CashierCursor | null; hasMore: boolean } }>
     onStateChange: (state: CoordinatorState) => void
     isTabVisible?: boolean
     isOnline?: boolean
@@ -182,7 +183,7 @@ export class CashierSalesCoordinator {
         }, CASHIER_COORDINATOR_TIMEOUT_MS)
       })
       const response = await Promise.race([
-        this.fetchCall({ limit: fetchLimit, cursor }, controller.signal),
+        this.fetchCall({ limit: fetchLimit, cursor, ...(this.folio ? { folio: this.folio } : {}) }, controller.signal),
         watchdog,
       ])
 
@@ -282,7 +283,8 @@ export class CashierSalesCoordinator {
     void this.runFetch('more')
   }
 
-  resetScope(userId: string | null, branchId: string | null) {
+  resetScope(userId: string | null, branchId: string | null, folio?: string) {
+    this.folio = folio?.trim() || undefined
     this.userId = userId
     this.branchId = branchId
 
@@ -432,7 +434,8 @@ export function useCashierSales(
   limit = 25,
   isCriticalPaymentActive = false,
   userId: string | null = null,
-  branchId: string | null = null
+  branchId: string | null = null,
+  folio?: string
 ) {
   const [state, setState] = useState<CoordinatorState>({
     items: [],
@@ -496,10 +499,10 @@ export function useCashierSales(
     }
   }, [])
 
-  // Scope reset key: strictly executes ONLY when user ID or branch ID changes
+  // Reset the existing coordinator when identity, branch or the folio filter changes.
   useEffect(() => {
-    coordinatorRef.current?.resetScope(userId, branchId)
-  }, [userId, branchId])
+    coordinatorRef.current?.resetScope(userId, branchId, folio)
+  }, [userId, branchId, folio])
 
   const refresh = useCallback(() => {
     coordinatorRef.current?.refresh()

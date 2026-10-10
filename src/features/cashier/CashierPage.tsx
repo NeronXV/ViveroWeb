@@ -1,6 +1,6 @@
 import { CounterSaleComposer } from './CounterSaleComposer'
 import { hasCapability } from '../access/access-helpers'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import { useAuth } from '../auth/useAuth'
@@ -11,14 +11,18 @@ import { formatCents, parsePesosToCents } from './cashier-money'
 import { isNavigationLocked } from './cashier-payment-state'
 import type { CashierPaymentMethod } from './cashier-types'
 import { CashierOperations } from './CashierOperations'
-import { CashierPrintableTicket } from './CashierPrintableTicket'
 import { CashierReceiptHistory } from './CashierReceiptHistory'
 import { playCashierSuccessSound } from './cashier-sound'
+import { CashierSaleCancellation } from './CashierSaleCancellation'
+import { CashierPendingList } from './CashierPendingList'
+import { CashierSaleSummary } from './CashierSaleSummary'
+import { CashierPaymentPanel } from './CashierPaymentPanel'
+import { interruptedCashierPayments, cashierWorkerMessage } from './cashier-desk-state'
+import './cashier-desk.css'
 
 
 export function CashierPage() {
   useDocumentTitle('Caja')
-  const headingRef = useHeadingFocus<HTMLHeadingElement>('cashier')
   const { accessContext, signOut } = useAuth()
   const navigate = useNavigate()
   const userId = accessContext?.userId ?? null
@@ -34,6 +38,23 @@ export function CashierPage() {
   const showComposer = creatingSale && canCreateSale
   useEffect(() => { setCreatingSale(false) }, [userId, accessContext?.branch?.id])
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
+  const [cancellationLocked, setCancellationLocked] = useState(false)
+  const [recoverySaleId, setRecoverySaleId] = useState<string | null>(null)
+  const [view, setView] = useState<'detail' | 'charge'>('detail')
+  const [searchText, setSearchText] = useState(''), [searchFolio, setSearchFolio] = useState('')
+  const [openRequest, setOpenRequest] = useState<string | null>(null)
+  const openedRequest = useRef<string | null>(null)
+  const headingRef = useHeadingFocus<HTMLHeadingElement>(selectedSaleId ? `${selectedSaleId}:${view}` : 'cashier-pending')
+  let interrupted: ReturnType<typeof interruptedCashierPayments> = [], journalError: string | null = null
+  if (userId && typeof window !== 'undefined') {
+    try { interrupted = interruptedCashierPayments(window.localStorage, userId) }
+    catch { journalError = 'No se pudo leer un cobro guardado. Conserva los datos de este navegador y solicita una revisión antes de cobrar otra venta.' }
+  }
+  const interruptedId = interrupted[0]?.saleId ?? null
+  const anotherInterruptedPayment = interrupted.some(saved => saved.saleId !== selectedSaleId)
+  useEffect(() => {
+    if (!selectedSaleId && interruptedId) { setView('charge'); setRecoverySaleId(interruptedId); setSelectedSaleId(interruptedId) }
+  }, [selectedSaleId, interruptedId])
 
   // 1. Obtener el detalle de la venta seleccionada
   const {
@@ -41,7 +62,6 @@ export function CashierPage() {
     isLoading: isDetailLoading,
     isError: isDetailError,
     errorMsg: detailErrorMsg,
-    errorCode: detailErrorCode,
     retry: retryDetail,
     clearDetail,
   } = useCashierSaleDetail(selectedSaleId)
@@ -55,16 +75,16 @@ export function CashierPage() {
     confirmPayment,
     reconcilePayment,
     dismissSucceededAttempt,
-  } = useCashierPaymentAttempt(userId, saleDetail?.sale ?? null)
+  } = useCashierPaymentAttempt(userId, saleDetail?.sale ?? (recoverySaleId === selectedSaleId && recoverySaleId ? { id: recoverySaleId } : null))
 
-  const isCriticalPaymentActive = Boolean(
+  const isCriticalPaymentActive = cancellationLocked || Boolean(journalError) || interrupted.length > 0 || Boolean(
     attempt && (
       ['CLAIMING', 'CONFIRMING', 'UNCERTAIN'].includes(attempt.status) ||
       (attempt.status === 'CLAIMED' && actionInProgress)
     )
   )
 
-  // 3. Obtener la fila de ventas pendientes de Supabase con auto-polling
+  // 3. Conservar el coordinador de pendientes y su política de actualización.
   const {
     sales,
     isLoading: isSalesLoading,
@@ -78,7 +98,7 @@ export function CashierPage() {
     pollingStatus,
     lastUpdatedAt,
     newComandasNotice,
-  } = useCashierSales(15, isCriticalPaymentActive, userId, accessContext?.branch?.id ?? null)
+  } = useCashierSales(15, isCriticalPaymentActive, userId, accessContext?.branch?.id ?? null, searchFolio)
 
   // Estados locales para el formulario de pago
   const [paymentMethod, setPaymentMethod] = useState<CashierPaymentMethod>('CASH')
@@ -104,10 +124,10 @@ export function CashierPage() {
     setReferenceText(attempt.reference ?? '')
   }, [attempt?.amountReceivedCents, attempt?.method, attempt?.reference])
 
-  const navigationLocked = attempt ? isNavigationLocked(attempt.status) : false
+  const navigationLocked = cancellationLocked || (attempt ? isNavigationLocked(attempt.status) : false)
   const recoveredPayloadLocked = attempt?.status === 'CLAIMED' && attempt.method !== null
 
-  const handleSelectSale = async (saleId: string) => {
+  const handleSelectSale = async (saleId: string, nextView: 'detail' | 'charge' = 'detail') => {
     if (saleId === selectedSaleId) return
     if (navigationLocked || actionInProgress) {
       setFormError('Concilia el cobro incierto antes de cambiar de venta.')
@@ -118,6 +138,8 @@ export function CashierPage() {
       const released = await releaseClaim()
       if (!released) return
     }
+    setView(nextView); setOpenRequest(nextView === 'charge' ? saleId : null); openedRequest.current = null
+    setRecoverySaleId(interrupted.some(saved => saved.saleId === saleId) ? saleId : null)
     setSelectedSaleId(saleId)
   }
 
@@ -130,28 +152,28 @@ export function CashierPage() {
     if (attempt?.status === 'SUCCEEDED') {
       dismissSucceededAttempt()
     }
-    setSelectedSaleId(null)
+    setRecoverySaleId(null); setSelectedSaleId(null)
     clearDetail()
   }
 
   const handleReleaseClaim = async () => {
     const released = await releaseClaim()
     if (!released) return
-    setSelectedSaleId(null)
+    setRecoverySaleId(null); setSelectedSaleId(null)
     clearDetail()
     refreshSales()
   }
 
   const handleFinishedPayment = () => {
     if (!dismissSucceededAttempt()) return
-    setSelectedSaleId(null)
+    setRecoverySaleId(null); setSelectedSaleId(null)
     clearDetail()
     refreshSales()
   }
 
-  const handleConfirmPay = async (e: React.FormEvent) => {
+  const handleConfirmPay = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!saleDetail || !attempt || !attempt.claimToken || actionInProgress) return
+    if (!e.currentTarget.checkValidity() || !saleDetail || !attempt || !attempt.claimToken || actionInProgress || cancellationLocked || journalError || anotherInterruptedPayment) return
     setFormError(null)
 
     const totalCents = saleDetail.sale.totalCents
@@ -200,6 +222,14 @@ export function CashierPage() {
     }
   }
 
+  useEffect(() => {
+    if (!openRequest || openRequest !== selectedSaleId || !saleDetail || attempt?.saleId !== selectedSaleId
+      || actionInProgress || cancellationLocked || journalError || openedRequest.current === openRequest) return
+    openedRequest.current = openRequest
+    setOpenRequest(null)
+    if (attempt.status === 'CLAIMING') void claimSale()
+  }, [openRequest, selectedSaleId, saleDetail, attempt, actionInProgress, cancellationLocked, journalError, claimSale])
+
   // Cálculos de efectivo y cambio en centavos
   const totalCents = saleDetail?.sale.totalCents ?? 0
   let cashReceivedCents = 0
@@ -213,484 +243,72 @@ export function CashierPage() {
   const cashierName = accessContext?.profile?.fullName ?? 'Cajero/a'
   const branchName = accessContext?.branch?.name ?? 'Sucursal'
 
-  return (
-    <main className="internal-page">
-      <div className="internal-shell">
-        <div className="internal-topbar">
-          <div>
-            <p className="eyebrow">Vivero Dulcinea</p>
-            <h1 ref={headingRef} tabIndex={-1}>
-              Caja Web Real
-            </h1>
-            <p className="cashier-info-subtitle">
-              Operador: <strong>{cashierName}</strong> · Sucursal: <strong>{branchName}</strong>
-            </p>
-            {newComandasNotice && (
-              <div className="module-permission-note" role="status" aria-live="polite" style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span>🔔</span> <span>{newComandasNotice}</span>
-              </div>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <Link className="back-link" to="/panel" style={{ textDecoration: 'none' }}>
-              ← Volver al panel
-            </Link>
-            <button
-              type="button"
-              className="retry-btn-secondary"
-              style={{ margin: 0, padding: '0.45rem 0.85rem', fontSize: '0.85rem', minHeight: 'unset', minWidth: 'unset', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-              onClick={handleSignOut}
-              disabled={actionInProgress}
-            >
-              Cerrar sesión
-            </button>
-          </div>
+  const paymentView = view === 'charge' || Boolean(attempt && attempt.status !== 'CLAIMING')
+  const deskLocked = navigationLocked || actionInProgress || interrupted.length > 0 || Boolean(journalError)
+  const selectedFolio = saleDetail?.sale.folio ?? attempt?.paymentResult?.sale?.folio
+
+  return <main className="internal-page cashier-desk">
+    <div className="internal-shell desk-shell">
+      <header className="desk-header">
+        <div><p className="desk-eyebrow">Vivero Dulcinea · Caja</p>
+          <h1 ref={headingRef} tabIndex={-1}>{selectedSaleId ? attempt?.status === 'SUCCEEDED' ? 'Pago confirmado' : attempt?.status === 'UNCERTAIN' || attempt?.status === 'CONFIRMING' ? 'Comprobar pago' : paymentView ? 'Cobrar venta' : 'Detalle de venta' : 'Ventas pendientes'}</h1>
+          <p className="desk-muted">{branchName} · {cashierName}{selectedFolio ? ` · ${selectedFolio}` : ''}</p></div>
+        <nav aria-label="Navegación de Caja" className="desk-header-actions">
+          {selectedSaleId ? <button type="button" className="desk-secondary" disabled={deskLocked} onClick={() => void handleCloseDetail()}>Volver a pendientes</button>
+            : <Link className="desk-secondary" to="/panel">Volver al panel</Link>}
+          <button type="button" className="desk-secondary" disabled={deskLocked} onClick={() => void handleSignOut()}>Cerrar sesión</button>
+        </nav>
+      </header>
+      {journalError && <p className="desk-warning" role="alert">{journalError}</p>}
+      {interrupted.length > 0 && <p className="desk-warning" role="alert">Hay un pago por comprobar. No registres otro cobro ni vuelvas a recibir dinero para esta venta.</p>}
+      {anotherInterruptedPayment && selectedSaleId && interruptedId && <button type="button" className="desk-primary" disabled={navigationLocked || actionInProgress}
+        onClick={() => void handleSelectSale(interruptedId, 'charge')}>Comprobar pago pendiente</button>}
+      {newComandasNotice && <p className="desk-notice" role="status">{newComandasNotice.replace(/comandas?/g, 'ventas')}</p>}
+      {!selectedSaleId && !showComposer && <section className="desk-card desk-pending" aria-labelledby="desk-pending-title" inert={cancellationLocked}>
+        <div className="desk-section-head"><div><h2 id="desk-pending-title">Por cobrar</h2><p className="desk-muted">Selecciona una venta para atender al cliente.</p></div>
+          <div className="desk-header-actions">
+            {canCreateSale && <button type="button" className="desk-secondary" disabled={deskLocked} onClick={() => setCreatingSale(true)}>Nueva venta</button>}
+            <button type="button" className="desk-secondary" disabled={isSalesLoading || isSalesUpdating || deskLocked} onClick={refreshSales}>Actualizar</button>
+          </div></div>
+        <form className="desk-search" role="search" onSubmit={event => { event.preventDefault(); if (!deskLocked) setSearchFolio(searchText.trim()) }}>
+          <label htmlFor="desk-folio-search">Buscar por folio</label>
+          <div><input id="desk-folio-search" type="search" value={searchText} onChange={event => setSearchText(event.target.value)} placeholder="Ej. VD-0042" maxLength={40} disabled={deskLocked} />
+            <button className="desk-secondary" type="submit" disabled={deskLocked}>Buscar</button>
+            {searchFolio && <button className="desk-secondary" type="button" disabled={deskLocked} onClick={() => { setSearchText(''); setSearchFolio('') }}>Mostrar todas</button>}</div>
+          <small>También puedes buscar con el folio anterior.</small>
+        </form>
+        {(pollingStatus === 'offline' || pollingStatus === 'error') && <p className="desk-warning" role="alert">{pollingStatus === 'offline' ? 'Sin conexión. Conservamos la última lista; verifica la conexión antes de cobrar.' : 'No pudimos actualizar la lista. Se muestra la información anterior.'}</p>}
+        {isSalesLoading && <p role="status" className="desk-empty">Cargando ventas…</p>}
+        {isSalesError && !sales.length && <div className="desk-warning" role="alert"><p>{cashierWorkerMessage(salesErrorMsg)}</p><button className="desk-secondary" type="button" onClick={refreshSales}>Volver a intentar</button></div>}
+        {!isSalesLoading && !isSalesError && !sales.length && <div className="desk-empty"><span aria-hidden="true">❧</span><h3>{searchFolio ? 'Sin coincidencias' : 'Todo al día'}</h3><p>{searchFolio ? 'No hay una venta pendiente con ese folio en esta sucursal.' : 'No hay ventas pendientes de cobro en esta sucursal.'}</p></div>}
+        <CashierPendingList sales={sales} locked={deskLocked || isSalesLoading} onCharge={id => void handleSelectSale(id, 'charge')} onDetail={id => void handleSelectSale(id, 'detail')} />
+        {hasMore && <button type="button" className="desk-secondary desk-full" disabled={isLoadingMore || deskLocked} onClick={loadMore}>{isLoadingMore ? 'Cargando…' : 'Ver más ventas'}</button>}
+        <p className="desk-updated" role="status">{isSalesUpdating ? 'Actualizando ventas…' : lastUpdatedAt ? `Actualizado a las ${lastUpdatedAt}` : 'Las ventas se actualizan automáticamente.'}</p>
+      </section>}
+      {showComposer && userId && accessContext?.branch && <CounterSaleComposer key={userId + accessContext.branch.id} userId={userId} branchId={accessContext.branch.id}
+        onClose={() => setCreatingSale(false)} onCreated={saleId => { setCreatingSale(false); setView('charge'); setOpenRequest(saleId); openedRequest.current = null; setSelectedSaleId(saleId); refreshSales() }} />}
+      {selectedSaleId && <div className={attempt?.status === 'SUCCEEDED' ? 'desk-receipt-layout' : paymentView ? 'desk-payment-layout' : 'desk-detail-layout'} inert={cancellationLocked}>
+        <div hidden={attempt?.status === 'SUCCEEDED'}>
+          {isDetailLoading && <section className="desk-card" role="status">Cargando productos de la venta…</section>}
+          {isDetailError && <section className="desk-card desk-warning" role="alert"><p>{cashierWorkerMessage(detailErrorMsg)}</p>
+            <button className="desk-secondary" disabled={actionInProgress} type="button" onClick={retryDetail}>Actualizar venta</button></section>}
+          {saleDetail && <CashierSaleSummary detail={saleDetail} />}
+          {!paymentView && saleDetail && <div className="desk-detail-actions"><button type="button" className="desk-primary" disabled={deskLocked || saleDetail.sale.claimState === 'CLAIMED_BY_OTHER'}
+            onClick={() => { setView('charge'); setOpenRequest(selectedSaleId); openedRequest.current = null }}>Cobrar venta</button></div>}
         </div>
-
-        {canCreateSale && userId && accessContext?.branch && <>
-          {!creatingSale && <div className="counter-launch"><button type="button" className="catalog-action"
-            disabled={Boolean(selectedSaleId) || Boolean(attempt) || actionInProgress}
-            onClick={() => setCreatingSale(true)}>Nueva venta de mostrador</button>
-            <p>{selectedSaleId || attempt ? 'Termina o cierra el ticket actual para preparar otra venta.' : 'Atiende aquí a quien llega directamente a Caja.'}</p></div>}
-          {creatingSale && <CounterSaleComposer key={userId + accessContext.branch.id} userId={userId} branchId={accessContext.branch.id}
-            onClose={() => setCreatingSale(false)} onCreated={saleId => { setCreatingSale(false); setSelectedSaleId(saleId); refreshSales() }} />}
-        </>}
-        <div className={showComposer ? 'counter-hidden' : 'cashier-layout'}>
-          {/* Columna Izquierda: Bandeja de Ventas Pendientes */}
-          <section className="cashier-products" aria-labelledby="queue-title">
-            <div className="section-header-row">
-              <h2 id="queue-title">Fila de Espera de Caja</h2>
-              <button
-                type="button"
-                className="refresh-btn-secondary"
-                onClick={refreshSales}
-                disabled={isSalesLoading || isSalesUpdating}
-                aria-label="Actualizar fila de ventas"
-              >
-                {isSalesUpdating ? 'Actualizando...' : '↻ Actualizar'}
-              </button>
-            </div>
-            <div className="polling-status-indicator" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              {pollingStatus === 'active' && (
-                <span>🟢 Actualización automática activa (Última: {lastUpdatedAt || '--:--:--'})</span>
-              )}
-              {pollingStatus === 'offline' && (
-                <span style={{ color: '#7a4b00' }}>⚠️ Sin conexión; conservando la última bandeja</span>
-              )}
-              {pollingStatus === 'error' && (
-                <span style={{ color: '#a42929' }}>❌ No se pudo actualizar; mostrando la información anterior</span>
-              )}
-              {pollingStatus === 'idle' && (
-                <span>⏸️ Actualización automática en pausa</span>
-              )}
-            </div>
-
-            {/* Estado de carga inicial */}
-            {isSalesLoading && sales.length === 0 && (
-              <div className="cashier-status-container" role="status" aria-live="polite">
-                <div className="loading-spinner" />
-                <p>Cargando fila de ventas pendientes...</p>
-              </div>
-            )}
-
-            {/* Estado de error de la fila */}
-            {isSalesError && sales.length === 0 && (
-              <div className="cashier-status-container error" role="alert">
-                <p className="error-copy">{salesErrorMsg}</p>
-                <button type="button" className="retry-btn-primary" onClick={refreshSales}>
-                  Reintentar cargar fila
-                </button>
-              </div>
-            )}
-
-            {/* Fila vacía */}
-            {!isSalesLoading && !isSalesError && sales.length === 0 && (
-              <div className="cashier-status-container empty">
-                <p className="empty-copy">No hay ventas pendientes por cobrar en esta sucursal.</p>
-                <button type="button" className="retry-btn-secondary" onClick={refreshSales}>
-                  Buscar nuevas ventas
-                </button>
-              </div>
-            )}
-
-            {/* Lista de ventas pendientes */}
-            {sales.length > 0 && (
-              <div className="cashier-sales-list">
-                {isSalesUpdating && (
-                  <div className="updating-toast" role="status">
-                    Actualizando fila en segundo plano...
-                  </div>
-                )}
-
-                <div className="sales-grid">
-                  {sales.map((sale) => {
-                    const isSelected = sale.id === selectedSaleId
-                    const dateObj = new Date(sale.createdAt)
-                    const formattedDate = dateObj.toLocaleTimeString('es-MX', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-
-                    // Determinar badge del claimState
-                    let claimBadgeClass = 'claim-badge available'
-                    let claimLabel = 'Disponible'
-                    if (sale.claimState === 'CLAIMED_BY_ME') {
-                      claimBadgeClass = 'claim-badge claimed-me'
-                      claimLabel = 'Mi Turno'
-                    } else if (sale.claimState === 'CLAIMED_BY_OTHER') {
-                      claimBadgeClass = 'claim-badge claimed-other'
-                      claimLabel = 'En Cobro (Otro)'
-                    }
-
-                    return (
-                      <button
-                        type="button"
-                        key={sale.id}
-                        className={`sale-card-item ${isSelected ? 'selected' : ''} ${
-                          sale.claimState === 'CLAIMED_BY_OTHER' ? 'claimed-by-other' : ''
-                        }`}
-                        onClick={() => handleSelectSale(sale.id)}
-                        disabled={navigationLocked || actionInProgress}
-                        aria-pressed={isSelected}
-                      >
-                        <div className="sale-card-header">
-                          <span className="sale-folio">{sale.folio}</span>
-                          <span className="sale-time">{formattedDate}</span>
-                        </div>
-                        <div className="sale-card-body">
-                          <p className="sale-total-amount">${formatCents(sale.totalCents)} MXN</p>
-                          <p className="sale-meta-info">
-                            {sale.itemCount} {sale.itemCount === 1 ? 'artículo' : 'artículos'}
-                          </p>
-                          {sale.createdByLabel && (
-                            <p className="sale-creator-label">Vendedor: {sale.createdByLabel}</p>
-                          )}
-                        </div>
-                        <div className="sale-card-footer">
-                          <span className={claimBadgeClass}>{claimLabel}</span>
-                          {sale.claimState === 'CLAIMED_BY_OTHER' && (
-                            <span className="claim-disabled-msg">Ocupada</span>
-                          )}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-
-                {hasMore && (
-                  <button
-                    type="button"
-                    className="load-more-btn"
-                    onClick={loadMore}
-                    disabled={isLoadingMore}
-                  >
-                    {isLoadingMore ? 'Cargando más...' : 'Cargar más ventas'}
-                  </button>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Columna Derecha: Detalle de la Venta (Ticket de Cobro) */}
-          <aside className="cashier-ticket" aria-labelledby="ticket-title">
-            <h2 id="ticket-title">Ticket de Cobro Real</h2>
-
-            {/* Sin selección */}
-            {!selectedSaleId && (
-              <div className="ticket-placeholder">
-                <p>Selecciona una venta de la fila de espera para procesar su cobro.</p>
-              </div>
-            )}
-
-            {/* Cargando detalle de venta */}
-            {selectedSaleId && isDetailLoading && (
-              <div className="ticket-placeholder loading">
-                <div className="loading-spinner" />
-                <p>Cargando detalle del ticket...</p>
-              </div>
-            )}
-
-            {/* Error al cargar detalle */}
-            {selectedSaleId && isDetailError && (
-              <div className="ticket-placeholder error" role="alert">
-                <p className="error-title">Error al cargar detalle</p>
-                <p className="error-copy">{detailErrorMsg}</p>
-                {detailErrorCode === 'SALE_UNAVAILABLE' ? (
-                  <button type="button" className="retry-btn-secondary" onClick={handleCloseDetail}>
-                    Volver a la fila
-                  </button>
-                ) : (
-                  <div className="error-action-row">
-                    <button type="button" className="retry-btn-primary" onClick={retryDetail}>
-                      Reintentar
-                    </button>
-                    <button type="button" className="retry-btn-secondary" onClick={handleCloseDetail}>
-                      Cerrar
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Detalle del Ticket y Fases del Intento de Pago */}
-            {selectedSaleId && saleDetail && attempt && (
-              <div className="ticket-detail-content">
-                <div className="ticket-header-meta">
-                  <div className="folio-row">
-                    <h3>Folio: {saleDetail.sale.folio}</h3>
-                    <button
-                      type="button"
-                      className="close-ticket-btn"
-                      onClick={handleCloseDetail}
-                      disabled={navigationLocked || actionInProgress}
-                      aria-label="Cerrar ticket"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <p>Creado: {new Date(saleDetail.sale.createdAt).toLocaleString('es-MX')}</p>
-                  {saleDetail.sale.createdByLabel && (
-                    <p>Vendedor: {saleDetail.sale.createdByLabel}</p>
-                  )}
-                </div>
-
-                <div className="ticket-divider" />
-
-                {/* Fase 1: Venta no reclamada (CLAIMING) */}
-                {attempt.status === 'CLAIMING' && (
-                  <div className="attempt-status-box info">
-                    <p>Para iniciar el cobro debes reclamar esta venta primero.</p>
-                    {attempt.errorMsg && <p className="error-msg-inline">{attempt.errorMsg}</p>}
-                    <button
-                      type="button"
-                      className="checkout-btn"
-                      onClick={claimSale}
-                      disabled={actionInProgress || saleDetail.sale.claimState === 'CLAIMED_BY_OTHER'}
-                    >
-                      {actionInProgress ? 'Reclamando...' : 'Reclamar Venta'}
-                    </button>
-                    {saleDetail.sale.claimState === 'CLAIMED_BY_OTHER' && (
-                      <p className="error-msg-inline">Esta venta está ocupada por otro cajero.</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Fase 2: Venta reclamada y lista para confirmar */}
-                {attempt.status === 'CLAIMED' && (
-                  <div className="attempt-payment-form">
-                    <div className="ticket-items-list">
-                      {saleDetail.items.map((item, index) => (
-                        <div className="ticket-item-row" key={`${item.id}-${index}`}>
-                          <div className="ticket-item-name-col">
-                            <span className="item-name">{item.productName}</span>
-                            <span className="item-price-desc">
-                              {item.quantity} × ${formatCents(item.unitPriceCents)}
-                            </span>
-                          </div>
-                          <span className="item-total-price">
-                            ${formatCents(item.lineTotalCents)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="ticket-divider" />
-
-                    <div className="ticket-total">
-                      <span>Total</span>
-                      <strong>${formatCents(saleDetail.sale.totalCents)} MXN</strong>
-                    </div>
-
-                    {/* Formulario de Pago */}
-                    <form onSubmit={handleConfirmPay} className="payment-method-form">
-                      <div className="form-group">
-                        <label htmlFor="payment-method-select">Método de Pago</label>
-                        <select
-                          id="payment-method-select"
-                          value={paymentMethod}
-                          onChange={(e) => setPaymentMethod(e.target.value as CashierPaymentMethod)}
-                          disabled={actionInProgress || recoveredPayloadLocked}
-                        >
-                          <option value="CASH">Efectivo</option>
-                          <option value="CARD">Tarjeta Bancaria</option>
-                          <option value="TRANSFER">Transferencia</option>
-                        </select>
-                      </div>
-
-                      {paymentMethod === 'CASH' && (
-                        <div className="cash-payment-fields">
-                          <div className="form-group">
-                            <label htmlFor="cash-received-input">Efectivo Recibido ($)</label>
-                            <input
-                              id="cash-received-input"
-                              className="internal-input"
-                              type="text"
-                              inputMode="decimal"
-                              pattern="[0-9]+(?:\.[0-9]{1,2})?"
-                              value={cashReceivedText}
-                              onChange={(e) => setCashReceivedText(e.target.value)}
-                              placeholder="0.00"
-                              required
-                              disabled={actionInProgress || recoveredPayloadLocked}
-                            />
-                          </div>
-                          {cashReceivedCents >= totalCents && (
-                            <div className="change-indicator">
-                              <span>Cambio a devolver:</span>
-                              <strong>${formatCents(changeCents)} MXN</strong>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {paymentMethod === 'CARD' && (
-                        <div className="form-group">
-                          <label htmlFor="card-ref-input">Referencia de Operación (Opcional)</label>
-                          <input
-                            id="card-ref-input"
-                            className="internal-input"
-                            type="text"
-                            value={referenceText}
-                            onChange={(e) => setReferenceText(e.target.value)}
-                            placeholder="Ej. Nro Autorización"
-                            maxLength={64}
-                            disabled={actionInProgress || recoveredPayloadLocked}
-                          />
-                        </div>
-                      )}
-
-                      {paymentMethod === 'TRANSFER' && (
-                        <div className="form-group">
-                          <label htmlFor="transfer-ref-input">Clave de Rastreo o Referencia (Obligatorio)</label>
-                          <input
-                            id="transfer-ref-input"
-                            className="internal-input"
-                            type="text"
-                            value={referenceText}
-                            onChange={(e) => setReferenceText(e.target.value)}
-                            placeholder="Ej. Clave de rastreo SPEI"
-                            required
-                            maxLength={120}
-                            disabled={actionInProgress || recoveredPayloadLocked}
-                          />
-                        </div>
-                      )}
-
-                      {formError && <p className="error-msg-inline">{formError}</p>}
-                      {attempt.errorMsg && <p className="error-msg-inline">{attempt.errorMsg}</p>}
-
-                      <div className="action-row-buttons">
-                        <button
-                          type="submit"
-                          className="checkout-btn pay"
-                          disabled={actionInProgress}
-                        >
-                          {actionInProgress ? 'Confirmando...' : 'Confirmar Pago'}
-                        </button>
-                        <button
-                          type="button"
-                          className="retry-btn-secondary full-width"
-                          onClick={handleReleaseClaim}
-                          disabled={actionInProgress}
-                        >
-                          Liberar y Volver
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                )}
-
-                {/* Fase 3: Confirmación en curso (CONFIRMING) */}
-                {attempt.status === 'CONFIRMING' && (
-                  <div className="attempt-status-box loading">
-                    <div className="loading-spinner" />
-                    <p>Enviando confirmación de cobro al servidor...</p>
-                  </div>
-                )}
-
-                {/* Fase 4: Estado Incierto por caída o timeout (UNCERTAIN) */}
-                {attempt.status === 'UNCERTAIN' && (
-                  <div className="attempt-status-box uncertain" role="alert">
-                    <h4 className="box-title">Cobro Incierto</h4>
-                    <p>
-                      El resultado de este intento todavía no está confirmado.
-                      Concilia el estado antes de reintentar para evitar duplicar cobros.
-                    </p>
-                    {attempt.errorMsg && <p className="error-msg-inline">{attempt.errorMsg}</p>}
-                    <button
-                      type="button"
-                      className="checkout-btn reconcile"
-                      onClick={reconcilePayment}
-                      disabled={actionInProgress}
-                    >
-                      {actionInProgress ? 'Conciliando...' : 'Conciliar / Recuperar Pago'}
-                    </button>
-                  </div>
-                )}
-
-                {/* Fase 5: Cobro Exitoso confirmado (SUCCEEDED) */}
-                {attempt.status === 'SUCCEEDED' && attempt.paymentResult && (
-                  <div className="attempt-status-box succeeded">
-                    <div className="success-icon">✓</div>
-                    <h4>¡Cobro Confirmado!</h4>
-                    <p className="success-copy">El pago se registró con éxito en el servidor.</p>
-
-                    <CashierPrintableTicket result={attempt.paymentResult} />
-
-                    <button type="button" className="checkout-btn" onClick={handleFinishedPayment}>
-                      Volver a la fila
-                    </button>
-                  </div>
-                )}
-
-                {/* Fase 6: Claim Expirado en uso (EXPIRED) */}
-                {attempt.status === 'EXPIRED' && (
-                  <div className="attempt-status-box expired" role="alert">
-                    <h4>Turno Expirado</h4>
-                    <p>Tu reserva de cobro ha vencido. Debes reclamar la venta nuevamente para continuar.</p>
-                    {attempt.errorMsg && <p className="error-msg-inline">{attempt.errorMsg}</p>}
-                    <button
-                      type="button"
-                      className="checkout-btn"
-                      onClick={claimSale}
-                      disabled={actionInProgress}
-                    >
-                      {actionInProgress ? 'Reclamando...' : 'Reclamar Venta'}
-                    </button>
-                    <button
-                      type="button"
-                      className="retry-btn-secondary full-width"
-                      onClick={handleCloseDetail}
-                      disabled={actionInProgress}
-                    >
-                      Volver a la fila
-                    </button>
-                  </div>
-                )}
-
-                {attempt.status === 'UNAVAILABLE' && (
-                  <div className="attempt-status-box expired" role="alert">
-                    <h4>Venta no disponible</h4>
-                    <p>El pago no pertenece a este intento y el claim ya no puede utilizarse.</p>
-                    {attempt.errorMsg && <p className="error-msg-inline">{attempt.errorMsg}</p>}
-                    <button
-                      type="button"
-                      className="retry-btn-secondary full-width"
-                      onClick={handleCloseDetail}
-                      disabled={actionInProgress}
-                    >
-                      Volver a la fila
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </aside>
-        </div>
-      </div>
-    {userId && accessContext?.branch && <CashierReceiptHistory key={`${userId}:${accessContext.branch.id}`}
-      userId={userId} branchId={accessContext.branch.id} attempt={attempt} locked={isCriticalPaymentActive || showComposer} />}
-    {!showComposer && <CashierOperations key={userId} locked={isCriticalPaymentActive} />}
-</main>
-  )
+        {paymentView && <CashierPaymentPanel attempt={attempt} busy={actionInProgress || (anotherInterruptedPayment && attempt?.status === 'CLAIMED')} detailReady={Boolean(saleDetail)} blockedByOther={saleDetail?.sale.claimState === 'CLAIMED_BY_OTHER'}
+          method={paymentMethod} received={cashReceivedText} reference={referenceText} total={totalCents} change={changeCents} enoughCash={cashReceivedCents >= totalCents}
+          error={formError} payloadLocked={recoveredPayloadLocked} onMethod={setPaymentMethod} onReceived={setCashReceivedText} onReference={setReferenceText}
+          onConfirm={handleConfirmPay} onOpen={() => void claimSale()} onCheck={() => void reconcilePayment()}
+          onBack={() => void (attempt?.status === 'CLAIMED' ? handleReleaseClaim() : handleCloseDetail())} onFinish={handleFinishedPayment} onReload={retryDetail} />}
+      </div>}
+      {!showComposer && userId && <CashierSaleCancellation key={`${userId}:${accessContext?.branch?.id}`}
+        sale={saleDetail?.sale ?? null} available={!actionInProgress && !journalError && interrupted.length === 0 && attempt?.status === 'CLAIMING'}
+        onLocked={setCancellationLocked} onFinished={() => { setRecoverySaleId(null); setSelectedSaleId(null); clearDetail(); refreshSales() }} />}
+      {!showComposer && <div className="desk-tools">
+        {userId && accessContext?.branch && <CashierReceiptHistory key={`${userId}:${accessContext.branch.id}`} userId={userId} branchId={accessContext.branch.id} attempt={attempt} locked={isCriticalPaymentActive} compact />}
+        <CashierOperations key={userId} locked={isCriticalPaymentActive} />
+      </div>}
+    </div>
+  </main>
 }

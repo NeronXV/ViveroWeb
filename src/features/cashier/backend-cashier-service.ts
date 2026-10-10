@@ -1,3 +1,4 @@
+import { SHORT_FOLIO_HEADER } from '../../lib/folio-format'
 export type BackendPaymentMethod = 'CASH' | 'CARD' | 'TRANSFER'
 export interface BackendPaymentInput { claim_token: string; method: BackendPaymentMethod; amount_received_cents: number | null; reference: string | null }
 export interface BackendPaymentAttempt { readonly key: string; readonly saleId: number; readonly cashierId: number; readonly branchId: number; readonly body: string }
@@ -143,7 +144,7 @@ export function createBackendCashierService(request: typeof fetch = fetch) {
     const timeout = AbortSignal.timeout(10000), writing = method !== 'GET'
     let response: Response
     try { response = await request(`/api/v1/cashier/${resource}${path}`, { method, body, signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-      credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': secret(key) } : {}) } }) }
+      credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { ...SHORT_FOLIO_HEADER, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': secret(key) } : {}) } }) }
     catch { throw new BackendCashierError(0, 'CONNECTION_FAILED', writing) }
     let value: unknown
     try { value = await response.json() } catch { throw new BackendCashierError(502, 'INCOMPATIBLE_RESPONSE', writing) }
@@ -171,9 +172,13 @@ export function createBackendCashierService(request: typeof fetch = fetch) {
     async receipt(token: string, paymentId: number, identity: { userId: number; branchId: number }, signal?: AbortSignal) {
       return parseBackendHistoricalReceipt(await call(token, `/${id(paymentId)}`, 'GET', undefined, undefined, signal, 'receipts'), paymentId, identity)
     },
-    async list(token: string, query: { limit?: number; beforeId?: number } = {}, signal?: AbortSignal) {
+    async list(token: string, query: { limit?: number; beforeId?: number; folio?: string } = {}, signal?: AbortSignal) {
       const limit = number(query.limit ?? 50, 1, 100), params = new URLSearchParams({ limit: String(limit) })
       if (query.beforeId !== undefined) params.set('before_id', String(id(query.beforeId)))
+      if (query.folio !== undefined) {
+        if (!query.folio.trim() || query.folio.length > 40 || [...query.folio].some(c => c.charCodeAt(0) < 32 || (c.charCodeAt(0) >= 127 && c.charCodeAt(0) <= 159))) fail()
+        params.set('folio', query.folio.trim())
+      }
       const r = record(await call(token, `?${params}`, 'GET', undefined, undefined, signal), ['schema_version', 'items', 'next_before_id'])
       if (r.schema_version !== 1 || !Array.isArray(r.items) || r.items.length > limit) fail()
       const items = r.items.map(v => {

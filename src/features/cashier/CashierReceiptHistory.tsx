@@ -4,8 +4,8 @@ import { getCashierPaymentResult } from './cashier-service'
 import { readReceiptReferences, receiptStorageKey, rememberReceipt, type ReceiptReference } from './cashier-receipts'
 import type { CashierPaymentAttempt, CashierPaymentResultResponse } from './cashier-types'
 
-export function CashierReceiptHistory({ userId, branchId, attempt, locked }: {
-  userId: string; branchId: string; attempt: CashierPaymentAttempt | null; locked: boolean
+export function CashierReceiptHistory({ userId, branchId, attempt, locked, compact = false }: {
+  userId: string; branchId: string; attempt: CashierPaymentAttempt | null; locked: boolean; compact?: boolean
 }) {
   const [rows, setRows] = useState<ReceiptReference[]>([])
   const [result, setResult] = useState<CashierPaymentResultResponse | null>(null)
@@ -50,10 +50,9 @@ export function CashierReceiptHistory({ userId, branchId, attempt, locked }: {
     } finally { if (!controller.signal.aborted) setBusy(false) }
   }
 
-  return <section className="botanical-section-card" aria-labelledby="receipt-history-title">
+  const content = <>
     <h2 id="receipt-history-title">Reimprimir una venta</h2>
     <p>Últimos 100 comprobantes registrados aquí para tu usuario y sucursal. Se consultan en línea; reimprimir no realiza otro cobro.</p>
-    {storageError && <p role="alert">{storageError}</p>}
     {!rows.length && <p>Aún no hay comprobantes guardados en este navegador.</p>}
     <div>{rows.map(row => <button key={row.saleId} type="button" className="retry-btn-secondary"
       disabled={locked || busy} onClick={() => void retrieve(row)}>Ver ticket {row.folio}</button>)}</div>
@@ -63,5 +62,9 @@ export function CashierReceiptHistory({ userId, branchId, attempt, locked }: {
       <CashierPrintableTicket result={result} reprint />
       <button type="button" className="retry-btn-secondary" onClick={() => setResult(null)}>Cerrar comprobante</button>
     </>}
+  </>
+  return <section className="botanical-section-card" aria-label="Comprobantes y reimpresión">
+    {storageError && <p className="desk-warning" role="alert">{storageError}</p>}
+    {compact ? <details><summary>Comprobantes y reimpresión</summary>{content}</details> : content}
   </section>
 }
