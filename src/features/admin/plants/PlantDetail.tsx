@@ -10,6 +10,7 @@ import { isValidLabelInternalCode } from '../product-qr-label'
 import { activatePlant, fetchEditablePlant, fetchPlantPreparation, patchPlant, preparationLabels, stateLabels, type PlantPreparation } from './plants-service'
 import { draftFromPlant, plantPatch, preserveEditedDraft, type PlantDraft } from './plants-model'
 import { PlantPhoto } from './PlantPhoto'
+import { selectedPhotoError, photoSaveError } from './photo-selection'
 
 export function PlantDetail({ product, preparation, categories, balance, branchName, canPrice, permissions, guard, onSaved, onStockUpdated, onNext, onBack, onCount, onInventory, onReception }: {
   product: AdminProduct; preparation: PlantPreparation; categories: AdminCategory[]; balance?: AdminInventoryBalance; branchName: string
@@ -21,6 +22,7 @@ export function PlantDetail({ product, preparation, categories, balance, branchN
   const [file, setFile] = useState<File | null>(null), [preview, setPreview] = useState<string | null>(null)
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState(''), [error, setError] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null), [showQr, setShowQr] = useState(false)
+  const [photoSaving, setPhotoSaving] = useState(false)
   const [confirmPrice, setConfirmPrice] = useState(false), [uncertain, setUncertain] = useState(false)
   const [stock, setStock] = useState(balance), [history, setHistory] = useState<InventoryMovement[] | null>(null)
   const [reviewRevision, setReviewRevision] = useState(0)
@@ -36,16 +38,17 @@ export function PlantDetail({ product, preparation, categories, balance, branchN
   useEffect(() => { guard(dirty, busy) }, [dirty, busy, guard])
   useEffect(() => {
     if (!file) { setPreview(null); return }
-    const url = URL.createObjectURL(file); setPreview(url)
-    return () => URL.revokeObjectURL(url)
+    try {
+      const url = URL.createObjectURL(file); setPreview(url)
+      return () => URL.revokeObjectURL(url)
+    } catch { setPreview(null); setPhotoError('No se pudo mostrar la vista previa. Elige de nuevo la fotografía.') }
   }, [file])
   const field = (key: keyof PlantDraft, value: string) => setDraft(d => ({ ...d, [key]: value }))
   const selectPhoto = (selected?: File) => {
     if (!selected) return
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(selected.type) || selected.size > 5 * 1024 * 1024 || !selected.size) {
-      setPhotoError('Elige una fotografía JPEG, PNG o WEBP de hasta 5 MiB.'); return
-    }
-    setFile(selected); setPhotoError(null); setNotice('Fotografía lista para guardar.')
+    const invalid = selectedPhotoError(selected)
+    if (invalid) { setPhotoError(invalid); setNotice(''); return }
+    setFile(selected); setPhotoError(null); setNotice('')
   }
   const refreshPreparation = async (saved: AdminProduct) => {
     const state = await fetchPlantPreparation(saved.id, preparation.branchId)
@@ -53,19 +56,20 @@ export function PlantDetail({ product, preparation, categories, balance, branchN
   }
   const savePhoto = async (): Promise<boolean> => {
     if (!file) return true
-    setPhotoError(null)
+    setPhotoError(null); setPhotoSaving(true)
     try {
       if (!base.editRevision) throw new Error('Consulta la ficha actual antes de guardar.')
       await catalogingBinary(`products/${product.id}/catalog-photo`,file,base.editRevision,true)
       const saved = await fetchEditablePlant(product.id)
       if (!live.current) return false
       setBase(saved); setFile(null); await refreshPreparation(saved)
-      setNotice('Fotografía guardada.'); return true
-    } catch { if (live.current) setPhotoError('No se confirmó la fotografía. Los demás datos se conservan. Revisa la foto guardada antes de reintentar.'); return false }
+      setNotice('Fotografía guardada en el servidor.'); return true
+    } catch (e) { if (live.current) setPhotoError(photoSaveError(e)); return false }
+    finally { if (live.current) setPhotoSaving(false) }
   }
   const photoOnly = async () => {
     if (busy || !file) return
-    setBusy(true); guard(dirty, true)
+    setBusy(true); setNotice(''); guard(dirty, true)
     try { await savePhoto() } finally { if (live.current) setBusy(false) }
   }
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -91,16 +95,17 @@ export function PlantDetail({ product, preparation, categories, balance, branchN
     // plant available. Never advance to another plant with a pending photo.
     let photoSaved = true
     if (file) {
-      setPhotoError(null)
+      setPhotoError(null); setPhotoSaving(true)
       try {
         await catalogingBinary(`products/${saved.id}/catalog-photo`,file,saved.editRevision,true)
         saved = await fetchEditablePlant(saved.id)
         if (!live.current) return
         setBase(saved); setFile(null); await refreshPreparation(saved)
-      } catch { photoSaved = false; if (live.current) setPhotoError('Datos guardados. La fotografía quedó pendiente; puedes revisarla y reintentar sin volver a guardar la ficha.') }
+      } catch (e) { photoSaved = false; if (live.current) setPhotoError('Datos guardados. '+photoSaveError(e)) }
+      finally { if (live.current) setPhotoSaving(false) }
     }
     if (!live.current) return
-    setBusy(false); setNotice(photoSaved ? 'Ficha guardada correctamente.' : 'Nombre, precio e información guardados. Fotografía pendiente.')
+    setBusy(false); setNotice(photoSaved ? file ? 'Ficha y fotografía guardadas en el servidor.' : 'Ficha guardada correctamente.' : 'Nombre, precio e información guardados. Fotografía pendiente.')
     guard(!photoSaved, false)
     if (following && photoSaved) onNext()
   }
@@ -153,11 +158,12 @@ export function PlantDetail({ product, preparation, categories, balance, branchN
   return <div className="plant-detail-page">
     <button className="plants-back" type="button" disabled={busy} onClick={onBack}>← Volver a Plantas</button>
     <div className="plant-detail-layout">
-      <section className="plant-photo-panel" aria-label="Fotografía de la planta"><PlantPhoto hero imageId={base.image?.id} name={base.commonName} preview={preview} />
-        <div className="plant-photo-actions"><label className="plants-file-button">Tomar foto<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={busy} onChange={e => { selectPhoto(e.target.files?.[0]); e.target.value = '' }} /></label>
-          <label className="plants-file-button secondary">Elegir fotografía<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e => { selectPhoto(e.target.files?.[0]); e.target.value = '' }} /></label>
+      <section className="plant-photo-panel" aria-label="Fotografía de la planta"><PlantPhoto hero imageId={base.image?.id} name={base.commonName} preview={preview} onPreviewError={() => setPhotoError('No se pudo abrir la fotografía seleccionada. Elige una imagen JPEG, PNG o WEBP válida.')} />
+        <div className="plant-photo-actions"><label className="plants-file-button">Tomar foto<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={busy} onChange={e => { const selected=e.currentTarget.files?.[0]; e.currentTarget.value=''; selectPhoto(selected) }} /></label>
+          <label className="plants-file-button secondary">Elegir fotografía<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e => { const selected=e.currentTarget.files?.[0]; e.currentTarget.value=''; selectPhoto(selected) }} /></label>
         </div><p className="plants-helper">JPEG, PNG o WEBP · hasta 5 MiB. No es obligatoria para vender.</p>
-        {file && <div className="plant-photo-pending"><p>{file.name} · {(file.size / 1024).toFixed(0)} KB</p><button className="plants-primary" type="button" disabled={busy} onClick={photoOnly}>{busy ? 'Guardando…' : 'Guardar fotografía'}</button><button className="plants-text-button" type="button" disabled={busy} onClick={() => { setFile(null); setPhotoError(null) }}>Descartar foto pendiente</button></div>}
+        {file && <div className="plant-photo-pending"><p role="status">{photoSaving ? 'Guardando fotografía…' : 'Fotografía seleccionada · todavía no guardada en el servidor.'}</p><p>{file.name} · {(file.size / 1024).toFixed(0)} KB</p><button className="plants-primary" type="button" disabled={busy} onClick={photoOnly}>{photoSaving ? 'Guardando…' : 'Guardar fotografía'}</button><button className="plants-text-button" type="button" disabled={busy} onClick={() => { setFile(null); setPhotoError(null) }}>Descartar foto pendiente</button></div>}
+        {!file && ['Fotografía guardada en el servidor.', 'Ficha y fotografía guardadas en el servidor.'].includes(notice) && <p className="plants-notice" role="status">{notice}</p>}
         {photoError && <div className="plants-warning" role="alert"><p>{photoError}</p><button type="button" disabled={busy} onClick={checkPhoto}>Consultar fotografía guardada</button>{base.image && <PlantPhoto imageId={base.image.id} name="Fotografía registrada en el servidor" />}</div>}
       </section>
       <div className="plant-detail-information">
@@ -166,7 +172,7 @@ export function PlantDetail({ product, preparation, categories, balance, branchN
           {!preparation.ready && canPrice && !preparation.reasons.some(r => ['DISABLED', 'CATEGORY_INACTIVE', 'PRICE_PENDING', 'INITIAL_COUNT_PENDING'].includes(r)) && <button type="button" disabled={busy || dirty} onClick={activate}>Habilitar venta en esta sucursal</button>}
         </div>}
         <div className="plant-stock-box"><span>Existencia · {branchName}</span><strong>{stock ? `${stock.totalQuantity} ${product.unit}` : 'No consultada'}</strong><small>La cantidad se modifica únicamente mediante operaciones autorizadas.</small></div>
-        {notice && <p className="plants-notice" role="status">{notice}</p>}{error && <p className="plants-warning" role="alert">{error}</p>}
+        {notice && !['Fotografía guardada en el servidor.', 'Ficha y fotografía guardadas en el servidor.'].includes(notice) && <p className="plants-notice" role="status">{notice}</p>}{error && <p className="plants-warning" role="alert">{error}</p>}
         {uncertain && <button type="button" disabled={busy} onClick={checkSaved}>Comprobar datos guardados</button>}
         <form className="plant-edit-form" onSubmit={save} aria-busy={busy}>
           <fieldset disabled={busy || uncertain || !base.editRevision}><legend>Información de la planta</legend><label><span>Nombre</span><input required minLength={2} maxLength={160} value={draft.common_name} onChange={e => field('common_name', e.target.value)} /></label>

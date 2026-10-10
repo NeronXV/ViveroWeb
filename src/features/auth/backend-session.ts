@@ -9,7 +9,7 @@ export interface BackendSessionState {
   readonly session: BackendSession | null
   readonly context: BackendAccessContext | null
   readonly status: 'anonymous' | 'authenticating' | 'authenticated'
-  readonly accessStatus: 'idle' | 'loading' | 'ready' | 'error'
+  readonly accessStatus: 'idle' | 'loading' | 'refreshing' | 'ready' | 'error'
   readonly busy: boolean
   readonly error: string | null
 }
@@ -75,8 +75,10 @@ export function createBackendSessionController(request: typeof fetch = fetch, no
       if (now() >= session.expiresAt) { clear('La sesión venció. Inicia sesión nuevamente.'); return false }
       const expected = ++revision, controller = new AbortController()
       active?.abort(); active = controller
-      // Keep the identity/token on network failure, but grant no previous access.
-      publish({ session, context: null, status: 'authenticated', accessStatus: 'loading', busy: true, error: null })
+      // Preserve an already verified view while it is inert. Access remains
+      // unavailable to backend-runtime until the fresh context is ready.
+      const previous = state.accessStatus === 'ready' ? state.context : null
+      publish({ session, context: previous, status: 'authenticated', accessStatus: previous ? 'refreshing' : 'loading', busy: true, error: null })
       try {
         const context = await auth.context(session.accessToken, session.userId, AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]))
         if (!current(expected)) return false

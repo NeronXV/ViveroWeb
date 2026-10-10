@@ -3,6 +3,7 @@ import type { AdminCategory, AdminProduct } from '../admin-catalog-types'
 import { BackendHttpError } from '../../../lib/backend-http'
 import { useAuth } from '../../auth/useAuth'
 import { catalogingBinary, catalogingError, emptyCatalogingFields, loadCataloging, loadCatalogingDraft, parseCataloging, pendingCataloging, recoverCataloging, saveCataloging, type CatalogingDraft } from './cataloging-service'
+import { selectedPhotoError, photoSaveError } from './photo-selection'
 
 const labels={DRAFT:'Por completar',REVIEW:'En revisión',LINKED:'Vinculado al existente',PREPARED:'Ficha preparada'}
 const fieldLabels: Record<string,string>={approved_name:'Nombre comercial',presentation:'Presentación',internal_code:'SKU',scientific_name:'Nombre científico',description:'Notas',barcode:'Código de barras',category_id:'Categoría'}
@@ -13,6 +14,7 @@ export function CatalogingBoard({ categories, products, onPrepared, guard }: { c
   const [search,setSearch]=useState(''), [status,setStatus]=useState('ALL'), [category,setCategory]=useState('')
   const [busy,setBusy]=useState(false), [error,setError]=useState(''), [notice,setNotice]=useState(''), [pending,setPending]=useState(false)
   const [file,setFile]=useState<File|null>(null), [photo,setPhoto]=useState<string|null>(null), [link,setLink]=useState(''), [conflict,setConflict]=useState(false)
+  const [photoError,setPhotoError]=useState(''), [photoSaving,setPhotoSaving]=useState(false)
   const dirty=(creating && !!original) || (!!selected && JSON.stringify(fields)!==JSON.stringify(selected.fields)) || !!file
   const locked=!!selected && selected.status!=='DRAFT'
   useEffect(()=>{guard(dirty,busy)},[dirty,busy,guard])
@@ -25,12 +27,17 @@ export function CatalogingBoard({ categories, products, onPrepared, guard }: { c
   useEffect(()=>{
     let live=true, url:string|null=null
     setPhoto(null)
-    if(file) {url=URL.createObjectURL(file);setPhoto(url)}
+    if(file) {try{url=URL.createObjectURL(file);setPhoto(url)}catch{setPhotoError('No se pudo mostrar la vista previa. Elige de nuevo la fotografía.')}}
     else if(selected?.has_image) catalogingBinary(`cataloging/${selected.id}/photo`).then(blob=>{url=URL.createObjectURL(blob as Blob);if(live)setPhoto(url);else URL.revokeObjectURL(url)}).catch(()=>{if(live)setError('No se pudo consultar la fotografía.')})
     return()=>{live=false;if(url)URL.revokeObjectURL(url)}
   },[file,selected])
   const refresh=async()=>setRows(await loadCataloging(search,status,category))
-  const open=(r:CatalogingDraft|null)=>{if(busy || pending)return;if(dirty && !window.confirm('¿Descartar los cambios sin guardar?'))return;setSelected(r);setFields(r?.fields ?? emptyCatalogingFields());setOriginal(r?.original_name ?? '');setCreating(!r);setFile(null);setConflict(false);setError('');setNotice('')}
+  const open=(r:CatalogingDraft|null)=>{if(busy || pending)return;if(dirty && !window.confirm('¿Descartar los cambios sin guardar?'))return;setSelected(r);setFields(r?.fields ?? emptyCatalogingFields());setOriginal(r?.original_name ?? '');setCreating(!r);setFile(null);setPhotoError('');setConflict(false);setError('');setNotice('')}
+  const selectPhoto=(input:HTMLInputElement)=>{
+    const selected=input.files?.[0];input.value='';if(!selected)return
+    const invalid=selectedPhotoError(selected);if(invalid){setPhotoError(invalid);setNotice('');return}
+    setFile(selected);setPhotoError('');setNotice('')
+  }
   const run=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setError('');try{await action()}catch(e){setError(catalogingError(e));if(e instanceof BackendHttpError && e.code==='CATALOGING_EDIT_CONFLICT')setConflict(true);try{setPending(pendingCataloging()!==null)}catch{setPending(true)}}finally{setBusy(false)}}
   const save=async(action='SAVE')=>{
     if(pending || conflict)return
@@ -45,8 +52,10 @@ export function CatalogingBoard({ categories, products, onPrepared, guard }: { c
   const consult=()=>run(async()=>{if(!selected)return;const current=await loadCatalogingDraft(selected.id);setSelected(current);setConflict(false);setNotice('Ficha actual consultada. Tu formulario sigue intacto: compara los campos antes de guardar.');await refresh()})
   const upload=()=>run(async()=>{
     if(!selected || !file || pending || conflict)return
-    try{const saved=parseCataloging(await catalogingBinary(`cataloging/${selected.id}/photo`,file,selected.revision));setSelected(saved);setFile(null);setNotice('Fotografía guardada.');await refresh()}
-    catch(e){setConflict(true);throw e}
+    setPhotoSaving(true);setPhotoError('');setNotice('')
+    try{const saved=parseCataloging(await catalogingBinary(`cataloging/${selected.id}/photo`,file,selected.revision));setSelected(saved);setFile(null);setNotice('Fotografía guardada en el servidor.');await refresh()}
+    catch(e){setConflict(true);setPhotoError(photoSaveError(e))}
+    finally{setPhotoSaving(false)}
   })
   return <section className="cataloging-board" aria-label="Revisión de plantas">
     <div className="plants-list-heading"><div><h4>Revisión de plantas</h4><p>Borradores compartidos. No aparecen en Caja ni tienen existencias.</p></div><button className="plants-primary" disabled={busy || pending} onClick={()=>open(null)}>Nueva planta</button></div>
@@ -68,10 +77,11 @@ export function CatalogingBoard({ categories, products, onPrepared, guard }: { c
         {!locked && <button className="plants-primary" disabled={busy || pending || conflict}>Guardar avances</button>}
       </form>
       {selected && <>
-        {photo && <img className="cataloging-photo" src={photo} alt="Fotografía de identificación"/>}
-        {!locked && <><label className="plants-file-button">Tomar foto<input type="file" capture="environment" accept="image/jpeg,image/png,image/webp" disabled={busy || pending || conflict} onChange={e=>{const f=e.target.files?.[0];if(f && f.size>0 && f.size<=5*1024*1024 && ['image/jpeg','image/png','image/webp'].includes(f.type))setFile(f);else setError('Usa JPEG, PNG o WEBP de hasta 5 MiB.');e.target.value=''}}/></label>
-          <label className="plants-file-button secondary">Galería<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || pending || conflict} onChange={e=>{const f=e.target.files?.[0];if(f && f.size>0 && f.size<=5*1024*1024 && ['image/jpeg','image/png','image/webp'].includes(f.type))setFile(f);else setError('Usa JPEG, PNG o WEBP de hasta 5 MiB.');e.target.value=''}}/></label>
-          {file && <div><button disabled={busy || pending || conflict} onClick={()=>void upload()}>Guardar fotografía</button><button disabled={busy} onClick={()=>setFile(null)}>Descartar foto pendiente</button></div>}
+        {photo && <img className="cataloging-photo" src={photo} alt="Fotografía de identificación" onError={()=>setPhotoError('No se pudo abrir la fotografía. Elige una imagen JPEG, PNG o WEBP válida.')}/>}
+        {photoError && <p className="plants-warning" role="alert">{photoError}</p>}
+        {!locked && <><label className="plants-file-button">Tomar foto<input type="file" capture="environment" accept="image/jpeg,image/png,image/webp" disabled={busy || pending || conflict} onChange={e=>selectPhoto(e.currentTarget)}/></label>
+          <label className="plants-file-button secondary">Galería<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || pending || conflict} onChange={e=>selectPhoto(e.currentTarget)}/></label>
+          {file && <div><p role="status">{photoSaving ? 'Guardando fotografía…' : 'Vista previa · fotografía seleccionada, todavía no guardada en el servidor.'}</p><button disabled={busy || pending || conflict} onClick={()=>void upload()}>Guardar fotografía</button><button disabled={busy} onClick={()=>{setFile(null);setPhotoError('')}}>Descartar foto pendiente</button></div>}
           <button disabled={busy || pending || dirty || conflict} onClick={()=>void save('SUBMIT')}>Enviar a revisión</button></>}
         <button disabled={busy || pending} onClick={()=>void consult()}>Consultar ficha actual sin borrar mi formulario</button>
         {owner && selected.status==='REVIEW' && <div className="plant-owner-tools"><p>Revisión del propietario: confirmar identidad y presentación antes de crear una ficha.</p><button disabled={busy || pending || conflict} onClick={()=>void save('RETURN')}>Devolver para completar</button><button disabled={busy || pending || conflict} onClick={()=>void save('PREPARE')}>Confirmar y preparar ficha inactiva</button>

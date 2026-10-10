@@ -34,4 +34,4 @@ export interface UserAccessContext {
   capabilities: string[]
 }
 
-export type AccessStatus = 'idle' | 'loading' | 'ready' | 'error'
+export type AccessStatus = 'idle' | 'loading' | 'refreshing' | 'ready' | 'error'

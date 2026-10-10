@@ -35,7 +35,14 @@ export function RequireAccessContext({ children }: { children: ReactNode }) {
   if (accessContext.accessState === 'NO_ROLE') return <AccessDenied reason="Tu cuenta todavía no tiene un rol asignado." />
   if (accessContext.accessState !== 'ACTIVE') return <AccessDenied reason="Tu cuenta no tiene acceso habilitado." />
 
-  return children
+  const refreshing = accessStatus === 'refreshing'
+  // Keep the editor mounted when a file picker returns focus. Its old view is
+  // not actionable: inert blocks interaction and backend-runtime rejects any
+  // request until status becomes ready. Errors/revocation still fail closed.
+  return <div>
+    {refreshing && <p role="status" aria-live="polite">Verificando sesión y permisos. Espera para guardar.</p>}
+    <div key="verified-content" inert={refreshing || undefined} aria-busy={refreshing || undefined}>{children}</div>
+  </div>
 }
 
 export function RequireCapability({ capabilities, mode = 'all', reason, children }: { capabilities: readonly string[]; mode?: 'all' | 'any'; reason: string; children: ReactNode }) {

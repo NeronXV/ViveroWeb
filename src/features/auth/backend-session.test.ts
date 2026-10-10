@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createBackendSessionController } from './backend-session'
+import { bindBackendSession, requireBackendAccess } from './backend-runtime'
 const token = 'A'.repeat(43)
 const context = { schema_version: 1, user: { id: 1, email: 'demo@example.invalid', full_name: 'Demo' }, access_state: 'ACTIVE', role: { id: 1, name: 'OWNER', display_name: 'Dueño' }, branch: { id: 2, code: 'DEMO', name: 'Demo', is_active: true }, capabilities: ['OPERATE_CASHIER'] }
 const login = () => Response.json({ token_type: 'Bearer', access_token: token, expires_in: 3600 })
@@ -13,15 +14,19 @@ describe('backend session lifecycle', () => {
     expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body)).password).toBe(' password ')
     expect(controller.getSnapshot().accessStatus).toBe('ready')
   })
-  it('drops permissions immediately during refresh and fails closed on network errors', async () => {
+  it('blocks backend access during refresh without discarding the view, and fails closed on network errors', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(login()).mockResolvedValueOnce(Response.json(context)).mockRejectedValueOnce(new TypeError('offline'))
     const controller = createBackendSessionController(fetcher)
+    const unbind = bindBackendSession(controller.getSnapshot)
     await controller.signIn('demo@example.invalid', 'demo')
     const pending = controller.refresh()
-    expect(controller.getSnapshot().context).toBeNull()
+    expect(controller.getSnapshot()).toMatchObject({ accessStatus: 'refreshing', context, busy: true })
+    expect(() => requireBackendAccess()).toThrow('La sesión no está disponible')
     await pending
     expect(controller.getSnapshot()).toMatchObject({ status: 'authenticated', accessStatus: 'error', context: null })
     expect(controller.getSnapshot().session).not.toBeNull()
+    expect(() => requireBackendAccess()).toThrow()
+    unbind()
   })
   it('expires without making another request and clears the token', async () => {
     let time = 1000
