@@ -1649,6 +1649,37 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   margin-bottom: 0.65rem;
 }
 
+.public-order-receipt { background: white; color: #17281f; padding: 20px; border: 1px solid #ddd; font-size: 14px; overflow-wrap: anywhere; }
+.public-order-receipt header { text-align: center; }
+.public-order-receipt h4 { margin: 6px 0; }
+.public-order-payment-status { text-align: center; font-weight: 700; }
+.public-order-receipt-meta > div, .public-order-receipt-totals > div { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0; }
+.public-order-receipt dd { margin: 0; text-align: right; }
+.public-order-receipt-meta dt { flex: 0 0 35%; overflow-wrap: normal; }
+.public-order-receipt-meta dd { flex: 1; min-width: 0; }
+.public-order-receipt-item { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; border-bottom: 1px solid #ddd; padding: 8px 0; break-inside: avoid; }
+.public-order-receipt-item > strong { grid-column: 1 / -1; }
+.public-order-receipt-total { font-weight: 700; font-size: 1.15em; }
+.public-order-receipt-note, .public-order-print-controls p { font-size: 12px; }
+.public-order-ticket-portal { display: none; }
+.public-order-print-controls { display: grid; gap: 12px; margin: 16px 0; }
+.public-order-print-controls label { display: grid; gap: 6px; }
+
+@page public-order-pdf { size: A4 portrait; margin: 12mm; }
+@page public-order-thermal { size: 80mm 297mm; margin: 3mm; }
+@page public-order-thermal58 { size: 58mm 297mm; margin: 3mm; }
+
+@media print {
+  body.print-public-order > *:not(.public-order-ticket-selected) { display: none !important; }
+  body.print-public-order .public-order-ticket-selected { display: block !important; position: static; width: 85mm; max-width: 100%; padding: 0; margin: 0 auto; border: 0; box-shadow: none; font-size: 10pt; }
+  body.print-public-order-pdf .public-order-ticket-selected { page: public-order-pdf; }
+  body.print-public-order-thermal .public-order-ticket-selected { page: public-order-thermal; width: 74mm; font-size: 9pt; }
+  body.print-public-order-thermal58 .public-order-ticket-selected { page: public-order-thermal58; width: 52mm; font-size: 9pt; }
+  body.print-public-order .public-order-receipt-meta > div,
+  body.print-public-order .public-order-receipt-totals,
+  body.print-public-order .public-order-payment-status { break-inside: avoid; }
+}
+
 @page product-labels {
   size: A4 portrait;
   margin: 10mm;

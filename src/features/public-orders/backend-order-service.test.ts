@@ -10,6 +10,15 @@ const receipt = { schema_version: 1, id: 4, order_number: 'VW-4', status: 'PENDI
   created_at: '2026-10-01T12:00:00.000000Z', idempotent_replay: false }
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
+it('requests persisted short aliases while accepting the exact legacy contract from older APIs', async () => {
+  const request = vi.fn<typeof fetch>().mockResolvedValueOnce(response({ ...receipt, order_number: 'VW-0004' }))
+    .mockResolvedValueOnce(response(receipt))
+  const service = createBackendOrderService(request)
+  expect((await service.recover('a'.repeat(64))).order_number).toBe('VW-0004')
+  expect((await service.recover('a'.repeat(64))).order_number).toBe('VW-4')
+  expect(request.mock.calls[0][1]?.headers).toMatchObject({ 'X-Vivero-Folio-Format': 'short-v1' })
+})
+
 it('retains exactly the same attempt across reload and refuses corrupt or foreign authority records', () => {
   let saved: string | null = null
   const storage = { setItem: vi.fn((_key: string, value: string) => { saved = value }), getItem: vi.fn(() => saved), removeItem: vi.fn(() => { saved = null }) }

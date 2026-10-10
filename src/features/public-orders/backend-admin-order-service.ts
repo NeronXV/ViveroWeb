@@ -1,3 +1,4 @@
+import { SHORT_FOLIO_HEADER } from '../../lib/folio-format'
 import { WEB_ORDER_STATUSES, type WebOrderStatus } from './web-order-types'
 
 export interface BackendAdminOrder {
@@ -16,7 +17,7 @@ export interface BackendOrderHistory {
   changed_by: number | null; observation: string | null; changed_at: string
 }
 export interface BackendAdminOrderDetail { schema_version: 1; order: BackendAdminOrder; items: BackendAdminOrderItem[]; history: BackendOrderHistory[] }
-export interface BackendAdminOrderQuery { limit?: number; beforeId?: number; branchId?: number; status?: WebOrderStatus }
+export interface BackendAdminOrderQuery { limit?: number; beforeId?: number; branchId?: number; status?: WebOrderStatus; folio?: string }
 export interface BackendOrderStatusInput { status: Exclude<WebOrderStatus, 'PENDING'>; expected_revision: number; observation: string | null }
 const safeMessages: Record<string, string> = {
   WEB_ORDER_VERSION_CONFLICT: 'El pedido cambió. Actualiza el detalle antes de continuar.',
@@ -94,7 +95,7 @@ export function createBackendAdminOrderService(request: typeof fetch = fetch) {
     const timeout = AbortSignal.timeout(10000), writing = method !== 'GET'
     let response: Response
     try { response = await request(`/api/v1/admin/web-orders${path}`, { method, signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-      credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { ...SHORT_FOLIO_HEADER, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body) }) }
     catch { throw new BackendAdminOrderError(0, 'CONNECTION_FAILED', writing) }
     let value: unknown
@@ -111,6 +112,10 @@ export function createBackendAdminOrderService(request: typeof fetch = fetch) {
       if (query.beforeId !== undefined) params.set('before_id', String(id(query.beforeId)))
       if (query.branchId !== undefined) params.set('branch_id', String(id(query.branchId)))
       if (query.status !== undefined) params.set('status', state(query.status))
+      if (query.folio !== undefined) {
+        if (!/^VW-[0-9]{1,10}$/.test(query.folio)) fail()
+        params.set('folio', query.folio)
+      }
       const r = record(await call(token, `?${params}`, 'GET', undefined, signal), ['schema_version', 'items', 'next_before_id'])
       if (r.schema_version !== 1 || !Array.isArray(r.items) || r.items.length > limit) fail()
       const items = r.items.map(order)

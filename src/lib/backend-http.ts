@@ -1,15 +1,16 @@
+import { SHORT_FOLIO_HEADER } from './folio-format'
 import { requireBackendAccess } from '../features/auth/backend-runtime'
 
 export class BackendHttpError extends Error {
   constructor(public readonly status: number, public readonly code: string) { super(status === 401 ? 'La sesión ya no es válida.' : status === 403 ? 'No tienes permiso para esta operación.' : 'No se confirmó la operación. Consulta su resultado antes de repetirla.') }
 }
-export async function backendHttp(path: string, method = 'GET', body?: unknown, signal?: AbortSignal, key?: string): Promise<Record<string, unknown>> {
+export async function backendHttp(path: string, method = 'GET', body?: unknown, signal?: AbortSignal, key?: string, cashierDeskView = false): Promise<Record<string, unknown>> {
   const { token, context } = requireBackendAccess()
   let response: Response
   try {
     response = await fetch('/api/v1/' + path, { method, credentials: 'omit', redirect: 'error', cache: 'no-store',
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000),
-      headers: { Authorization: 'Bearer ' + token, 'X-Expected-Actor-Id': String(context.user.id), ...(context.branch ? { 'X-Expected-Branch-Id': String(context.branch.id) } : {}), 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) },
+      headers: { ...SHORT_FOLIO_HEADER, ...(cashierDeskView ? { 'X-Vivero-Cashier-View': 'desk-v1' } : {}), Authorization: 'Bearer ' + token, 'X-Expected-Actor-Id': String(context.user.id), ...(context.branch ? { 'X-Expected-Branch-Id': String(context.branch.id) } : {}), 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
   } catch { if (signal?.aborted) throw new DOMException('Operación cancelada.', 'AbortError'); throw new BackendHttpError(0, 'CONNECTION_FAILED') }
   let data: unknown

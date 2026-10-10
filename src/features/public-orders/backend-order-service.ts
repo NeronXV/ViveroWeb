@@ -1,3 +1,4 @@
+import { SHORT_FOLIO_HEADER, isBackendOrderFolio } from '../../lib/folio-format'
 import { WEB_ORDER_STATUSES, type WebOrderStatus } from './web-order-types'
 
 export interface BackendOrderInput {
@@ -17,6 +18,14 @@ export interface BackendOrderQuote {
 export interface BackendOrderReceipt {
   schema_version: 1; id: number; order_number: string; status: WebOrderStatus
   total_cents: number; created_at: string; idempotent_replay: boolean
+  ticket?: BackendOrderTicket
+}
+export interface BackendOrderTicket {
+  schema_version: 1; order: BackendOrderReceipt
+  branch: { id: number; code: string; name: string }
+  subtotal_cents: number; discount_cents: number
+  items: Array<{ product_id: number; product_name: string; quantity: number
+    list_price_cents: number; unit_price_cents: number; line_total_cents: number }>
 }
 export interface BackendOrderAttempt { readonly key: string; readonly body: string }
 const ATTEMPT_STORAGE_KEY = 'viveroweb_backend_order_attempt_v1'
@@ -98,7 +107,7 @@ export function clearBackendOrderAttempt(storage: Pick<Storage, 'removeItem'>): 
 }
 export function parseBackendOrderReceipt(value: unknown): BackendOrderReceipt {
   const r = record(value, ['schema_version', 'id', 'order_number', 'status', 'total_cents', 'created_at', 'idempotent_replay'])
-  if (r.schema_version !== 1 || r.order_number !== `VW-${id(r.id)}` || !WEB_ORDER_STATUSES.some(s => s === r.status)
+  if (r.schema_version !== 1 || !isBackendOrderFolio(r.order_number, id(r.id)) || !WEB_ORDER_STATUSES.some(s => s === r.status)
     || typeof r.idempotent_replay !== 'boolean' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(text(r.created_at))
     || !Number.isFinite(Date.parse(text(r.created_at)))
     || new Date(text(r.created_at)).toISOString() !== text(r.created_at).slice(0, 23) + 'Z') fail()
@@ -126,14 +135,44 @@ export function parseBackendOrderQuote(value: unknown, expected: BackendOrderInp
     || BigInt(integer(q.discount_cents)) !== subtotal - total) fail()
   return q as unknown as BackendOrderQuote
 }
-export function createBackendOrderService(request: typeof fetch = fetch) {
+export function parseBackendOrderTicket(value: unknown): BackendOrderTicket {
+  const ticket = record(value, ['schema_version', 'order', 'branch', 'subtotal_cents', 'discount_cents', 'items'])
+  if (ticket.schema_version !== 1 || !Array.isArray(ticket.items) || ticket.items.length < 1 || ticket.items.length > 25) fail()
+  const order = parseBackendOrderReceipt(ticket.order)
+  const branch = record(ticket.branch, ['id', 'code', 'name'])
+  id(branch.id); text(branch.code); text(branch.name)
+  let subtotal = 0n, total = 0n
+  const seen = new Set<number>()
+  for (const item of ticket.items) {
+    const row = record(item, ['product_id', 'product_name', 'quantity', 'list_price_cents', 'unit_price_cents', 'line_total_cents'])
+    const productId = id(row.product_id), quantity = integer(row.quantity, 1, 100)
+    if (seen.has(productId) || !text(row.product_name).trim()) fail()
+    seen.add(productId)
+    const list = integer(row.list_price_cents), unit = integer(row.unit_price_cents)
+    if (unit > list || BigInt(integer(row.line_total_cents)) !== BigInt(unit) * BigInt(quantity)) fail()
+    subtotal += BigInt(list) * BigInt(quantity); total += BigInt(unit) * BigInt(quantity)
+  }
+  if (BigInt(integer(ticket.subtotal_cents)) !== subtotal || BigInt(order.total_cents) !== total
+    || BigInt(integer(ticket.discount_cents)) !== subtotal - total) fail()
+  return ticket as unknown as BackendOrderTicket
+}
+const TICKET_STORAGE_KEY = 'viveroweb_confirmed_order_ticket_v1'
+export function saveBackendOrderTicket(storage: Pick<Storage, 'setItem'>, ticket: BackendOrderTicket): void {
+  storage.setItem(TICKET_STORAGE_KEY, JSON.stringify(parseBackendOrderTicket(ticket)))
+}
+export function readBackendOrderTicket(storage: Pick<Storage, 'getItem'>): BackendOrderTicket | null {
+  const value = storage.getItem(TICKET_STORAGE_KEY)
+  if (value === null) return null
+  return parseBackendOrderTicket(JSON.parse(value))
+}
+export function createBackendOrderService(request: typeof fetch = fetch, includeTicket = false) {
   async function call(path: string, method: string, body?: string, recoveryKey?: string, signal?: AbortSignal, writing = false): Promise<unknown> {
     const timeout = AbortSignal.timeout(10000)
     let response: Response
     try {
       response = await request(`/api/v1/web-orders${path}`, { method, body, signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         credentials: 'omit', redirect: 'error', cache: 'no-store',
-        headers: { 'Content-Type': 'application/json', ...(recoveryKey ? { 'Idempotency-Key': key(recoveryKey) } : {}) } })
+        headers: { ...SHORT_FOLIO_HEADER, 'Content-Type': 'application/json', ...(recoveryKey ? { 'Idempotency-Key': key(recoveryKey) } : {}) } })
     } catch { throw new BackendOrderError('CONNECTION_FAILED', writing) }
     let value: unknown
     try { value = await response.json() } catch { throw new BackendOrderError('INCOMPATIBLE_RESPONSE', writing) }
@@ -161,12 +200,18 @@ export function createBackendOrderService(request: typeof fetch = fetch) {
       try {
         const receipt = parseBackendOrderReceipt(result)
         if (receipt.total_cents !== submission(JSON.parse(checked.body)).expected_total_cents) fail()
-        return receipt
+        return includeTicket ? await withTicket(receipt, checked.key, signal) : receipt
       } catch { throw new BackendOrderError('INCOMPATIBLE_RESPONSE', true) }
     },
     async recover(recoveryKey: string, signal?: AbortSignal) {
       key(recoveryKey)
-      return parseBackendOrderReceipt(await call('/recover', 'POST', '{}', recoveryKey, signal))
+      const receipt = parseBackendOrderReceipt(await call('/recover', 'POST', '{}', recoveryKey, signal))
+      return includeTicket ? withTicket(receipt, recoveryKey, signal) : receipt
     },
+  }
+  async function withTicket(receipt: BackendOrderReceipt, recoveryKey: string, signal?: AbortSignal): Promise<BackendOrderReceipt> {
+    const ticket = parseBackendOrderTicket(await call('/ticket', 'POST', '{}', recoveryKey, signal))
+    if (ticket.order.id !== receipt.id || ticket.order.total_cents !== receipt.total_cents || ticket.order.created_at !== receipt.created_at) fail()
+    return { ...receipt, ticket }
   }
 }

@@ -1,4 +1,4 @@
-import { BackendOrderError, clearBackendOrderAttempt, readBackendOrderAttempt, saveBackendOrderAttempt,
+import { BackendOrderError, clearBackendOrderAttempt, readBackendOrderAttempt, saveBackendOrderAttempt, saveBackendOrderTicket,
   type BackendOrderAttempt, type BackendOrderReceipt, type createBackendOrderService } from './backend-order-service'
 
 type Service = ReturnType<typeof createBackendOrderService>
@@ -13,6 +13,14 @@ export function createBackendOrderCoordinator(storage: Storage, service: Service
     }
     const current = readBackendOrderAttempt(storage)
     if (!current || !same(current, attempt)) throw new Error('El intento guardado cambió. Revisa su resultado.')
+    if (receipt.ticket) {
+      const submitted = JSON.parse(attempt.body) as { branch_id: number; items: Array<{ product_id: number; quantity: number }> }
+      if (receipt.ticket.branch.id !== submitted.branch_id || receipt.ticket.items.length !== submitted.items.length
+        || receipt.ticket.items.some(item => !submitted.items.some(original => original.product_id === item.product_id && original.quantity === item.quantity))) {
+        throw new BackendOrderError('INCOMPATIBLE_RESPONSE', true)
+      }
+      saveBackendOrderTicket(storage, receipt.ticket)
+    }
     clearBackendOrderAttempt(storage)
     return receipt
   }
