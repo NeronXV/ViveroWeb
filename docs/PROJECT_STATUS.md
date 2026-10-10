@@ -1,5 +1,20 @@
 # Estado actual del proyecto
 
+Checkpoint vigente, 9 de octubre de 2026: 479 pruebas aprobadas y una HTTP opcional
+omitida sin fixture; lint/build correctos. Recorrido HTTP real de servicios Web
+contra MariaDB/API locales aprobado: venta/pago con respuestas perdidas y reintentos,
+comprobante, compra rechazada/resuelta sin perder renglones, recepción, devolución
+y cierre. La aceptación física conjunta Web/Android sigue pendiente. Producción
+aún no tiene migración 030; no se desplegó la corrección. SMTP y copia externa
+pendientes; CENTRO conservado sin activar control de stock. AppCliente fuera.
+Evidencia y límites: [reporte de candidata](../../ViveroApp/docs/stable-candidate-20261009.md).
+La documentación siguiente es histórica.
+
+La interfaz Web local también recorrió consulta de código, carrito, envío a caja,
+cobro/comprobante, recarga/reimpresión, devolución y corte con datos ficticios.
+La conciliación SQL confirmó una sola operación de cada tipo y reposición correcta.
+Esto no acredita escaneo de cámara, impresora ni aceptación humana de operación.
+
 Estado de migración vigente (2026-10-02): recuperación e invitaciones usan la API
 oficial, junto con newsletter (migración 025). Web pasó 468 pruebas, build y lint;
 el bundle ya no incluye SDK Supabase. Correo real y datos históricos siguen pendientes;

@@ -1,5 +1,18 @@
 # Vivero Dulcinea Web
 
+Estado vigente, 9 de octubre de 2026: candidata local con recuperación de datos de
+compras rechazadas tras reabrir, retiro seguro de su clave y protección frente a
+cambios de otra pestaña. 479 pruebas, lint/build correctos; recorrido HTTP real
+contra API/MariaDB aisladas aprobado, con pérdida de respuestas, compra, devolución
+y cierre. La prueba HTTP opcional se omite sin fixture. No hubo despliegue: la
+corrección requiere migración 030/API/Web coordinadas en ViveroApp.
+Entrega, APK Android y aceptación pendiente: [reporte compartido](../ViveroApp/docs/stable-candidate-20261009.md).
+AppCliente fuera de este cierre. Las secciones siguientes conservan historia.
+Interfaz Web local comprobada con cuenta ficticia: consulta por código, carrito,
+envío a caja, cobro/comprobante, recarga/reimpresión, devolución y corte. SQL
+confirmó una sola operación de cada tipo. Escaneo físico, impresora y aceptación
+conjunta de Pedro/Toni permanecen pendientes.
+
 Estado local de migración (2026-10-02): sesión, catálogo/pedidos, Caja,
 mostrador, administración de catálogo/imágenes/promociones y compras/proveedores
 usan Backend API, junto con invitaciones, recuperación y newsletter. El bundle

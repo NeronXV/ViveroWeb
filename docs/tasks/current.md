@@ -1,6 +1,11 @@
 # Tarea activa — Cobrar una venta enviada desde Android
 
-Estado: **lista para ejecutar**.
+Estado al 9 de octubre de 2026: **recorridos técnicos locales aprobados;
+aceptación física conjunta pendiente**. El entorno oficial de ensayo es
+Backend API + MariaDB + Docker de ViveroApp. La prueba HTTP opcional está en
+`tests/backend-workflow-http.test.ts`, con fixture propio y origen loopback cerrado.
+No ejecutar el procedimiento Supabase histórico siguiente como flujo vigente.
+Ver [evidencia compartida](../../../ViveroApp/docs/stable-candidate-20261009.md).
 
 ## Objetivo
 
