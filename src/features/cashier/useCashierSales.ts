@@ -143,19 +143,17 @@ export class CashierSalesCoordinator {
       return
     }
 
-    if (type === 'poll' && (this.isCriticalPaymentActive || !this.isTabVisible || !this.isOnline)) {
+    if ((type === 'poll' || type === 'manual') && (this.isCriticalPaymentActive || !this.isTabVisible || !this.isOnline)) {
       this.scheduleNextPoll()
       return
     }
 
     const currentItemsCount = this.state.items.length
-    const currentLimit = Math.min(50, Math.max(this.limit, currentItemsCount))
-
-    if ((type === 'poll' || type === 'manual') && currentItemsCount > 50) {
-      this.updateState({ pollingStatus: 'idle' })
-      if (type === 'poll') this.scheduleNextPoll()
-      return
-    }
+    const currentLimit = determinePollingLimit(this.limit, currentItemsCount)
+    const isRefresh = type === 'poll' || type === 'manual'
+    // The API paginates by descending numeric ID. Keep the original visible
+    // boundary even when new sales move it beyond the first 50 results.
+    const visibleBoundary = isRefresh ? this.state.items.at(-1) : undefined
 
     this.requestInProgress = true
     const currentSeq = ++this.requestSequence
@@ -173,21 +171,59 @@ export class CashierSalesCoordinator {
 
     try {
       const isLoadMore = type === 'more'
-      const cursor = isLoadMore ? this.state.nextCursor : null
+      let cursor = isLoadMore ? this.state.nextCursor : null
       const fetchLimit = isLoadMore ? this.limit : currentLimit
 
-      const watchdog = new Promise<never>((_, reject) => {
-        watchdogTimeout = setTimeout(() => {
-          reject(new CashierServiceError('Tiempo de espera agotado al cargar las ventas.', 'TIMEOUT'))
-          controller.abort()
-        }, CASHIER_COORDINATOR_TIMEOUT_MS)
-      })
-      const response = await Promise.race([
-        this.fetchCall({ limit: fetchLimit, cursor, ...(this.folio ? { folio: this.folio } : {}) }, controller.signal),
-        watchdog,
-      ])
+      const refreshedItems: CashierSale[] = []
+      const refreshedIds = new Set<string>()
+      const visitedCursors = new Set<string>()
+      // Publish only after the entire visible window has been refreshed.
+      let response: Awaited<ReturnType<typeof this.fetchCall>>
+      while (true) {
+        const watchdog = new Promise<never>((_, reject) => {
+          watchdogTimeout = setTimeout(() => {
+            reject(new CashierServiceError('Tiempo de espera agotado al cargar las ventas.', 'TIMEOUT'))
+            controller.abort()
+          }, CASHIER_COORDINATOR_TIMEOUT_MS)
+        })
+        response = await Promise.race([
+          this.fetchCall({ limit: fetchLimit, cursor, ...(this.folio ? { folio: this.folio } : {}) }, controller.signal),
+          watchdog,
+        ])
+        if (watchdogTimeout !== null) clearTimeout(watchdogTimeout)
+        watchdogTimeout = null
+        if (!this.mounted || currentSeq !== this.requestSequence) return
+        if (!isRefresh) break
+        if (this.isCriticalPaymentActive || !this.isOnline || !this.isTabVisible) {
+          this.updateState({ isUpdating: false })
+          return
+        }
 
-      if (!this.mounted || currentSeq !== this.requestSequence) return
+        for (const item of response.items) {
+          if ((!visibleBoundary || Number(item.id) >= Number(visibleBoundary.id)) && !refreshedIds.has(item.id)) {
+            refreshedIds.add(item.id)
+            refreshedItems.push(item)
+          }
+        }
+        const reachedBoundary = !visibleBoundary || response.items.some(item => Number(item.id) <= Number(visibleBoundary.id))
+        if (reachedBoundary || !response.page.hasMore) {
+          const lastVisible = refreshedItems.at(-1)
+          const trimmed = visibleBoundary && response.items.some(item => Number(item.id) < Number(visibleBoundary.id))
+          response = {
+            items: lastVisible ? refreshedItems : response.items,
+            page: trimmed && lastVisible
+              ? { hasMore: true, nextCursor: { id: lastVisible.id, createdAt: lastVisible.createdAt } }
+              : response.page,
+          }
+          break
+        }
+        const nextCursor = response.page.nextCursor
+        if (!nextCursor || visitedCursors.has(nextCursor.id)) {
+          throw new CashierServiceError('No fue posible actualizar las ventas de la caja.', 'INCOMPATIBLE_RESPONSE')
+        }
+        visitedCursors.add(nextCursor.id)
+        cursor = nextCursor
+      }
 
       let newItems = this.state.items
       let newNotice: string | null = null
