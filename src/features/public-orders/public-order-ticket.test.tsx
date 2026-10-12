@@ -45,7 +45,8 @@ it('confirms a successful submission and saves its ticket before releasing the d
 })
 
 it('does not repost an accepted order when only the ticket returns not-found, is invalid or loses its response', async () => {
-  for (const failure of [response({ error: 'WEB_ORDER_NOT_FOUND' }, 404), response({ ...ticket, total_cents: 999 }), null]) {
+  for (const failure of [response({ error: 'WEB_ORDER_NOT_FOUND' }, 404), response({ error: 'WEB_ORDER_CUSTOMER_INVALID' }, 400),
+    response({ error: 'WEB_ORDER_PRICE_CHANGED' }, 409), response({ ...ticket, total_cents: 999 }), null]) {
     const saved = storage(), attempt = createBackendOrderAttempt(input)
     saveBackendOrderAttempt(saved, attempt)
     const request = vi.fn<typeof fetch>().mockResolvedValueOnce(response(order))
@@ -64,11 +65,11 @@ it('does not repost an accepted order when only the ticket returns not-found, is
   }
 })
 
-it('retains a rejected original attempt and blocks any replacement key until its result is resolved', async () => {
+it('retains an uncertain original attempt and blocks any replacement key until its result is resolved', async () => {
   const saved = storage(), attempt = createBackendOrderAttempt(input)
-  const request = vi.fn<typeof fetch>().mockResolvedValueOnce(response({ error: 'WEB_ORDER_CUSTOMER_INVALID' }, 400))
+  const request = vi.fn<typeof fetch>().mockResolvedValueOnce(response({ error: 'WEB_ORDER_RESULT_UNCERTAIN' }, 503))
   const coordinator = createBackendOrderCoordinator(saved, createBackendOrderService(request, true), lock)
-  await expect(coordinator.send(attempt)).rejects.toMatchObject({ code: 'WEB_ORDER_CUSTOMER_INVALID' })
+  await expect(coordinator.send(attempt)).rejects.toMatchObject({ code: 'WEB_ORDER_RESULT_UNCERTAIN' })
   expect(readBackendOrderAttempt(saved)).toEqual(attempt)
   await expect(coordinator.send(createBackendOrderAttempt(input))).rejects.toThrow('Existe un pedido pendiente')
   expect(request).toHaveBeenCalledTimes(1)

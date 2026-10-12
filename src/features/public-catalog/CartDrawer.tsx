@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import imageFallback from '../../assets/isotipo-flor.svg'
 import { usePublicCart } from '../public-orders/PublicCartProvider'
-import { BackendOrderError, createBackendOrderService, createBackendOrderAttempt, readBackendOrderAttempt,
+import { ATTEMPT_STORAGE_KEY, TICKET_STORAGE_KEY, BackendOrderError, createBackendOrderService, createBackendOrderAttempt, isDefinitiveOrderRejection, readBackendOrderAttempt,
   readBackendOrderTicket, type BackendOrderTicket, type BackendOrderAttempt, type BackendOrderSubmission } from '../public-orders/backend-order-service'
 import { browserOrderLock, createBackendOrderCoordinator } from '../public-orders/backend-order-coordinator'
 import { PublicOrderTicket } from '../public-orders/PublicOrderTicket'
@@ -20,6 +20,7 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   const [notes, setNotes] = useState('')
   const [prepared, setPrepared] = useState<BackendOrderAttempt | null>(null)
   const [pending, setPending] = useState<BackendOrderAttempt | null>(null)
+  const [pendingTicket, setPendingTicket] = useState(false)
   const [storageBlocked, setStorageBlocked] = useState(false)
   const operationRef = useRef(false)
   const [submitting, setSubmitting] = useState(false)
@@ -31,13 +32,33 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
 
   useEffect(() => { formRevision.current += 1; setPrepared(null) }, [cartSignature, branchId, customerName, customerPhone, customerEmail, notes])
   useEffect(() => {
-    try { setPending(readBackendOrderAttempt(window.localStorage)) }
+    try {
+      const attempt = readBackendOrderAttempt(window.localStorage)
+      setPending(attempt)
+      if (attempt) {
+        const original = JSON.parse(attempt.body) as BackendOrderSubmission
+        setBranchId(String(original.branch_id)); setCustomerName(original.customer_name)
+        setCustomerPhone(original.customer_phone ?? ''); setCustomerEmail(original.customer_email ?? ''); setNotes(original.notes ?? '')
+      }
+    }
     catch { setStorageBlocked(true); setError('No se pudo leer el intento guardado. No envíes otro pedido hasta revisar el almacenamiento.') }
   }, [])
 
   useEffect(() => {
     try { setLastTicket(readBackendOrderTicket(window.localStorage)) }
     catch { setError('No se pudo leer el comprobante anterior. Su copia guardada se conserva.') }
+  }, [])
+  useEffect(() => {
+    const syncOrder = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage || ![null, ATTEMPT_STORAGE_KEY, TICKET_STORAGE_KEY].includes(event.key)) return
+      formRevision.current += 1; setPrepared(null); setPendingTicket(false)
+      try {
+        setPending(readBackendOrderAttempt(window.localStorage))
+        setLastTicket(readBackendOrderTicket(window.localStorage))
+      } catch { setStorageBlocked(true); setError('No se pudo comprobar el pedido de otra pestaña. Conserva los datos del navegador y solicita ayuda.') }
+    }
+    window.addEventListener('storage', syncOrder)
+    return () => window.removeEventListener('storage', syncOrder)
   }, [])
 
   const optionsLoadedRef = useRef(false)
@@ -98,7 +119,7 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         return
       }
       setPending(prepared)
-      const receipt = await createBackendOrderCoordinator(window.localStorage, service, browserOrderLock).send(prepared)
+      const receipt = await createBackendOrderCoordinator(window.localStorage, service, browserOrderLock).send(prepared, lastTicket)
       if (!receipt.ticket) throw new Error('Falta el comprobante confirmado.')
       setConfirmation(receipt.ticket)
       setLastTicket(receipt.ticket)
@@ -108,6 +129,11 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
     } catch (reason) {
       try { setPending(readBackendOrderAttempt(window.localStorage)) }
       catch { setStorageBlocked(true) }
+      if (isDefinitiveOrderRejection(reason) || (reason instanceof BackendOrderError && reason.code === 'ORDER_CONFIRMED_IN_ANOTHER_TAB')) setPrepared(null)
+      setPendingTicket(reason instanceof BackendOrderError && reason.code === 'TICKET_UNAVAILABLE')
+      if (reason instanceof BackendOrderError && reason.code === 'ORDER_CONFIRMED_IN_ANOTHER_TAB') {
+        try { setLastTicket(readBackendOrderTicket(window.localStorage)) } catch { setStorageBlocked(true) }
+      }
       setError(reason instanceof BackendOrderError ? reason.message : 'No se pudo confirmar el pedido o guardar su intento. Conserva el contenido y recupera el resultado.')
     } finally {
       setSubmitting(false)
@@ -124,7 +150,12 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
       setConfirmation(receipt.ticket)
       setLastTicket(receipt.ticket)
       clearCart(); setPending(null); setPrepared(null)
-    } catch (reason) { setError(reason instanceof BackendOrderError ? reason.message : 'No se confirmó el resultado. El intento se conserva.') }
+    } catch (reason) {
+      try { setPending(readBackendOrderAttempt(window.localStorage)) } catch { setStorageBlocked(true) }
+      if (isDefinitiveOrderRejection(reason)) setPrepared(null)
+      setPendingTicket(reason instanceof BackendOrderError && reason.code === 'TICKET_UNAVAILABLE')
+      setError(reason instanceof BackendOrderError ? reason.message : 'No se confirmó el resultado. El intento se conserva.')
+    }
     finally { setSubmitting(false); operationRef.current = false }
   }
 
@@ -140,9 +171,9 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         </div>
       ) : pending ? (
         <div className="cart-footer">
-          <p>Hay un pedido pendiente de confirmar. Se conservarán su contacto, productos, total y clave originales.</p>
-          <p>Primero se consultará el resultado; solo si no existe se reenviará el mismo pedido.</p>
-          <button type="button" className="checkout-btn" disabled={submitting} onClick={() => void recoverPending()}>{submitting ? 'Consultando…' : 'Recuperar o reenviar pedido original'}</button>
+          <p>{pendingTicket ? 'El pedido está confirmado; falta recuperar su comprobante.' : 'Todavía no se confirmó el resultado del pedido. Su información original se conserva.'}</p>
+          <p>{pendingTicket ? 'Consulta el mismo pedido para obtener el comprobante.' : 'Primero consultaremos el resultado. Si no se encuentra, reintentaremos el mismo pedido sin duplicarlo.'}</p>
+          <button type="button" className="checkout-btn" disabled={submitting} onClick={() => void recoverPending()}>{submitting ? 'Consultando…' : pendingTicket ? 'Recuperar comprobante' : 'Recuperar o reenviar pedido original'}</button>
           <p role="alert">{error}</p>
           {error && <p>Si el problema continúa, contacta al vivero e indica la hora del intento y este mensaje. No borres los datos del navegador ni envíes el pedido desde otro dispositivo: podría duplicarse.</p>}
         </div>

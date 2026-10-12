@@ -28,16 +28,16 @@ export interface BackendOrderTicket {
     list_price_cents: number; unit_price_cents: number; line_total_cents: number }>
 }
 export interface BackendOrderAttempt { readonly key: string; readonly body: string }
-const ATTEMPT_STORAGE_KEY = 'viveroweb_backend_order_attempt_v1'
+export const ATTEMPT_STORAGE_KEY = 'viveroweb_backend_order_attempt_v1'
 
 const messages: Record<string, string> = {
   CONNECTION_FAILED: 'No se pudo conectar con la tienda. Revisa tu conexión y vuelve a recuperar el mismo pedido.',
   INCOMPATIBLE_RESPONSE: 'La respuesta de la tienda no pudo verificarse. El intento se conserva; solicita ayuda al vivero antes de enviar otro pedido.',
   TICKET_UNAVAILABLE: 'El servidor confirmó el pedido, pero no se pudo recuperar su comprobante. Recupera el mismo pedido; no lo envíes como uno nuevo.',
-  WEB_ORDER_CUSTOMER_INVALID: 'El servidor rechazó los datos de contacto. El intento se conserva; solicita al vivero que revise el resultado antes de enviar otro pedido.',
-  WEB_ORDER_INVALID: 'El servidor rechazó el contenido del intento. Se conserva para revisión; no envíes otro pedido todavía.',
-  WEB_ORDER_ITEMS_INVALID: 'El servidor rechazó los productos o cantidades del intento. Se conserva para revisión.',
-  WEB_ORDER_TOTAL_INVALID: 'El servidor no pudo validar el total. Se conserva el intento para revisión.',
+  WEB_ORDER_CUSTOMER_INVALID: 'El pedido fue rechazado. Corrige el teléfono o correo y vuelve a cotizar.',
+  WEB_ORDER_INVALID: 'El pedido fue rechazado. Revisa los datos y vuelve a cotizar.',
+  WEB_ORDER_ITEMS_INVALID: 'El pedido fue rechazado. Revisa los productos y cantidades y vuelve a cotizar.',
+  WEB_ORDER_TOTAL_INVALID: 'El pedido fue rechazado porque su total no es válido. Vuelve a cotizar.',
   WEB_ORDER_BUSY: 'La tienda está procesando pedidos. Espera un momento y recupera el mismo intento.',
   WEB_ORDER_RESULT_UNCERTAIN: 'La tienda todavía no pudo confirmar el resultado. Conserva el intento y recupera el mismo pedido.',
   FOLIO_FORMAT_UNAVAILABLE: 'No se pudo recuperar el folio del pedido. Conserva el intento y vuelve a recuperarlo.',
@@ -49,12 +49,24 @@ const messages: Record<string, string> = {
   WEB_ORDER_RATE_LIMITED: 'Espera unos minutos antes de enviar otro pedido.',
   WEB_ORDER_IDEMPOTENCY_CONFLICT: 'Este intento ya pertenece a otro contenido. Recupera su resultado.',
   WEB_ORDER_NOT_FOUND: 'No se encontró un pedido confirmado para este intento.',
+  ORDER_CONFIRMED_IN_ANOTHER_TAB: 'Otro pedido se confirmó en este navegador. Consulta su comprobante antes de preparar otro.',
 }
 export class BackendOrderError extends Error {
   constructor(public readonly code: string, public readonly resultUncertain = false, public readonly httpStatus?: number) {
     super(messages[code] ?? (resultUncertain ? 'No se pudo confirmar el resultado. Conserva el intento y recupera el pedido.'
       : 'No fue posible completar la operación de pedido.'))
   }
+}
+// Only the original submission can supply this evidence. Recovery/ticket errors
+// and generic HTTP failures never prove that an earlier submission was rejected.
+export function isDefinitiveOrderRejection(error: unknown): error is BackendOrderError {
+  if (!(error instanceof BackendOrderError) || error.resultUncertain) return false
+  const statuses: Record<string, number> = {
+    WEB_ORDER_CUSTOMER_INVALID: 400, WEB_ORDER_INVALID: 400, WEB_ORDER_ITEMS_INVALID: 400,
+    WEB_ORDER_TOTAL_INVALID: 409, WEB_ORDER_PRICE_CHANGED: 409,
+    WEB_ORDER_BRANCH_UNAVAILABLE: 409, WEB_ORDER_ITEMS_UNAVAILABLE: 409,
+  }
+  return Object.hasOwn(statuses, error.code) && error.httpStatus === statuses[error.code]
 }
 function fail(): never { throw new BackendOrderError('INCOMPATIBLE_RESPONSE') }
 function record(value: unknown, keys: string[]): Record<string, unknown> {
@@ -168,7 +180,7 @@ export function parseBackendOrderTicket(value: unknown): BackendOrderTicket {
     || BigInt(integer(ticket.discount_cents)) !== subtotal - total) fail()
   return ticket as unknown as BackendOrderTicket
 }
-const TICKET_STORAGE_KEY = 'viveroweb_confirmed_order_ticket_v1'
+export const TICKET_STORAGE_KEY = 'viveroweb_confirmed_order_ticket_v1'
 export function saveBackendOrderTicket(storage: Pick<Storage, 'setItem'>, ticket: BackendOrderTicket): void {
   storage.setItem(TICKET_STORAGE_KEY, JSON.stringify(parseBackendOrderTicket(ticket)))
 }
