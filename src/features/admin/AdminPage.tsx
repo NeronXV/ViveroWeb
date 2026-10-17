@@ -92,8 +92,15 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
     refresh: refreshReports,
   } = useAdminReports(context.branch?.id ?? null)
 
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const isCatalogingWizardOpen = Boolean(searchParams.get('cataloging'))
+  const isReceptionWizardOpen = searchParams.get('reception') === '1'
+  const isFocusMode = isCatalogingWizardOpen || isReceptionWizardOpen
+  const currentSectionLabel = ADMIN_MODULE_RULES.find((item) => item.id === tab)?.label.replace(/^[^\p{L}\p{N}]+/u, '') ?? tab
+
   const selectTab = (nextTab: AdminModuleId) => {
     if (!authorizedTabs.includes(nextTab)) return
+    setMobileNavOpen(false)
     const next = new URLSearchParams(searchParams)
     next.set('tab', nextTab)
     next.delete('plant'); next.delete('view')
@@ -108,7 +115,7 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
   const totalDiscountsReal = dailySales.reduce((sum, item) => sum + item.discountCents, 0) / 100
 
   return (
-    <main className="internal-page admin-workspace admin-task-shell">
+    <main className={`internal-page admin-workspace admin-task-shell ${isFocusMode ? 'wizard-focus-mode' : ''}`}>
       <div className="dashboard-panel open embedded">
         <div className="dashboard-header">
           <div className="dashboard-title-area">
@@ -138,12 +145,29 @@ function AuthorizedAdminPage({ context, authorizedTabs, onRefreshAccess }: { con
 
         <div className="dashboard-body">
           <aside className="dashboard-sidebar">
+            <div className="admin-mobile-nav-bar">
+              <button
+                type="button"
+                className="admin-mobile-nav-toggle"
+                aria-expanded={mobileNavOpen}
+                aria-controls="admin-task-navigation-drawer"
+                onClick={() => setMobileNavOpen(open => !open)}
+              >
+                <span className="admin-mobile-nav-icon" aria-hidden="true">{mobileNavOpen ? '✕' : '☰'}</span>
+                <span className="admin-mobile-nav-label">Menú:</span>
+                <strong className="admin-mobile-section-badge">{currentSectionLabel}</strong>
+                <span className="admin-mobile-chevron" aria-hidden="true">{mobileNavOpen ? '▴' : '▾'}</span>
+              </button>
+            </div>
+
             <Link to="/panel" className="admin-sidebar-brand">
               <img src={logo} alt="" />
               <span>Vivero Dulcinea<small>Administración</small></span>
             </Link>
             <p className="admin-nav-caption">Tu vivero, en orden</p>
-            <AdminNavigation authorized={authorizedTabs} tab={tab} canCashier={canCashier} onSelect={selectTab} />
+            <div id="admin-task-navigation-drawer" className={`admin-nav-drawer ${mobileNavOpen ? 'open' : ''}`}>
+              <AdminNavigation authorized={authorizedTabs} tab={tab} canCashier={canCashier} onSelect={selectTab} />
+            </div>
             <div className="admin-sidebar-context">
               <span>Sucursal</span>
               <strong>{context.branch?.name ?? 'Sin sucursal asignada'}</strong>

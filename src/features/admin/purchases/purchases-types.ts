@@ -40,6 +40,7 @@ export interface SupplierPurchasesResponse {
 }
 
 export interface SupplierPurchaseDetailItem {
+  newProduct?: { name:string; presentation:string|null; categoryId:string|null } | null
   id: string
   lineNumber: number
   rawDescription: string
@@ -55,6 +56,7 @@ export interface SupplierPurchaseDetailItem {
 }
 
 export interface SupplierPurchaseDetail {
+  revision?: number
   id: string
   branchId?: string
   supplier: Supplier
@@ -104,9 +106,11 @@ export interface ResolvePurchaseItemInput {
   productId: string | null
   normalizedName: string | null
   presentation: string | null
+  retailPriceCents?: number | null
 }
 
 export interface ConfirmPurchaseInput {
+  revision?: number
   purchaseId: string
   confirmationKey: string
 }

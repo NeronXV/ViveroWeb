@@ -7,6 +7,7 @@ export type ProtectedDestination = (typeof PROTECTED_DESTINATIONS)[number]
 
 export const ADMIN_ENTRY_CAPABILITIES = [
   'MANAGE_PRODUCTS',
+  'PUBLISH_CATALOGING',
   'MANAGE_PRICES',
   'MANAGE_BRANCHES',
   'MANAGE_USERS',
@@ -33,7 +34,7 @@ export const ADMIN_MODULE_RULES: readonly AdminModuleRule[] = [
   { id: 'boletin', label: 'Boletín', anyCapability: ['MANAGE_SETTINGS'] },
   { id: 'editorial', label: '📝 Editorial', anyCapability: [], pendingBackendPermission: true },
   { id: 'sucursales', label: '🏬 Sucursales', anyCapability: ['MANAGE_BRANCHES', 'MANAGE_USERS'] },
-  { id: 'inventario', label: '🌿 Plantas', anyCapability: ['MANAGE_PRODUCTS'] },
+  { id: 'inventario', label: '🌿 Plantas', anyCapability: ['MANAGE_PRODUCTS', 'PUBLISH_CATALOGING'] },
   { id: 'stock', label: '📈 Existencias y Stock', anyCapability: ['MANAGE_INVENTORY'] },
   { id: 'compras', label: '📦 Compras y proveedores', anyCapability: ['MANAGE_INVENTORY'] },
   { id: 'promociones', label: '🏷 Promociones', anyCapability: ['MANAGE_DISCOUNTS'] },
@@ -42,6 +43,10 @@ export const ADMIN_MODULE_RULES: readonly AdminModuleRule[] = [
   { id: 'personal', label: '👥 Personal', anyCapability: ['MANAGE_USERS', 'ASSIGN_ROLES'] },
   { id: 'clientes', label: '👥 Clientes', anyCapability: ['MANAGE_USERS'] },
 ] as const
+
+export function canPublishCataloging(context: UserAccessContext | null): boolean {
+  return context?.accessState === 'ACTIVE' && hasCapability(context, 'PUBLISH_CATALOGING')
+}
 
 export function hasAnyCapability(context: UserAccessContext | null, capabilities: readonly string[]): boolean {
   return capabilities.some((capability) => hasCapability(context, capability))

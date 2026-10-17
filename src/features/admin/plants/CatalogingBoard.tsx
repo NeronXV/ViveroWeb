@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import type { AdminCategory, AdminProduct } from '../admin-catalog-types'
 import { BackendHttpError } from '../../../lib/backend-http'
 import { useAuth } from '../../auth/useAuth'
+import { hasCapability } from '../../access/access-helpers'
 import { catalogingBinary, catalogingError, emptyCatalogingFields, loadCataloging, loadCatalogingDraft, parseCataloging, pendingCataloging, recoverCataloging, saveCataloging, type CatalogingDraft } from './cataloging-service'
 import { selectedPhotoError, photoSaveError } from './photo-selection'
 
 const labels={DRAFT:'Por completar',REVIEW:'En revisión',LINKED:'Vinculado al existente',PREPARED:'Ficha preparada'}
 const fieldLabels: Record<string,string>={approved_name:'Nombre comercial',presentation:'Presentación',internal_code:'SKU',scientific_name:'Nombre científico',description:'Notas',barcode:'Código de barras',category_id:'Categoría'}
 export function CatalogingBoard({ categories, products, onPrepared, guard }: { categories: AdminCategory[]; products: AdminProduct[]; onPrepared:()=>void; guard:(dirty:boolean,busy?:boolean)=>void }) {
-  const {accessContext}=useAuth(), owner=accessContext?.role?.name==='OWNER'
+  const {accessContext}=useAuth(), canPublish=hasCapability(accessContext, 'PUBLISH_CATALOGING') || accessContext?.role?.name==='OWNER'
   const [rows,setRows]=useState<CatalogingDraft[]>([]), [selected,setSelected]=useState<CatalogingDraft|null>(null)
   const [creating,setCreating]=useState(false), [original,setOriginal]=useState(''), [fields,setFields]=useState(emptyCatalogingFields)
   const [search,setSearch]=useState(''), [status,setStatus]=useState('ALL'), [category,setCategory]=useState('')
@@ -84,7 +85,7 @@ export function CatalogingBoard({ categories, products, onPrepared, guard }: { c
           {file && <div><p role="status">{photoSaving ? 'Guardando fotografía…' : 'Vista previa · fotografía seleccionada, todavía no guardada en el servidor.'}</p><button disabled={busy || pending || conflict} onClick={()=>void upload()}>Guardar fotografía</button><button disabled={busy} onClick={()=>{setFile(null);setPhotoError('')}}>Descartar foto pendiente</button></div>}
           <button disabled={busy || pending || dirty || conflict} onClick={()=>void save('SUBMIT')}>Enviar a revisión</button></>}
         <button disabled={busy || pending} onClick={()=>void consult()}>Consultar ficha actual sin borrar mi formulario</button>
-        {owner && selected.status==='REVIEW' && <div className="plant-owner-tools"><p>Revisión del propietario: confirmar identidad y presentación antes de crear una ficha.</p><button disabled={busy || pending || conflict} onClick={()=>void save('RETURN')}>Devolver para completar</button><button disabled={busy || pending || conflict} onClick={()=>void save('PREPARE')}>Confirmar y preparar ficha inactiva</button>
+        {canPublish && selected.status==='REVIEW' && <div className="plant-owner-tools"><p>Revisión y autorización: confirmar identidad y presentación antes de crear una ficha.</p><button disabled={busy || pending || conflict} onClick={()=>void save('RETURN')}>Devolver para completar</button><button disabled={busy || pending || conflict} onClick={()=>void save('PREPARE')}>Confirmar y preparar ficha inactiva</button>
           <label><span>O vincular al producto existente</span><select value={link} onChange={e=>setLink(e.target.value)}><option value="">Seleccionar después de revisar</option>{products.map(p=><option key={p.id} value={p.id}>{p.commonName} · {p.internalCode}</option>)}</select></label><button disabled={busy || pending || !link || conflict} onClick={()=>void save('LINK')}>Confirmar vínculo sin modificar producto</button></div>}
         {selected.product_id && <p>Producto #{selected.product_id}. Continúa en su ficha del catálogo para precio, foto y conteo físico aprobado mediante el flujo existente.</p>}
       </>}

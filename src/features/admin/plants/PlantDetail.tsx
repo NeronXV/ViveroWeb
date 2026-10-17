@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AdminCategory, AdminProduct } from '../admin-catalog-types'
 import type { AdminInventoryBalance, InventoryMovement } from '../admin-types'
-import { catalogingBinary, catalogingError } from './cataloging-service'
+import { catalogingBinary, catalogingError, confirmProduct, pendingProductConfirmation, pendingProductAttemptKind, recoverProductConfirmation } from './cataloging-service'
 import { fetchAdminInventoryBalances, fetchInventoryHistory } from '../admin-service'
 import type { InventoryPermissions } from '../inventory-preparation-service'
 import { InventoryCountReview } from '../InventoryCountReview'
@@ -11,13 +11,102 @@ import { activatePlant, fetchEditablePlant, fetchPlantPreparation, patchPlant, p
 import { draftFromPlant, plantPatch, preserveEditedDraft, type PlantDraft } from './plants-model'
 import { PlantPhoto } from './PlantPhoto'
 import { selectedPhotoError, photoSaveError } from './photo-selection'
+import { pesosToCents } from '../admin-catalog-parser'
 
-export function PlantDetail({ product, preparation, categories, balance, branchName, canPrice, permissions, guard, onSaved, onStockUpdated, onNext, onBack, onCount, onInventory, onReception }: {
+type PlantDetailProps = {
   product: AdminProduct; preparation: PlantPreparation; categories: AdminCategory[]; balance?: AdminInventoryBalance; branchName: string
   canPrice: boolean; permissions: InventoryPermissions; guard: (dirty: boolean, busy?: boolean) => void
   onSaved: (product: AdminProduct, preparation: PlantPreparation) => void; onNext: () => void; onBack: () => void; onCount: () => void; onInventory?: () => void; onReception?: () => void
   onStockUpdated: (balance: AdminInventoryBalance) => void
-}) {
+}
+export function PlantDetail(props: PlantDetailProps) {
+  const [completionFlow] = useState(() => !props.preparation.ready && props.preparation.commercialState !== 'DISABLED')
+  if (completionFlow) return <ProductCompletionWizard {...props} />
+  return <PlantDetailLegacy {...props} />
+}
+function ProductCompletionWizard({ product, preparation, categories, canPrice, permissions, guard, onSaved, onBack, onCount, onInventory, onReception }: PlantDetailProps) {
+  const split=product.commonName.lastIndexOf(' · ')
+  const [step,setStep]=useState(1),[name,setName]=useState(split<0?product.commonName:product.commonName.slice(0,split))
+  const [presentation,setPresentation]=useState(split<0?'':product.commonName.slice(split+3))
+  const [category,setCategory]=useState(product.categoryId),[description,setDescription]=useState(product.description)
+  const [scientific,setScientific]=useState(product.scientificName??'')
+  const [light,setLight]=useState(product.lightType),[watering,setWatering]=useState(product.wateringAdvice)
+  const [price,setPrice]=useState(product.priceCents>0?(product.priceCents/100).toFixed(2):'')
+  const [file,setFile]=useState<File|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
+  const [base,setBase]=useState(product),[currentPrep,setCurrentPrep]=useState(preparation),[done,setDone]=useState(false)
+  const [showQr,setShowQr]=useState(false)
+  const [preview,setPreview]=useState<string|null>(null)
+  useEffect(()=>{if(!file){setPreview(null);return}const url=URL.createObjectURL(file);setPreview(url);return()=>URL.revokeObjectURL(url)},[file])
+  useEffect(()=>{const cut=base.commonName.lastIndexOf(' · ')
+    guard(Boolean(file)||name!==(cut<0?base.commonName:base.commonName.slice(0,cut))||presentation!==(cut<0?'':base.commonName.slice(cut+3))
+      ||category!==base.categoryId||description!==base.description||scientific!==(base.scientificName??'')
+      ||light!==base.lightType||watering!==base.wateringAdvice
+      ||price!==(base.priceCents>0?(base.priceCents/100).toFixed(2):''),busy)
+  },[file,name,presentation,category,description,scientific,light,watering,price,base,busy,guard])
+  const upload=async()=>{
+    if(!file)return true
+    if(!base.editRevision)throw new Error('Consulta la versión guardada antes de continuar.')
+    await catalogingBinary(`products/${product.id}/catalog-photo`,file,base.editRevision,true)
+    const saved=await fetchEditablePlant(product.id);setBase(saved);setFile(null)
+    return true
+  }
+  const confirm=async()=>{
+    if(busy||pendingProductConfirmation())return
+    setBusy(true);setError('')
+    try{
+      await upload()
+      const cents=price.trim()?pesosToCents(price):0
+      if(!Number.isSafeInteger(cents)||cents<0)throw new Error('Revisa el precio.')
+      await confirmProduct(product.id,{revision:base.editRevision!,fields:{common_name:`${name.trim()} · ${presentation.trim()}`,category_id:Number(category),
+        description:description.trim(),scientific_name:scientific.trim()||null,light_type:light.trim(),watering_advice:watering.trim()},price_cents:cents})
+      const [saved,prep]=await Promise.all([fetchEditablePlant(product.id),fetchPlantPreparation(product.id,preparation.branchId)])
+      setBase(saved);setCurrentPrep(prep);setDone(true);onSaved(saved,prep);guard(false,false)
+    }catch(e){setError(catalogingError(e))}finally{setBusy(false)}
+  }
+  const recover=async()=>{
+    setBusy(true);setError('')
+    try{const kind=pendingProductAttemptKind();await recoverProductConfirmation();
+      if(kind==='photo'){const saved=await fetchEditablePlant(product.id);setBase(saved);setFile(null);setNotice('Fotografía comprobada. Continúa con Confirmar y publicar.')}
+      else{const [saved,prep]=await Promise.all([fetchEditablePlant(product.id),fetchPlantPreparation(product.id,preparation.branchId)]);
+        setBase(saved);setCurrentPrep(prep);setDone(true);onSaved(saved,prep);guard(false,false)}}catch(e){setError(catalogingError(e))}finally{setBusy(false)}
+  }
+  return <div className="cataloging-wizard plant-product-wizard" aria-label="Asistente para completar planta">
+    <button type="button" className="plants-back" disabled={busy} onClick={onBack}>← Volver a Plantas</button>
+    <h3>Paso {step} de 3 · {['Identificar','Fotografía','Precio y confirmar'][step-1]}</h3>
+    {error&&<p className="plants-warning" role="alert">{error}</p>}
+    {notice&&<p className="plants-notice" role="status">{notice}</p>}
+    {pendingProductConfirmation()&&<div className="plants-warning"><p>Hay una publicación sin comprobar.</p><button type="button" disabled={busy} onClick={()=>void recover()}>Comprobar publicación</button></div>}
+    {done?<div role="status" className="wizard-feedback-banner"><strong>{currentPrep.ready?'Planta lista para vender':'Ficha publicada'}</strong>
+      {!currentPrep.initialCountConfirmed&&<p>{currentPrep.priceConfirmed?'Solo falta confirmar el conteo inicial de esta sucursal.':'Faltan el precio y el conteo inicial para venderla.'}</p>}
+      {currentPrep.initialCountConfirmed&&!currentPrep.ready&&<p>Revisa el precio o la preparación comercial para venderla.</p>}
+      {!currentPrep.initialCountConfirmed&&permissions.canRecordCount&&<button type="button" className="plants-primary" onClick={onCount}>Confirmar conteo inicial</button>}
+      <button type="button" onClick={onBack}>Volver a Plantas</button></div>:<>
+      {step===1&&<section className="wizard-step-content"><label>Nombre<input value={name} maxLength={160} onChange={e=>setName(e.target.value)} /></label>
+        <label>Presentación<input value={presentation} maxLength={120} onChange={e=>setPresentation(e.target.value)} /></label>
+        <label>Categoría<select value={category} onChange={e=>setCategory(e.target.value)}>{categories.filter(c=>c.isActive).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <button type="button" className="plants-primary" disabled={!name.trim()||!presentation.trim()||!category||busy} onClick={()=>setStep(2)}>Continuar a fotografía</button></section>}
+      {step===2&&<section className="wizard-step-content"><PlantPhoto hero imageId={base.image?.id} name={base.commonName} preview={preview} />
+        <label className="plants-file-button">Tomar foto<input type="file" capture="environment" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f){const problem=selectedPhotoError(f);if(problem)setError(problem);else setFile(f)}}} /></label>
+        <label className="plants-file-button secondary">Elegir fotografía<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f){const problem=selectedPhotoError(f);if(problem)setError(problem);else setFile(f)}}} /></label>
+        <div className="wizard-actions"><button type="button" onClick={()=>setStep(1)}>Atrás</button><button type="button" className="plants-primary" onClick={()=>setStep(3)}>Continuar a precio</button></div></section>}
+      {step===3&&<section className="wizard-step-content"><p>{name} · {presentation}</p><label>Precio de venta (MXN)<input inputMode="decimal" value={price} disabled={!canPrice} onChange={e=>setPrice(e.target.value)} /></label>
+        <p>Confirmar la ficha no cambia la existencia.</p><div className="wizard-actions"><button type="button" onClick={()=>setStep(2)}>Atrás</button>
+          <button type="button" className="plants-primary" disabled={busy||!canPrice||pendingProductConfirmation()} onClick={()=>void confirm()}>{busy?'Guardando…':'Confirmar y publicar'}</button></div></section>}
+      <details className="plant-more-details"><summary>Más opciones</summary>
+        <label>Nombre científico<input value={scientific} onChange={e=>setScientific(e.target.value)} /></label>
+        <label>Cuidados o descripción<textarea value={description} onChange={e=>setDescription(e.target.value)} /></label>
+        <label>Luz<input value={light} onChange={e=>setLight(e.target.value)} /></label>
+        <label>Riego<textarea value={watering} onChange={e=>setWatering(e.target.value)} /></label>
+        <button type="button" disabled={!isValidLabelInternalCode(base.internalCode)} onClick={()=>setShowQr(true)}>Ver QR</button>
+        {currentPrep.initialCountConfirmed&&permissions.canRecordCount&&<button type="button" onClick={onCount}>Conteo manual adicional</button>}
+        {onInventory&&<button type="button" onClick={onInventory}>Ver inventario e historial</button>}
+        {onReception&&permissions.canReceive&&<button type="button" onClick={onReception}>Recepción</button>}
+      </details>
+    </>}
+    {showQr&&<ProductQrLabelDialog products={[base]} onClose={()=>setShowQr(false)} />}
+  </div>
+}
+function PlantDetailLegacy({ product, preparation, categories, balance, branchName, canPrice, permissions, guard, onSaved, onStockUpdated, onNext, onBack, onCount, onInventory, onReception }: PlantDetailProps) {
   const [base, setBase] = useState(product), [draft, setDraft] = useState(() => draftFromPlant(product))
   const [file, setFile] = useState<File | null>(null), [preview, setPreview] = useState<string | null>(null)
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState(''), [error, setError] = useState<string | null>(null)

@@ -6,17 +6,213 @@ export interface ExtractorResult {
   warning?: string | null
 }
 
+const COMMON_CONTAINERS = new Set([
+  'M4', 'M5', 'M6', 'M7', 'M8', 'M10', 'M12', 'M14', 'M16', 'M18', 'M20',
+  'BOLSA', 'B3L', 'B5L', 'B10L', 'CHAROLA', 'COLGANTE', 'CANASTA', 'C10', 'C12',
+  'CH72', 'CH128', 'CH200', 'TUBO', 'POTE', 'GAL', 'GEN',
+])
+
+export function parseLineTokens(cells: string[]): {
+  rawDescription: string
+  containerCode: string
+  suggestedCommonName: string | null
+  suggestedPresentation: string | null
+  quantity: number
+  unitCostCents: number
+} | null {
+  const cleanCells = cells.map(c => c.trim()).filter(Boolean)
+  if (cleanCells.length === 0) return null
+
+  let rawDescription = ''
+  let containerCode = 'GEN'
+  let quantity = 0
+  let unitCostCents = 0
+
+  if (cleanCells.length >= 3) {
+    // Attempt 1: First is quantity, then description, then price
+    const maybeFirstQty = Number(cleanCells[0].replace(/[^0-9]/g, ''))
+    if (!Number.isNaN(maybeFirstQty) && maybeFirstQty > 0 && /^\d+$/.test(cleanCells[0])) {
+      quantity = maybeFirstQty
+      rawDescription = cleanCells[1]
+      // Check if cell 2 is container
+      if (cleanCells.length >= 4 && COMMON_CONTAINERS.has(cleanCells[2].toUpperCase())) {
+        containerCode = cleanCells[2].toUpperCase()
+        unitCostCents = pesosToCents(cleanCells[3])
+      } else {
+        unitCostCents = pesosToCents(cleanCells[cleanCells.length - 1])
+      }
+    } else {
+      // Attempt 2: First is description, then container/quantity, then price
+      rawDescription = cleanCells[0]
+      const secondIsContainer = COMMON_CONTAINERS.has(cleanCells[1].toUpperCase())
+      if (secondIsContainer) {
+        containerCode = cleanCells[1].toUpperCase()
+        if (cleanCells[2]) {
+          const qty = /^\d+$/.test(cleanCells[2]) ? Number(cleanCells[2]) : NaN
+          if (qty > 0) quantity = qty
+        }
+        if (cleanCells[3]) {
+          unitCostCents = pesosToCents(cleanCells[3])
+        }
+      } else {
+        const maybeQty = /^\d+$/.test(cleanCells[1]) ? Number(cleanCells[1]) : NaN
+        if (maybeQty > 0) quantity = maybeQty
+        if (cleanCells[2]) unitCostCents = pesosToCents(cleanCells[2])
+      }
+    }
+  } else if (cleanCells.length === 2) {
+    const firstIsQty = /^\d+$/.test(cleanCells[0])
+    if (firstIsQty) {
+      quantity = Number(cleanCells[0])
+      rawDescription = cleanCells[1]
+    } else {
+      rawDescription = cleanCells[0]
+      const secondIsQty = /^\d+$/.test(cleanCells[1])
+      if (secondIsQty) quantity = Number(cleanCells[1])
+      else unitCostCents = pesosToCents(cleanCells[1])
+    }
+  }
+
+  if (!rawDescription.trim()) return null
+
+  // Extract container from description if still GEN
+  if (containerCode === 'GEN') {
+    const words = rawDescription.split(/\s+/)
+    for (const w of words) {
+      const up = w.toUpperCase()
+      if (COMMON_CONTAINERS.has(up)) {
+        containerCode = up
+        break
+      }
+    }
+  }
+
+  return {
+    rawDescription: rawDescription.trim(),
+    containerCode,
+    suggestedCommonName: rawDescription.trim(),
+    suggestedPresentation: containerCode !== 'GEN' ? containerCode : null,
+    quantity,
+    unitCostCents: Math.max(0, unitCostCents),
+  }
+}
+
+export function parseSingleLineText(line: string): {
+  rawDescription: string
+  containerCode: string
+  suggestedCommonName: string | null
+  suggestedPresentation: string | null
+  quantity: number
+  unitCostCents: number
+} | null {
+  const trimmed = line.trim()
+  if (!trimmed || trimmed.length < 3) return null
+
+  // Check pipe or tab separated first
+  if (trimmed.includes('|')) {
+    return parseLineTokens(trimmed.split('|'))
+  }
+  if (trimmed.includes('\t')) {
+    return parseLineTokens(trimmed.split('\t'))
+  }
+
+  // Regex pattern 1: "10 Ficus benjamina M6 $45.00" or "10 x Ficus benjamina $45"
+  const m1 = trimmed.match(/^(\d+)\s*(?:x\s*)?([A-Za-z0-9ÁÉÍÓÚáéíóúñÑüÜ\s,.-]+?)(?:\s+([A-Za-z0-9-]{2,8}))?\s+(?:[$]\s*)?([0-9]+(?:\.[0-9]{1,2})?)$/i)
+  if (m1) {
+    const qty = parseInt(m1[1], 10)
+    let desc = m1[2].trim()
+    let container = m1[3] ? m1[3].toUpperCase() : 'GEN'
+    const costPesos = m1[4]
+
+    // If container isn't a known container, maybe it was part of the description
+    if (container !== 'GEN' && !COMMON_CONTAINERS.has(container)) {
+      desc = `${desc} ${container}`.trim()
+      container = 'GEN'
+    }
+
+    if (desc && qty > 0) {
+      return {
+        rawDescription: desc,
+        containerCode: container,
+        suggestedCommonName: desc,
+        suggestedPresentation: container !== 'GEN' ? container : null,
+        quantity: qty,
+        unitCostCents: pesosToCents(costPesos),
+      }
+    }
+  }
+
+  // Regex pattern 2: "Ficus benjamina - 10 - $45.00"
+  const m2 = trimmed.match(/^([A-Za-z0-9ÁÉÍÓÚáéíóúñÑüÜ\s,.-]+?)\s*[-:]\s*(\d+)\s*(?:pzas?|unid(?:ades)?)?\s*[-:]\s*(?:[$]\s*)?([0-9]+(?:\.[0-9]{1,2})?)$/i)
+  if (m2) {
+    const desc = m2[1].trim()
+    const qty = parseInt(m2[2], 10)
+    const costPesos = m2[3]
+
+    if (desc && qty > 0) {
+      return {
+        rawDescription: desc,
+        containerCode: 'GEN',
+        suggestedCommonName: desc,
+        suggestedPresentation: null,
+        quantity: qty,
+        unitCostCents: pesosToCents(costPesos),
+      }
+    }
+  }
+
+  // Fallback: split by multiple spaces
+  const parts = trimmed.split(/\s{2,}/)
+  if (parts.length >= 2) {
+    return parseLineTokens(parts)
+  }
+
+  return null
+}
+
+export function parseFreeTextList(text: string): ExtractorResult {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    throw new Error('El texto proporcionado está vacío.')
+  }
+
+  const lines = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  const items: PurchaseSourceItem[] = []
+
+  for (const line of lines) {
+    const parsed = parseSingleLineText(line)
+    if (parsed) {
+      items.push({
+        lineNumber: items.length + 1,
+        ...parsed,
+      })
+    }
+  }
+
+  if (items.length === 0) {
+    throw new Error('No pudimos detectar renglones en el texto. Revisa el formato (ejemplo: "10 Ficus M6 $45.00").')
+  }
+
+  return { items, warning: 'Revisa el documento completo: las líneas que no se interpretaron deben añadirse antes de confirmar.' }
+}
+
 export function parseManualOrPasteJson(jsonText: string): ExtractorResult {
   const trimmed = jsonText.trim()
   if (!trimmed) {
     throw new Error('El texto proporcionado está vacío.')
   }
 
+  // If not starting with [ or {, try plain text parser
+  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
+    return parseFreeTextList(trimmed)
+  }
+
   let parsed: unknown
   try {
     parsed = JSON.parse(trimmed)
   } catch {
-    throw new Error('El contenido no es un JSON válido.')
+    // Fallback to plain text
+    return parseFreeTextList(trimmed)
   }
 
   const array = Array.isArray(parsed)
@@ -26,7 +222,7 @@ export function parseManualOrPasteJson(jsonText: string): ExtractorResult {
       : null
 
   if (!array) {
-    throw new Error('El JSON debe ser un arreglo de renglones o un objeto con la propiedad "items".')
+    return parseFreeTextList(trimmed)
   }
 
   const items: PurchaseSourceItem[] = []
@@ -184,6 +380,120 @@ export function parseCsv(csvText: string): ExtractorResult {
   return { items }
 }
 
+async function extractDocxXml(arrayBuffer: ArrayBuffer): Promise<string> {
+  const bytes = new Uint8Array(arrayBuffer)
+  const view = new DataView(arrayBuffer)
+
+  let offset = 0
+  while (offset + 30 < bytes.length) {
+    const sig = view.getUint32(offset, true)
+    if (sig !== 0x04034b50) {
+      offset += 1
+      continue
+    }
+
+    const compressionMethod = view.getUint16(offset + 8, true)
+    const compressedSize = view.getUint32(offset + 18, true)
+    const fileNameLen = view.getUint16(offset + 26, true)
+    const extraFieldLen = view.getUint16(offset + 28, true)
+
+    const fileNameBytes = bytes.slice(offset + 30, offset + 30 + fileNameLen)
+    const fileName = new TextDecoder().decode(fileNameBytes)
+    const dataStart = offset + 30 + fileNameLen + extraFieldLen
+
+    if (fileName === 'word/document.xml') {
+      const compressedData = bytes.slice(dataStart, dataStart + compressedSize)
+
+      if (compressionMethod === 0) {
+        return new TextDecoder().decode(compressedData)
+      } else if (compressionMethod === 8) {
+        if (typeof DecompressionStream !== 'undefined') {
+          const ds = new DecompressionStream('deflate-raw')
+          const writer = ds.writable.getWriter()
+          writer.write(compressedData)
+          writer.close()
+          const response = new Response(ds.readable)
+          return await response.text()
+        }
+      }
+      throw new Error('No se pudo descomprimir el contenido de Word.')
+    }
+
+    offset = dataStart + compressedSize
+  }
+
+  throw new Error('No se encontró el contenido word/document.xml dentro del archivo .docx.')
+}
+
+export async function extractFromLocalDocx(file: File): Promise<ExtractorResult> {
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const xmlText = await extractDocxXml(arrayBuffer)
+
+    const parser = new DOMParser()
+    const xmlDoc = parser.parseFromString(xmlText, 'application/xml')
+
+    const items: PurchaseSourceItem[] = []
+
+    // 1. Check for tables (<w:tbl>)
+    const tables = xmlDoc.getElementsByTagName('w:tbl')
+    for (let t = 0; t < tables.length; t += 1) {
+      const table = tables[t]
+      const rows = table.getElementsByTagName('w:tr')
+      if (rows.length === 0) continue
+
+      let startIndex = 0
+      const firstRowCells = Array.from(rows[0].getElementsByTagName('w:tc')).map(tc => tc.textContent?.trim() || '')
+      const hasHeader = firstRowCells.some(c => /^(descripci[oó]n|producto|art[ií]culo|cantidad|costo(?: unitario)?|precio(?: unitario)?|nombre)$/i.test(c))
+      if (hasHeader) startIndex = 1
+
+      for (let r = startIndex; r < rows.length; r += 1) {
+        const cells = Array.from(rows[r].getElementsByTagName('w:tc')).map(tc => tc.textContent?.trim() || '')
+        if (cells.length < 2) continue
+
+        const parsed = parseLineTokens(cells)
+        if (parsed) {
+          items.push({
+            lineNumber: items.length + 1,
+            ...parsed,
+          })
+        }
+      }
+    }
+
+    // 2. Fallback to paragraphs (<w:p>)
+    if (items.length === 0) {
+      const paragraphs = xmlDoc.getElementsByTagName('w:p')
+      for (let p = 0; p < paragraphs.length; p += 1) {
+        const text = paragraphs[p].textContent?.trim()
+        if (text && text.length > 3) {
+          const parsed = parseSingleLineText(text)
+          if (parsed) {
+            items.push({
+              lineNumber: items.length + 1,
+              ...parsed,
+            })
+          }
+        }
+      }
+    }
+
+    if (items.length === 0) {
+      return {
+        items: [],
+        warning: 'No pudimos extraer renglones automáticamente del documento Word. Puedes capturarlos o pegar la lista.',
+      }
+    }
+
+    return { items, warning:'Compara todas las páginas del documento: el lector puede omitir partidas o confundir columnas.' }
+  } catch (err) {
+    return {
+      items: [],
+      warning: err instanceof Error ? err.message : 'Error al procesar el archivo Word (.docx).',
+    }
+  }
+}
+
 export async function extractFromLocalPdf(file: File): Promise<ExtractorResult> {
   try {
     const pdfjsLib = await import('pdfjs-dist')
@@ -204,19 +514,22 @@ export async function extractFromLocalPdf(file: File): Promise<ExtractorResult> 
     })
 
     const pdf = await loadingTask.promise
-    const maxPages = Math.min(pdf.numPages, 10)
+    if (pdf.numPages > 30) throw new Error('Divide el documento en archivos de hasta 30 páginas; no se omitieron páginas automáticamente.')
+    const maxPages = pdf.numPages
     const textLines: string[] = []
 
     for (let pageNum = 1; pageNum <= maxPages; pageNum += 1) {
       const page = await pdf.getPage(pageNum)
       const textContent = await page.getTextContent()
-      const items = textContent.items as Array<{ str?: string }>
-      let currentLine = ''
-
+      const items = textContent.items as Array<{ str?: string; hasEOL?: boolean; transform?: number[] }>
+      let currentLine = '', previousY: number | undefined
       for (const item of items) {
-        if (typeof item.str === 'string') {
-          currentLine += ' ' + item.str
-        }
+        if (typeof item.str !== 'string') continue
+        const y = item.transform?.[5]
+        if (currentLine && y !== undefined && previousY !== undefined && Math.abs(y-previousY)>3) { textLines.push(currentLine); currentLine='' }
+        currentLine += '  ' + item.str
+        previousY=y
+        if(item.hasEOL) { textLines.push(currentLine); currentLine='' }
       }
       textLines.push(currentLine)
     }
@@ -229,8 +542,6 @@ export async function extractFromLocalPdf(file: File): Promise<ExtractorResult> 
       }
     }
 
-    // Attempt simple heuristic extraction of invoice lines:
-    // Looks for patterns like "10 CLOROFITO M10 $60.00" or similar
     const candidateLines = fullText
       .split(/\n/)
       .map((l) => l.trim())
@@ -239,40 +550,27 @@ export async function extractFromLocalPdf(file: File): Promise<ExtractorResult> 
     const items: PurchaseSourceItem[] = []
 
     for (const line of candidateLines) {
-      // Regex looking for: Quantity (integer), Description, Optional Container, Price
-      const match = line.match(/^(\d+)\s+([A-Za-z0-9ÁÉÍÓÚáéíóúñÑ\s.-]+?)(?:\s+([A-Z0-9-]{2,6}))?\s+\$?([0-9]+(?:\.[0-9]{1,2})?)$/i)
-      if (match) {
-        const qty = parseInt(match[1], 10)
-        const desc = match[2].trim()
-        const container = match[3] ? match[3].toUpperCase() : 'GEN'
-        const costPesos = match[4]
-
-        if (desc && qty > 0) {
-          items.push({
-            lineNumber: items.length + 1,
-            rawDescription: desc,
-            containerCode: container,
-            suggestedCommonName: desc,
-            suggestedPresentation: container !== 'GEN' ? container : null,
-            quantity: qty,
-            unitCostCents: pesosToCents(costPesos),
-          })
-        }
+      const parsed = parseSingleLineText(line)
+      if (parsed) {
+        items.push({
+          lineNumber: items.length + 1,
+          ...parsed,
+        })
       }
     }
 
     if (items.length === 0) {
       return {
         items: [],
-        warning: 'No pudimos extraer los renglones automáticamente. Puedes capturarlos o pegarlos manualmente.',
+        warning: 'No pudimos extraer los renglones automáticamente del PDF. Puedes capturarlos o pegarlos manualmente.',
       }
     }
 
-    return { items }
-  } catch {
+    return { items, warning:'Compara todas las páginas del documento: el lector puede omitir partidas o confundir columnas.' }
+  } catch (err) {
     return {
       items: [],
-      warning: 'No pudimos extraer los renglones automáticamente. Puedes capturarlos o pegarlos manualmente.',
+      warning: err instanceof Error ? err.message : 'No pudimos extraer los renglones automáticamente del PDF. Puedes capturarlos o pegarlos manualmente.',
     }
   }
 }

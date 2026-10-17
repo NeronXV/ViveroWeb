@@ -48,6 +48,7 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   PURCHASE_ITEM_RESOLUTION_INVALID: 'La resolución del renglón no es válida.',
   SUPPLIER_PRESENTATION_INVALID: 'La configuración de presentación del proveedor contiene datos inválidos.',
   PURCHASE_NOT_READY: 'La compra no está lista para ser confirmada. Revisa que todos los renglones estén resueltos.',
+  PURCHASE_EDIT_CONFLICT: 'La llegada cambió. Comprueba el guardado y revisa la versión actual antes de continuar.',
   PURCHASE_CONFIRMATION_CONFLICT: 'Conflicto al confirmar la recepción de la compra.',
   PURCHASE_MOVEMENT_CONFLICT: 'No fue posible registrar los movimientos de inventario.',
   PURCHASE_PRODUCT_UNAVAILABLE: 'El producto seleccionado no está disponible o está inactivo.',
@@ -124,7 +125,12 @@ function detail(root: Record<string, unknown>): SupplierPurchaseDetail {
   })
   const result = parseSupplierPurchaseDetail({ ...header(row), items })
   if (result.itemCount !== items.length || result.unmatchedCount !== items.filter(i => i.resolution_status === 'UNMATCHED').length) throw new Error('Invalid counts')
-  return { ...result, branchId: apiId(row.branch_id) }
+  return { ...result, items:result.items.map((item,index)=>{
+    const raw=list(row.items)[index].new_product
+    const p=raw==null?null:object(typeof raw==='string'?JSON.parse(raw):raw)
+    if(p&&(typeof p.name!=='string'||(p.presentation!==null&&typeof p.presentation!=='string')))throw new Error('Invalid new plant')
+    return {...item,newProduct:p?{name:p.name as string,presentation:p.presentation as string|null,categoryId:p.category_id===null?null:apiId(p.category_id)}:null}
+  }), revision:row.revision === undefined ? undefined : Number(apiId(row.revision)), branchId: apiId(row.branch_id) }
 }
 function journalKey(operation: string): string {
   const { context } = requireBackendAccess()
@@ -148,11 +154,26 @@ async function durable(operation: string, body: unknown, key: string, signal?: A
     localStorage.setItem(slot, encoded)
     if (localStorage.getItem(slot) !== encoded) throw new PurchaseServiceError('No se pudo guardar el intento. No se envió la operación.', 'STORAGE_FAILED')
     if (journalKey(operation) !== slot) throw new Error('Identity changed')
-    const path = operation === 'draft' ? 'supplier-purchases' : `supplier-purchases/${id(operation)}/confirm`
-    const result = detail(await backendHttp(path, 'POST', JSON.parse(stored.body), signal, stored.key))
+    const editing=operation.startsWith('edit:')
+    const purchaseId=editing?operation.slice(5):operation
+    const path = operation === 'draft' ? 'supplier-purchases' : `supplier-purchases/${id(purchaseId)}${editing?'':'/confirm'}`
+    let result:SupplierPurchaseDetail
+    try {
+      result = detail(await backendHttp(path, editing?'PATCH':'POST', JSON.parse(stored.body), signal, stored.key))
+    } catch(error) {
+      // A definitive revision rejection cannot later commit. Archive the attempt so
+      // the user can load the current document, correct it and save a new revision.
+      if(error instanceof BackendHttpError && journalKey(operation)===slot &&
+        ((editing&&['PURCHASE_INPUT_INVALID','PURCHASE_EDIT_CONFLICT','PURCHASE_NOT_DRAFT','PURCHASE_PRODUCT_UNAVAILABLE','REFERENCE_CONFLICT'].includes(error.code))||error.code==='PURCHASE_EDIT_CONFLICT')) {
+        localStorage.setItem(`${slot}:rejected:${stored.key}`,encoded)
+        if(localStorage.getItem(slot)===encoded)localStorage.removeItem(slot)
+      }
+      throw error
+    }
     if (result.branchId !== String(requireBackendAccess().context.branch?.id)) throw new Error('Branch mismatch')
+    if (journalKey(operation) !== slot) throw new Error('Identity changed')
     if (operation === 'draft' && result.expectedTotalCents !== object(JSON.parse(stored.body)).expected_total_cents) throw new Error('Total mismatch')
-    if (operation !== 'draft' && result.id !== operation) throw new Error('Receipt mismatch')
+    if (operation !== 'draft' && result.id !== purchaseId) throw new Error('Receipt mismatch')
     if (localStorage.getItem(slot) === encoded) localStorage.removeItem(slot)
     return result
   })
@@ -272,15 +293,28 @@ export async function setSupplierPresentation(input: SetSupplierPresentationInpu
 }
 export async function resolveSupplierPurchaseItem(input: ResolvePurchaseItemInput, signal?: AbortSignal): Promise<void> {
   await request(async () => detail(await backendHttp(`supplier-purchases/${id(input.purchaseId)}/items/${id(input.itemId)}`, 'PATCH', {
-    resolution_status: input.resolution, product_id: input.resolution === 'MATCHED' && input.productId ? id(input.productId) : null,
-    suggested_common_name: input.normalizedName?.trim() || null, suggested_presentation: input.presentation?.trim() || null,
+    resolution_status: input.resolution,
+    product_id: input.resolution === 'MATCHED' && input.productId ? id(input.productId) : null,
+    suggested_common_name: input.normalizedName?.trim() || null,
+    suggested_presentation: input.presentation?.trim() || null,
+    ...(input.retailPriceCents !== undefined && input.retailPriceCents !== null ? { retail_price_cents: input.retailPriceCents } : {}),
   }, signal)))
 }
 export async function confirmSupplierPurchase(input: ConfirmPurchaseInput, signal?: AbortSignal): Promise<SupplierPurchaseDetail> {
-  try { return await request(async () => { const result = await durable(String(id(input.purchaseId)), {}, input.confirmationKey, signal); if (!result) throw new Error('Missing receipt'); return result }) }
+  try { return await request(async () => { const result = await durable(String(id(input.purchaseId)), input.revision === undefined ? {} : {revision:input.revision}, input.confirmationKey, signal); if (!result) throw new Error('Missing receipt'); return result }) }
   catch (error) {
     if (signal?.aborted) throw error
     try { const verified = await fetchSupplierPurchaseDetail(input.purchaseId, signal); if (verified.status === 'RECEIVED') return verified } catch { /* Preserve the original uncertainty. */ }
     throw error
   }
+}
+export interface ReceptionLine { id:number; quantity:number; product_id:number|null; new_product:{name:string;presentation:string|null;category_id:number|null}|null }
+export async function reviseSupplierPurchase(purchaseId:string, revision:number, items:ReceptionLine[]) {
+  return request(async()=>{const result=await durable(`edit:${id(purchaseId)}`,{revision,items},crypto.randomUUID());if(!result)throw new Error('Missing revision');return result})
+}
+export async function recoverSupplierPurchaseRevision(purchaseId:string) {
+  return request(()=>durable(`edit:${id(purchaseId)}`,null,'',undefined,true))
+}
+export async function recoverSupplierPurchaseConfirmation(purchaseId:string) {
+  return request(()=>durable(String(id(purchaseId)),null,'',undefined,true))
 }

@@ -45,7 +45,8 @@ export function CashierPaymentPanel(props: CashierPaymentPanelProps) {
         {message && <p className="desk-warning" role="alert">{message}</p>}
         <label className="desk-confirm"><input type="checkbox" required key={`${method}:${received}:${reference}`} /> Confirmo que recibí el pago de esta venta.</label>
         <button className="desk-primary desk-full" type="submit">{busy ? 'Confirmando pago…' : 'Confirmar cobro'}</button>
-        <button className="desk-secondary desk-full" type="button" disabled={busy} onClick={props.onBack}>Volver a ventas pendientes</button>
+        <details><summary>Más opciones</summary><button className="desk-secondary desk-full" type="button" disabled={busy}
+          onClick={props.onBack}>Volver a ventas pendientes</button></details>
       </fieldset>
     </form>
   </section>
@@ -55,7 +56,9 @@ export function CashierPaymentPanel(props: CashierPaymentPanelProps) {
     {message && <p role="alert" className="desk-warning">{message}</p>}
     {props.blockedByOther && <p role="status">Otra persona está atendiendo esta venta.</p>}
     {detailReady && attempt.status !== 'UNAVAILABLE' && <button type="button" className="desk-primary" disabled={busy || props.blockedByOther} onClick={props.onOpen}>{busy ? 'Abriendo cobro…' : attempt.status === 'EXPIRED' ? 'Volver a abrir cobro' : 'Cobrar venta'}</button>}
-    {!detailReady && <button type="button" className="desk-secondary" disabled={busy} onClick={props.onReload}>Actualizar venta</button>}
-    <button className="desk-secondary" disabled={busy} type="button" onClick={props.onBack}>Volver a ventas pendientes</button>
+    <details><summary>Más opciones</summary>
+      {!detailReady && <button type="button" className="desk-secondary" disabled={busy} onClick={props.onReload}>Actualizar pedido</button>}
+      <button className="desk-secondary" disabled={busy} type="button" onClick={props.onBack}>Volver a pedidos pendientes</button>
+    </details>
   </section>
 }

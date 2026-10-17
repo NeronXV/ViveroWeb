@@ -1,9 +1,13 @@
 import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { useAuth } from '../auth/useAuth'
 import { canEnterAdmin, canEnterCashier, canViewCatalog, getAuthorizedAdminModules, getWorkspaceTitle, ADMIN_MODULE_RULES } from '../access/access-rules'
-import { getBranchState } from '../access/access-helpers'
+import { getBranchState, hasCapability } from '../access/access-helpers'
+import { CounterSaleComposer } from '../cashier/CounterSaleComposer'
 import { useDocumentTitle, useHeadingFocus } from '../../app/usePageAccessibility'
 import logo from '../../assets/isotipo-flor.svg'
+import '../cashier/cashier-desk.css'
+import '../cashier/cashier-pos.css'
 
 function PanelModuleIcon({ type }: { type: 'catalog' | 'cashier' | 'admin' }) {
   return (
@@ -41,6 +45,8 @@ function PanelLoading({ title, subtitle }: { title: string; subtitle: string }) 
 export function PanelPage() {
   const { status, accessStatus, accessContext, accessError, signOut, refreshAccessContext, operationInProgress } = useAuth()
   const navigate = useNavigate()
+  const [preparingOrder, setPreparingOrder] = useState(false)
+  const [sentFolio, setSentFolio] = useState<string | null>(null)
   const headingRef = useHeadingFocus<HTMLHeadingElement>(`${status}:${accessStatus}`)
 
   useDocumentTitle('Panel de Acceso Interno')
@@ -120,6 +126,8 @@ export function PanelPage() {
   const showCashier = canEnterCashier(accessContext)
   const showAdmin = canEnterAdmin(accessContext)
   const showCatalog = canViewCatalog(accessContext)
+  const canCreateSale = accessContext?.accessState === 'ACTIVE' && hasCapability(accessContext, 'CREATE_SALES')
+    && hasCapability(accessContext, 'VIEW_CATALOG') && Boolean(accessContext.branch?.isActive)
 
   // Comprobar si el usuario tiene permiso de Caja pero está bloqueado por sucursal
   const hasCashierPermission = accessContext ? accessContext.capabilities.includes('OPERATE_CASHIER') : false
@@ -128,7 +136,7 @@ export function PanelPage() {
 
   const authorizedAdminModules = accessContext ? getAuthorizedAdminModules(accessContext) : []
 
-  const hasAnyModule = showCatalog || showCashier || showAdmin || cashierBlockedByBranch
+  const hasAnyModule = showCatalog || showCashier || showAdmin || cashierBlockedByBranch || canCreateSale
 
   const handleOpenCashier = () => {
     if (showCashier) {
@@ -177,7 +185,13 @@ export function PanelPage() {
           </div>
         </div>
 
-        {!hasAnyModule ? (
+        {canCreateSale && preparingOrder && accessContext?.branch ? (
+          <div className="cashier-pos">
+            <CounterSaleComposer key={`${accessContext.userId}:${accessContext.branch.id}`} userId={accessContext.userId}
+              branchId={accessContext.branch.id} workerMode onClose={() => setPreparingOrder(false)}
+              onCreated={(_saleId, folio) => { setPreparingOrder(false); setSentFolio(folio ?? null) }} />
+          </div>
+        ) : !hasAnyModule ? (
           /* Sesión válida sin módulos disponibles */
           <div className="login-card" style={{ margin: '3rem auto 0', maxWidth: '640px' }}>
             <p className="eyebrow" style={{ color: 'var(--primary-light)' }}>Sin operaciones asignadas</p>
@@ -204,6 +218,16 @@ export function PanelPage() {
               <h2>Módulos disponibles</h2>
             </div>
             <div className="panel-grid">
+              {canCreateSale && (
+                <article className="panel-card">
+                  <div className="panel-card-header"><div className="panel-card-title"><PanelModuleIcon type="catalog" /><div>
+                    <span>Venta en sucursal</span><h3>Enviar pedido a Caja</h3>
+                  </div></div><p>Elige plantas, revisa el pedido y envíalo a la Caja de tu sucursal.</p></div>
+                  <div className="panel-card-footer"><button type="button" className="panel-card-link-btn"
+                    onClick={() => { setSentFolio(null); setPreparingOrder(true) }}>Preparar pedido</button></div>
+                </article>
+              )}
+              {sentFolio && <p className="form-notice" role="status">Pedido {sentFolio} enviado a Caja.</p>}
               {showCatalog && (
                 <article className="panel-card">
                   <div className="panel-card-header">

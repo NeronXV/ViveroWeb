@@ -2,7 +2,7 @@ import { SHORT_FOLIO_HEADER, isBackendSaleFolio } from '../../lib/folio-format'
 import { parseBackendOrderQuote } from '../public-orders/backend-order-service'
 import { parseBackendProduct } from '../public-catalog/backend-catalog-service'
 
-export interface BackendCounterInput { items: Array<{ product_id: number; quantity: number }>; expected_total_cents: number; customer_id?: number | null }
+export interface BackendCounterInput { items: Array<{ product_id: number; quantity: number }>; expected_total_cents: number; customer_id?: number | null; patio_note?: string | null }
 export interface BackendCounterAttempt { readonly key: string; readonly userId: number; readonly branchId: number; readonly body: string }
 export interface BackendCounterReceipt { schema_version: 1; id: number; folio: string; branch_id: number; created_by: number; status: string; subtotal_cents: number; discount_cents: number; total_cents: number; created_at: string; idempotent_replay: boolean }
 export class BackendCounterError extends Error {
@@ -34,8 +34,15 @@ function lines(value: unknown): BackendCounterInput['items'] {
 }
 function input(value: unknown): BackendCounterInput {
   const hasCustomer = value !== null && typeof value === 'object' && Object.hasOwn(value, 'customer_id')
-  const r = record(value, ['items', 'expected_total_cents', ...(hasCustomer ? ['customer_id'] : [])])
-  return { items: lines(r.items), expected_total_cents: integer(r.expected_total_cents, 1), ...(hasCustomer ? { customer_id: r.customer_id === null ? null : id(r.customer_id) } : {}) }
+  const hasNote = value !== null && typeof value === 'object' && Object.hasOwn(value, 'patio_note')
+  const r = record(value, ['items', 'expected_total_cents', ...(hasCustomer ? ['customer_id'] : []), ...(hasNote ? ['patio_note'] : [])])
+  if (hasNote && r.patio_note !== null && (typeof r.patio_note !== 'string' || [...r.patio_note].some(char => {
+    const code = char.codePointAt(0) ?? 0
+    return code < 32 || (code >= 127 && code <= 159) || (code >= 0xd800 && code <= 0xdfff)
+  }) || [...r.patio_note.trim()].length > 120)) fail()
+  return { items: lines(r.items), expected_total_cents: integer(r.expected_total_cents, 1),
+    ...(hasCustomer ? { customer_id: r.customer_id === null ? null : id(r.customer_id) } : {}),
+    ...(hasNote ? { patio_note: r.patio_note === null ? null : (r.patio_note as string).trim() || null } : {}) }
 }
 function attempt(value: unknown): BackendCounterAttempt {
   const r = record(value, ['key', 'userId', 'branchId', 'body'])

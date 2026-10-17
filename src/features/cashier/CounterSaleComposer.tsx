@@ -6,8 +6,8 @@ import { searchCustomers } from '../admin/admin-customers-service'
 import type { AdminCustomer } from '../admin/admin-customers-types'
 import { formatCents } from './cashier-money'
 
-export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
-  userId: string; branchId: string; onCreated: (saleId: string) => void; onClose: () => void
+export function CounterSaleComposer({ userId, branchId, onCreated, onClose, workerMode = false }: {
+  userId: string; branchId: string; onCreated: (saleId: string, folio?: string) => void; onClose: () => void; workerMode?: boolean
 }) {
   const [boot] = useState(() => {
     try { return { pending: readCounterPending(userId, branchId), error: '' } }
@@ -24,6 +24,8 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
   const [error, setError] = useState(boot.error), [notice, setNotice] = useState('')
   const [customerQuery, setCustomerQuery] = useState(''), [customers, setCustomers] = useState<AdminCustomer[]>([])
   const [customer, setCustomer] = useState<AdminCustomer | null>(null)
+  const [patioNote, setPatioNote] = useState(() => boot.pending
+    ? (JSON.parse(boot.pending.body) as { patio_note?: string | null }).patio_note ?? '' : '')
   const active = useRef(true), working = useRef(false), inputRef = useRef<HTMLInputElement>(null)
   const controller = useRef(new AbortController())
   useEffect(() => {
@@ -32,10 +34,11 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
     return () => { active.current = false; controller.current.abort() }
   }, [])
   useEffect(() => {
+    if (workerMode) return
     const request = new AbortController()
     void listCounterCategories(request.signal).then(value => { if (!request.signal.aborted) setCategories(value) }).catch(() => { /* Optional filter never prevents a sale. */ })
     return () => request.abort()
-  }, [])
+  }, [workerMode])
   useEffect(() => {
     if (!lines.length || pending) return
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
@@ -69,7 +72,7 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
   }
   const submit = () => void act(async () => {
     if (!pending && !quoted) {
-      const quote = await quoteCounterSale(lines, userId, branchId, customer?.id ?? null)
+      const quote = await quoteCounterSale(lines, userId, branchId, customer?.id ?? null, patioNote)
       if (active.current) setQuoted(quote)
       return
     }
@@ -78,41 +81,42 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
     const result = await submitCounterSale(request)
     if (!active.current) return
     finishCounterSale(request)
-    onCreated(String(result.id))
+    onCreated(String(result.id), result.folio)
   })
   const total = lines.reduce((sum, line) => sum + line.product.priceCents * line.quantity, 0)
   const valid = lines.length > 0 && lines.length <= 25 && lines.every(line => validQuantity(line.quantity)) && Number.isSafeInteger(total) && total > 0
   return <section className="counter-sale" aria-labelledby="counter-title" aria-busy={busy}>
-    <div className="section-header-row"><div><p className="eyebrow">Venta de mostrador</p><h2 id="counter-title">Productos y ticket</h2>
-      <p>Agrega los productos del cliente y continúa al cobro.</p></div>
+    <div className="section-header-row"><div><p className="eyebrow">{workerMode ? 'Pedido interno · 1. Elegir plantas' : 'Venta de mostrador'}</p><h2 id="counter-title">{workerMode ? 'Preparar pedido para Caja' : 'Productos y ticket'}</h2>
+      <p>{workerMode ? 'Elige las plantas, revisa el pedido y envíalo a Caja.' : 'Agrega los productos del cliente y continúa al cobro.'}</p></div>
       <button type="button" className="retry-btn-secondary" disabled={busy} onClick={onClose}>{pending ? 'Volver a fila (intento guardado)' : 'Cerrar / descartar carrito'}</button></div>
     {error && <p className="admin-page-error" role="alert">{error}</p>}
     {notice && <p className="form-notice" role="status">{notice}</p>}
-    {(pending || quoted) ? <div className="counter-pending"><h3>{pending ? 'Venta pendiente de confirmar' : 'Confirma la cotización'}</h3>
+    {(pending || quoted) ? <div className="counter-pending"><h3>{workerMode ? '3. Confirmar y enviar a Caja' : pending ? 'Venta pendiente de confirmar' : 'Confirma la cotización'}</h3>
       <ul className="desk-items">{lines.map(line => <li key={line.product.id}><div><strong>{line.product.name}</strong><p>{line.quantity} unidades · precio orientativo ${formatCents(line.product.priceCents)}</p></div></li>)}</ul>
-      <div className="counter-total"><span>Total confirmado</span><strong>${formatCents(JSON.parse((pending ?? quoted!).body).expected_total_cents)}</strong></div><p>El folio se asigna al registrar la venta.</p>
+      <div className="counter-total"><span>Total confirmado</span><strong>${formatCents(JSON.parse((pending ?? quoted!).body).expected_total_cents)}</strong></div>
+      {patioNote && <p><strong>Referencia de patio:</strong> {patioNote}</p>}<p>El folio se asigna al registrar la venta.</p>
       <p>El carrito no se puede modificar hasta conocer el resultado. Este paso todavía no cobra al cliente.</p>
-      <button className="catalog-action" disabled={busy || Boolean(boot.error)} onClick={submit}>{busy ? 'Consultando…' : pending ? 'Recuperar venta y abrir cobro' : 'Confirmar venta y abrir cobro'}</button>
-      <button type="button" disabled={busy} onClick={() => { if (!pending) { setQuoted(null); return } void act(async () => { const result = await retireCounterSale(pending); if (!active.current) return; if (result) onCreated(String(result.id)); else { setPending(null); setNotice('El intento quedó retirado. Puedes modificar el carrito y cotizar de nuevo.') } }) }}>{pending ? 'Resolver intento para volver al carrito' : 'Editar carrito'}</button></div> :
+      <button className="catalog-action" disabled={busy || Boolean(boot.error)} onClick={submit}>{busy ? 'Consultando…' : workerMode ? pending ? 'Recuperar pedido' : 'Enviar a Caja' : pending ? 'Recuperar venta y abrir cobro' : 'Confirmar venta y abrir cobro'}</button>
+      <button type="button" disabled={busy} onClick={() => { if (!pending) { setQuoted(null); return } void act(async () => { const result = await retireCounterSale(pending); if (!active.current) return; if (result) onCreated(String(result.id), result.folio); else { setPending(null); setNotice('El intento quedó retirado. Puedes modificar el carrito y cotizar de nuevo.') } }) }}>{pending ? 'Resolver intento para volver al carrito' : 'Editar carrito'}</button></div> :
     <div className="counter-grid">
       <div className="counter-search">
         <form className="dashboard-form" onSubmit={find}><fieldset disabled={busy || Boolean(boot.error)}>
           <legend>Buscar productos</legend>
-          <label htmlFor="counter-mode">Buscar por<select id="counter-mode" value={mode} onChange={event => { setMode(event.target.value); setResults([]); setSearched(false); setQuery('') }}>
-            <option value="name">Nombre de la planta</option><option value="code">Código / lector QR</option></select></label>
+          {!workerMode && <label htmlFor="counter-mode">Buscar por<select id="counter-mode" value={mode} onChange={event => { setMode(event.target.value); setResults([]); setSearched(false); setQuery('') }}>
+            <option value="name">Nombre de la planta</option><option value="code">Código / lector QR</option></select></label>}
           <label htmlFor="counter-query">{mode === 'code' ? 'Código exacto del producto' : 'Nombre del producto'}
             <input ref={inputRef} id="counter-query" value={query} onChange={event => setQuery(event.target.value)} minLength={2} maxLength={128} required autoComplete="off" /></label>
           <button className="catalog-action">{mode === 'code' ? 'Agregar por código' : 'Buscar'}</button>
-          {mode === 'name' && categories.length > 0 && <label className="pos-category-filter">Categoría<select value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">Todas las categorías</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
+          {!workerMode && mode === 'name' && categories.length > 0 && <label className="pos-category-filter">Categoría<select value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">Todas las categorías</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
         </fieldset></form>
-        <p className="counter-hint">El lector QR debe funcionar como teclado. Elige Código, coloca el cursor en el campo y escanea; Enter agrega una unidad.</p>
+        {!workerMode && <p className="counter-hint">El lector QR debe funcionar como teclado. Elige Código, coloca el cursor en el campo y escanea; Enter agrega una unidad.</p>}
         <div className="counter-results">{results.map(product => <article key={product.id}>{product.imageUrl && <img className="counter-product-photo" src={product.imageUrl} alt="" loading="lazy" />}<div><strong>{product.name}</strong><small>{product.code} · ${formatCents(product.priceCents)}</small></div>
           <button type="button" className="retry-btn-secondary" disabled={busy} onClick={() => void act(() => add(product.code))}>Agregar</button></article>)}
           {searched && !results.length && <p role="status">No hay coincidencias. Prueba otro nombre o el código exacto.</p>}
           {results.length === 20 && <p>Se muestran 20 resultados. Escribe un nombre más específico si falta el producto.</p>}
         </div>
       </div>
-      <div className="counter-cart"><h3>Productos de la venta</h3>
+      <div className="counter-cart"><h3>{workerMode ? '2. Revisar pedido' : 'Productos de la venta'}</h3>
         {!lines.length && <p className="counter-empty">Busca una planta para comenzar. No necesitas registrar al cliente.</p>}
         <div className="counter-ticket-lines">{lines.map(line => <article className="counter-line" key={line.product.id}>
           <div><strong>{line.product.name}</strong><small>{line.product.code} · ${formatCents(line.product.priceCents)} por unidad</small><small>Subtotal ${formatCents(line.product.priceCents * line.quantity)}</small></div>
@@ -120,17 +124,20 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose }: {
             onChange={event => { const quantity = Number(event.target.value); setLines(current => current.map(item => item.product.id === line.product.id ? { ...item, quantity } : item)) }} /></label>
           <button type="button" className="retry-btn-secondary" disabled={busy} aria-label={'Quitar ' + line.product.name} onClick={() => setLines(current => current.filter(item => item.product.id !== line.product.id))}>Quitar</button>
         </article>)}</div>
-        <details className="counter-customer"><summary>Cliente opcional {customer ? '· ' + customer.fullName : '· Público general'}</summary>
+        <label htmlFor="counter-patio-note">Referencia de patio (opcional)
+          <input id="counter-patio-note" value={patioNote} onChange={event => setPatioNote(event.target.value)} maxLength={120} disabled={busy}
+            placeholder="Ej. cliente con chamarra azul" /></label>
+        {!workerMode && <details className="counter-customer"><summary>Cliente opcional {customer ? '· ' + customer.fullName : '· Público general'}</summary>
           <form className="dashboard-form" onSubmit={event => { event.preventDefault(); void act(async () => {
             const found = await searchCustomers(customerQuery, 10, controller.current.signal)
             if (active.current) { setCustomers(found); if (!found.length) setNotice('No hay clientes coincidentes. Puedes continuar como público general.') }
           }) }}><fieldset disabled={busy}><label>Buscar cliente<input value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} minLength={2} maxLength={80} required /></label><button className="retry-btn-secondary">Buscar cliente</button></fieldset></form>
           {customers.map(item => <button type="button" className="counter-customer-choice" disabled={busy} key={item.id} onClick={() => { setCustomer(item); setCustomers([]) }}>{item.fullName}{item.phone ? ' · ' + item.phone : ''}</button>)}
           {customer && <button type="button" className="retry-btn-secondary" disabled={busy} onClick={() => setCustomer(null)}>Usar público general</button>}
-        </details>
+        </details>}
         <div className="counter-total"><span>Total estimado</span><strong>{Number.isSafeInteger(total) ? `$${formatCents(total)}` : 'Revisa cantidades'}</strong></div>
         <p className="counter-hint">Caja mostrará el total definitivo con los precios y promociones vigentes al enviar. El inventario se valida según la configuración de tu sucursal.</p>
-        <button className="catalog-action counter-submit" disabled={busy || !valid || Boolean(boot.error)} onClick={submit}>{busy ? 'Preparando…' : 'Cotizar venta'}</button>
+        <button className="catalog-action counter-submit" disabled={busy || !valid || Boolean(boot.error)} onClick={submit}>{busy ? 'Preparando…' : workerMode ? 'Revisar pedido' : 'Cotizar venta'}</button>
       </div>
     </div>}
   </section>

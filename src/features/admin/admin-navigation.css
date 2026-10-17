@@ -34,6 +34,9 @@
 .plants-detail-workspace .plant-save-actions { margin-block: 14px 8px; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .plants-detail-workspace .plant-save-actions .plants-primary { font-size: 1rem; box-shadow: 0 3px 10px #204e401c; }
 .plants-detail-workspace .plant-save-actions .plants-text-button { padding-inline: 12px; text-align: center; font-size: .82rem; }
+.admin-mobile-nav-bar { display: none; }
+.admin-nav-drawer { display: block; }
+
 @media (max-width: 1024px) {
   .admin-task-shell .dashboard-body { display: block; }
   .admin-task-shell .dashboard-sidebar { width: 100%; min-width: 0; padding: 8px 12px; }
@@ -44,6 +47,83 @@
   .admin-task-shell .dashboard-header h2 { font-size: 1rem; }
   .admin-task-shell .dashboard-header .dashboard-kicker, .admin-task-shell .dashboard-header .demo-copy { display: none; }
   .admin-task-shell .dashboard-content { width: 100%; padding: 16px; }
+}
+
+@media (max-width: 768px) {
+  .admin-mobile-nav-bar { display: block; margin-bottom: 8px; }
+  .admin-mobile-nav-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 14px;
+    background: #1b4332;
+    color: #f4f7f4;
+    border: 1px solid #2d6a4f;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+  .admin-mobile-nav-icon { font-size: 1.15rem; line-height: 1; }
+  .admin-mobile-nav-label { color: #b7d5bf; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; margin-right: auto; }
+  .admin-mobile-section-badge {
+    background: rgba(255,255,255,0.18);
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+  .admin-mobile-chevron { color: #9bc3a4; font-size: 0.8rem; }
+  .admin-nav-drawer {
+    display: none;
+    margin-top: 6px;
+    padding: 10px;
+    background: #132a20;
+    border-radius: 12px;
+    border: 1px solid #244e39;
+  }
+  .admin-nav-drawer.open {
+    display: block;
+    animation: drawerFadeIn 0.18s ease-out;
+  }
+  @keyframes drawerFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* Wizard Focus Mode: compacts headers and removes mobile sidebar when wizard is open */
+.wizard-focus-mode .dashboard-header {
+  padding-block: 6px;
+}
+.wizard-focus-mode .dashboard-header .dashboard-kicker,
+.wizard-focus-mode .dashboard-header .demo-copy,
+.wizard-focus-mode .dashboard-header-branch,
+.wizard-focus-mode .admin-content-context,
+.wizard-focus-mode .admin-nav-caption,
+.wizard-focus-mode .admin-sidebar-context {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .wizard-focus-mode .dashboard-sidebar {
+    display: none !important;
+  }
+  .wizard-focus-mode .dashboard-content {
+    padding: 6px 8px !important;
+  }
+  .wizard-focus-mode .plants-workspace {
+    padding: 0 !important;
+  }
+  .wizard-focus-mode .plants-header {
+    display: none !important;
+  }
 }
 
 /* Final refinement of the existing panel; no changes to shared POS styles. */

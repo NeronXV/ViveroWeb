@@ -23,11 +23,12 @@ function access(userId: number, branchId: number) {
 export function readCounterPending(userId: string, branchId: string) {
   return readBackendCounterAttempt(localStorage, backendId(userId), backendId(branchId))
 }
-export async function quoteCounterSale(lines: CounterLine[], userId: string, branchId: string, customerId: string | null) {
+export async function quoteCounterSale(lines: CounterLine[], userId: string, branchId: string, customerId: string | null, patioNote = '') {
   const user = backendId(userId), branch = backendId(branchId), token = access(user, branch)
   const items = lines.map(line => ({ product_id: backendId(line.product.id), quantity: line.quantity }))
   const quote = await createBackendCounterSaleService().quote(token, branch, items)
-  return createBackendCounterAttempt(user, branch, { items, expected_total_cents: quote.total_cents, customer_id: customerId === null ? null : backendId(customerId) })
+  return createBackendCounterAttempt(user, branch, { items, expected_total_cents: quote.total_cents,
+    customer_id: customerId === null ? null : backendId(customerId), ...(patioNote.trim() ? { patio_note: patioNote.trim() } : {}) })
 }
 export async function submitCounterSale(attempt: BackendCounterAttempt) {
   const token = access(attempt.userId, attempt.branchId), service = createBackendCounterSaleService()

@@ -294,8 +294,8 @@ export function validatePurchaseLines(items: PurchaseSourceItem[]): string | nul
       return `El renglón ${item.lineNumber} debe contener una descripción.`
     }
 
-    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
-      return `El renglón ${item.lineNumber} debe tener una cantidad entera mayor a cero.`
+    if (!Number.isInteger(item.quantity) || item.quantity < 0) {
+      return `El renglón ${item.lineNumber} debe tener una cantidad entera desde cero.`
     }
 
     if (!Number.isInteger(item.unitCostCents) || item.unitCostCents < 0) {

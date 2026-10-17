@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { centsToFormattedMxn } from './purchases-parser'
 import { usePurchases } from './usePurchases'
-import { PurchaseDraftWizard } from './PurchaseDraftWizard'
+import { ReceptionWizard } from './ReceptionWizard'
 import type { SupplierPurchaseListItem } from './purchases-types'
 
 interface PurchasesDashboardProps {
@@ -26,45 +27,65 @@ export function PurchasesDashboard({
     addSupplier,
     pendingDraftsCount,
     receivedCount,
-    unmatchedLinesCount,
     refresh,
   } = usePurchases(active)
 
-  const [isWizardOpen, setIsWizardOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [localWizardOpen, setLocalWizardOpen] = useState(false)
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null)
+
+  const isWizardOpen = searchParams.get('reception') === '1' || localWizardOpen
 
   // Open existing purchase in wizard to resolve lines or confirm
   const handleOpenPurchase = (purchase: SupplierPurchaseListItem) => {
     setSelectedPurchaseId(purchase.id)
-    setIsWizardOpen(true)
+    setLocalWizardOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.set('reception', '1')
+    setSearchParams(next)
+  }
+
+  // Open wizard for new reception / quotation
+  const handleOpenNewWizard = () => {
+    setSelectedPurchaseId(null)
+    setLocalWizardOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.set('reception', '1')
+    setSearchParams(next)
   }
 
   // Close wizard and return to dashboard
   const handleCloseWizard = () => {
-    setIsWizardOpen(false)
+    setLocalWizardOpen(false)
     setSelectedPurchaseId(null)
+    const next = new URLSearchParams(searchParams)
+    next.delete('reception')
+    setSearchParams(next)
     refresh()
   }
 
   if (isWizardOpen) {
     return (
       <section className="db-tab-content active" aria-labelledby="purchases-wizard-heading">
-        <div className="section-header-row" style={{ marginBottom: '1rem' }}>
+        <div className="section-header-row" style={{ marginBottom: '1.25rem' }}>
           <div>
-            <span className="dashboard-kicker">Módulo de Inventario</span>
-            <h3 id="purchases-wizard-heading">Registro de Compra de Proveedor</h3>
+            <span className="dashboard-kicker">Recepción y Compras</span>
+            <h3 id="purchases-wizard-heading" style={{ fontSize: '1.4rem', color: '#204e40', margin: 0 }}>
+              {selectedPurchaseId ? 'Revisión y Recepción de Mercancía' : 'Nueva Recepción / Cotización'}
+            </h3>
+            <p className="demo-copy" style={{ margin: '4px 0 0' }}>
+              Sucursal activa: <strong>{branch?.name || 'No asignada'}</strong>
+            </p>
           </div>
-          <button type="button" className="secondary-auth-btn" onClick={handleCloseWizard}>
-            ✕ Salir al listado
-          </button>
         </div>
 
-        <PurchaseDraftWizard
+        <ReceptionWizard
+          key={branch?.id}
           branch={branch}
           knownSuppliers={knownSuppliers}
           initialPurchaseId={selectedPurchaseId}
           onSupplierAdded={addSupplier}
-          onCompleted={handleCloseWizard}
+          onCompleted={refresh}
           onNavigateToCatalog={onNavigateToCatalog}
           onCancel={handleCloseWizard}
         />
@@ -76,10 +97,10 @@ export function PurchasesDashboard({
     <section className="db-tab-content active" aria-labelledby="purchases-heading">
       <div className="section-header-row">
         <div>
-          <span className="dashboard-kicker">Recepción de Mercancía</span>
-          <h3 id="purchases-heading">📦 Compras y Proveedores</h3>
+          <span className="dashboard-kicker">Operación de Inventario</span>
+          <h3 id="purchases-heading">📦 Recepción, Compras y Proveedores</h3>
           <p className="demo-copy" style={{ margin: 0 }}>
-            Sucursal activa: <strong>{branch?.name || 'No asignada'}</strong> • Registro autoritativo en Supabase.
+            Sucursal activa: <strong>{branch?.name || 'No asignada'}</strong>
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -95,70 +116,89 @@ export function PurchasesDashboard({
           <button
             type="button"
             className="submit-db-btn"
-            onClick={() => {
-              setSelectedPurchaseId(null)
-              setIsWizardOpen(true)
-            }}
+            onClick={handleOpenNewWizard}
           >
-            + Registrar compra
+            + Nueva Recepción / Cotización
           </button>
         </div>
       </div>
 
-      {/* Indicadores / KPI Bar */}
+      {/* KPI Cards Bar */}
       <div className="stock-kpi-bar" style={{ marginTop: '1.25rem', marginBottom: '1.5rem' }}>
-        <div className="stock-kpi-card">
-          <div className="stock-kpi-icon" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#d97706' }}>
-            📝
+        <div
+          className="stock-kpi-card"
+          style={{ cursor: 'pointer', border: statusFilter === 'DRAFT' ? '2px solid #0288d1' : undefined }}
+          onClick={() => setStatusFilter(statusFilter === 'DRAFT' ? 'ALL' : 'DRAFT')}
+        >
+          <div className="stock-kpi-icon" style={{ background: 'rgba(2, 136, 209, 0.15)', color: '#0288d1' }}>
+            💾
           </div>
           <div className="stock-kpi-info">
             <span className="stock-kpi-value">{pendingDraftsCount}</span>
-            <span className="stock-kpi-label">Borradores pendientes</span>
+            <span className="stock-kpi-label">Cotizaciones por recibir</span>
           </div>
         </div>
 
-        <div className="stock-kpi-card">
+        <div
+          className="stock-kpi-card"
+          style={{ cursor: 'pointer', border: statusFilter === 'RECEIVED' ? '2px solid #10b981' : undefined }}
+          onClick={() => setStatusFilter(statusFilter === 'RECEIVED' ? 'ALL' : 'RECEIVED')}
+        >
           <div className="stock-kpi-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
             ✅
           </div>
           <div className="stock-kpi-info">
             <span className="stock-kpi-value">{receivedCount}</span>
-            <span className="stock-kpi-label">Compras recibidas</span>
+            <span className="stock-kpi-label">Recepciones completadas</span>
           </div>
         </div>
 
-        <div className="stock-kpi-card">
-          <div className="stock-kpi-icon" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
-            ⏳
+        <div
+          className="stock-kpi-card"
+          style={{ cursor: 'pointer', border: statusFilter === 'ALL' ? '2px solid #204e40' : undefined }}
+          onClick={() => setStatusFilter('ALL')}
+        >
+          <div className="stock-kpi-icon" style={{ background: 'rgba(32, 78, 64, 0.15)', color: '#204e40' }}>
+            📑
           </div>
           <div className="stock-kpi-info">
-            <span className="stock-kpi-value">{unmatchedLinesCount}</span>
-            <span className="stock-kpi-label">Renglones por relacionar</span>
+            <span className="stock-kpi-value">{purchases.length}</span>
+            <span className="stock-kpi-label">Total de documentos</span>
           </div>
         </div>
       </div>
 
-      {/* Filtros de estado */}
+      {/* Filter Tabs */}
       <div className="dashboard-filters-card" style={{ marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, marginRight: '0.5rem' }}>Filtrar por estado:</span>
-          {(['ALL', 'DRAFT', 'RECEIVED', 'CANCELLED'] as const).map((st) => (
-            <button
-              key={st}
-              type="button"
-              className={`mini-action-btn ${statusFilter === st ? 'primary' : ''}`}
-              onClick={() => setStatusFilter(st)}
-            >
-              {st === 'ALL' && 'Todas'}
-              {st === 'DRAFT' && 'Borradores (DRAFT)'}
-              {st === 'RECEIVED' && 'Recibidas (RECEIVED)'}
-              {st === 'CANCELLED' && 'Canceladas (CANCELLED)'}
-            </button>
-          ))}
+          <span style={{ fontSize: '0.85rem', fontWeight: 650, marginRight: '0.5rem', color: '#204e40' }}>
+            Vista:
+          </span>
+          <button
+            type="button"
+            className={`mini-action-btn ${statusFilter === 'ALL' ? 'primary' : ''}`}
+            onClick={() => setStatusFilter('ALL')}
+          >
+            Todos ({purchases.length})
+          </button>
+          <button
+            type="button"
+            className={`mini-action-btn ${statusFilter === 'DRAFT' ? 'primary' : ''}`}
+            onClick={() => setStatusFilter('DRAFT')}
+          >
+            💾 Cotizaciones pendientes ({pendingDraftsCount})
+          </button>
+          <button
+            type="button"
+            className={`mini-action-btn ${statusFilter === 'RECEIVED' ? 'primary' : ''}`}
+            onClick={() => setStatusFilter('RECEIVED')}
+          >
+            ✅ Mercancía recibida ({receivedCount})
+          </button>
         </div>
       </div>
 
-      {/* Estado: Backend Unavailable (Migraciones pendientes) */}
+      {/* Backend Unavailable */}
       {isBackendUnavailable && (
         <div className="admin-directory-error" role="alert" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
           <p className="error-copy" style={{ fontSize: '1rem', fontWeight: 600 }}>
@@ -170,7 +210,7 @@ export function PurchasesDashboard({
         </div>
       )}
 
-      {/* Estado: Error general */}
+      {/* General Error */}
       {error && !isBackendUnavailable && (
         <div className="cashier-status-container error" role="alert" style={{ marginBottom: '1.5rem' }}>
           <p className="error-copy">{error}</p>
@@ -180,38 +220,41 @@ export function PurchasesDashboard({
         </div>
       )}
 
-      {/* Estado: Carga */}
+      {/* Loading */}
       {isLoading && (
         <div className="cashier-status-container" role="status">
           <div className="loading-spinner" />
-          <p>Consultando documentos de compras autoritativos de Supabase...</p>
+          <p>Consultando documentos de compras y proveedores...</p>
         </div>
       )}
 
-      {/* Estado: Contenido / Lista de compras */}
+      {/* Table / List */}
       {!isLoading && !error && (
         <div className="botanical-section-card">
           <div className="botanical-section-header">
             <span>📑</span>
-            <h4>Historial de Compras de la Sucursal</h4>
+            <h4>
+              {statusFilter === 'DRAFT'
+                ? 'Cotizaciones Pendientes de Recepción'
+                : statusFilter === 'RECEIVED'
+                  ? 'Historial de Mercancía Recibida'
+                  : 'Documentos de Compra y Proveedores'}
+            </h4>
           </div>
 
           {purchases.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-secondary)' }}>
-              <p style={{ fontSize: '1.1rem', margin: 0 }}>No hay documentos de compra registrados con este filtro.</p>
+              <p style={{ fontSize: '1.1rem', margin: 0 }}>No hay documentos registrados con este filtro.</p>
               <p style={{ fontSize: '0.9rem', marginTop: '0.4rem' }}>
-                Haz clic en "+ Registrar compra" para capturar facturas o notas de proveedores.
+                Haz clic en "+ Nueva Recepción / Cotización" para cargar una lista de proveedor.
               </p>
               <button
                 type="button"
                 className="submit-db-btn"
                 style={{ marginTop: '1rem' }}
-                onClick={() => {
-                  setSelectedPurchaseId(null)
-                  setIsWizardOpen(true)
-                }}
+                onClick={handleOpenNewWizard}
               >
-                + Registrar primera compra
+                + Cargar primera lista
               </button>
             </div>
           ) : (
@@ -221,13 +264,11 @@ export function PurchasesDashboard({
                   <tr>
                     <th>Proveedor</th>
                     <th>Fecha</th>
-                    <th>Referencia / Folio</th>
-                    <th>Condiciones</th>
+                    <th>Folio / Referencia</th>
                     <th>Total</th>
                     <th>Partidas</th>
-                    <th>Pendientes</th>
                     <th>Estado</th>
-                    <th style={{ width: '120px' }}>Acciones</th>
+                    <th style={{ width: '160px' }}>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -251,52 +292,58 @@ export function PurchasesDashboard({
                           )}
                         </td>
                         <td>
-                          {p.paymentTerms === 'CASH' && 'Contado'}
-                          {p.paymentTerms === 'CREDIT' && 'Crédito'}
-                          {p.paymentTerms === 'OTHER' && 'Otro'}
-                        </td>
-                        <td>
                           <strong>{centsToFormattedMxn(p.expectedTotalCents)}</strong>
                         </td>
-                        <td>{p.itemCount}</td>
                         <td>
-                          {p.unmatchedCount > 0 ? (
-                            <span style={{ color: '#ef4444', fontWeight: 600 }}>
-                              {p.unmatchedCount} por resolver
+                          {p.itemCount} variedades
+                          {p.unmatchedCount > 0 && isDraft && (
+                            <span style={{ display: 'block', fontSize: '0.72rem', color: '#f57f17' }}>
+                              ({p.unmatchedCount} por definir)
                             </span>
-                          ) : (
-                            <span style={{ color: '#10b981' }}>Todos resueltos</span>
                           )}
                         </td>
                         <td>
                           <span
                             className={`status-badge-res ${p.status.toLowerCase()}`}
                             style={{
-                              display: 'inline-block',
-                              padding: '0.2rem 0.5rem',
-                              borderRadius: 'var(--radius-sm)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '0.25rem 0.6rem',
+                              borderRadius: '100px',
                               fontSize: '0.75rem',
-                              fontWeight: 600,
+                              fontWeight: 700,
                               background: isReceived
-                                ? 'rgba(16, 185, 129, 0.15)'
+                                ? '#e8f5e9'
                                 : isDraft
-                                  ? 'rgba(245, 158, 11, 0.15)'
-                                  : 'rgba(100, 116, 139, 0.15)',
-                              color: isReceived ? '#10b981' : isDraft ? '#d97706' : '#64748b',
+                                  ? '#e1f5fe'
+                                  : '#f1f5f9',
+                              color: isReceived ? '#2e7d32' : isDraft ? '#0277bd' : '#475569',
+                              border: isReceived
+                                ? '1px solid #a5d6a7'
+                                : isDraft
+                                  ? '1px solid #81d4fa'
+                                  : '1px solid #cbd5e1',
                             }}
                           >
-                            {isDraft && 'Borrador'}
-                            {isReceived && 'Recibido'}
+                            {isDraft && '💾 Cotización'}
+                            {isReceived && '✅ Recibido'}
                             {p.status === 'CANCELLED' && 'Cancelado'}
                           </span>
                         </td>
                         <td>
                           <button
                             type="button"
-                            className="mini-action-btn primary"
+                            className={`mini-action-btn ${isDraft ? 'primary' : ''}`}
                             onClick={() => handleOpenPurchase(p)}
+                            style={{
+                              minHeight: 36,
+                              padding: '6px 12px',
+                              fontWeight: 700,
+                              fontSize: '0.8rem',
+                            }}
                           >
-                            {isDraft ? 'Gestionar' : 'Ver detalle'}
+                            {isDraft ? '📦 Recibir mercancía' : 'Ver detalle'}
                           </button>
                         </td>
                       </tr>

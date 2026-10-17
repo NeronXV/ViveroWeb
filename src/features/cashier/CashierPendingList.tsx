@@ -11,7 +11,7 @@ export function CashierPendingList({ sales, locked, onCharge, onDetail, compact 
       <span className="pos-row-top"><strong>{sale.folio}</strong><b>${formatCents(sale.totalCents)}</b></span>
       <span className="pos-row-origin">{cashierOriginLabel(sale.origin)} · {sale.itemCount} {sale.itemCount === 1 ? 'producto' : 'productos'}</span>
       <span className="pos-row-bottom"><span className={`desk-state ${sale.claimState === 'AVAILABLE' ? '' : 'desk-state-attention'}`}>{cashierClaimLabel(sale.claimState)}</span>
-        <span className="pos-row-detail">Ver detalle <span aria-hidden="true">→</span></span></span>
+        <span className="pos-row-detail">Abrir pedido <span aria-hidden="true">→</span></span></span>
     </button>
   </li>)}</ul>
   return <ul className="desk-sales" aria-label="Ventas pendientes">{sales.map(sale => <li key={sale.id}>

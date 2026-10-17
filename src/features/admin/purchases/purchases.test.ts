@@ -14,7 +14,7 @@ import {
   validateSupplierCode,
 } from './purchases-parser'
 import { mapBackendError } from './purchases-service'
-import { parseManualOrPasteJson, parseCsv } from './purchases-extractor'
+import { parseManualOrPasteJson, parseCsv, parseFreeTextList, parseLineTokens } from './purchases-extractor'
 import { getAuthorizedAdminModules, isAdminModuleAuthorized } from '../../access/access-rules'
 import type { UserAccessContext } from '../../access/access-types'
 import { buildProductQrLabels } from '../product-qr-label'
@@ -251,7 +251,8 @@ describe('Pruebas del Módulo de Compras y Proveedores', () => {
       const zeroQty: PurchaseSourceItem[] = [
         { ...validLines[0], quantity: 0 },
       ]
-      expect(validatePurchaseLines(zeroQty)).toBe('El renglón 1 debe tener una cantidad entera mayor a cero.')
+      expect(validatePurchaseLines(zeroQty)).toBeNull()
+      expect(validatePurchaseLines([{ ...validLines[0], quantity: -1 }])).toBe('El renglón 1 debe tener una cantidad entera desde cero.')
     })
 
     it('validateSupplierCode valida código en mayúsculas, letras, números y guiones', () => {
@@ -492,6 +493,34 @@ describe('Pruebas del Módulo de Compras y Proveedores', () => {
       expect(res.items[0].containerCode).toBe('M06')
       expect(res.items[0].quantity).toBe(10)
       expect(res.items[0].unitCostCents).toBe(4500)
+    })
+
+    it('extrae renglones desde lista de texto tipo WhatsApp con parseFreeTextList', () => {
+      const text = `10 Ficus benjamina M6 $45.00\n20 Clorofito bolsa $35.00\n5 Palma Areca M10 $120.00`
+      const res = parseFreeTextList(text)
+      expect(res.items).toHaveLength(3)
+      expect(res.items[0].rawDescription).toBe('Ficus benjamina')
+      expect(res.items[0].quantity).toBe(10)
+      expect(res.items[0].containerCode).toBe('M6')
+      expect(res.items[0].unitCostCents).toBe(4500)
+
+      expect(res.items[1].quantity).toBe(20)
+      expect(res.items[1].containerCode).toBe('BOLSA')
+      expect(res.items[1].unitCostCents).toBe(3500)
+
+      expect(res.items[2].quantity).toBe(5)
+      expect(res.items[2].containerCode).toBe('M10')
+      expect(res.items[2].unitCostCents).toBe(12000)
+    })
+
+    it('parseLineTokens detecta columnas separadas por tubería o arreglo', () => {
+      const tokens = ['CUNA DE MOISES', 'M10', '15', '85.50']
+      const parsed = parseLineTokens(tokens)
+      expect(parsed).not.toBeNull()
+      expect(parsed?.rawDescription).toBe('CUNA DE MOISES')
+      expect(parsed?.containerCode).toBe('M10')
+      expect(parsed?.quantity).toBe(15)
+      expect(parsed?.unitCostCents).toBe(8550)
     })
   })
 })
