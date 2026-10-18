@@ -6,7 +6,7 @@ import { useHeadingFocus } from '../../../app/usePageAccessibility'
 import { AdminCatalog } from '../AdminCatalog'
 import { useInventoryPermissions } from '../useInventoryPermissions'
 import { usePlants } from './usePlants'
-import { filterPlants, nextPendingPlant, type PlantFilters } from './plants-model'
+import { filterCatalogingDrafts, filterPlants, nextPendingPlant, type PlantFilters } from './plants-model'
 import { stateLabels } from './plants-service'
 import { PlantPhoto } from './PlantPhoto'
 import { PlantDetail } from './PlantDetail'
@@ -31,10 +31,15 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
   const filters: PlantFilters = { search: params.get('q') ?? '', category: params.get('category') ?? '', pending: params.get('pending') === '1', low: params.get('low') === '1' }
   const selected = params.get('plant'), countView = params.get('view') === 'count'
   const catalogingParam = params.get('cataloging')
+  const newPlant = params.get('new') === '1'
   const [catalogingDrafts, setCatalogingDrafts] = useState<CatalogingDraft[]>([])
+  const [catalogingStatus, setCatalogingStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [catalogingLoadError, setCatalogingLoadError] = useState('')
   const [creatingPlant, setCreatingPlant] = useState(false)
   const product = data.products.find(p => p.id === selected)
   const visible = filterPlants(data.products, data.preparations, data.balances, filters)
+  const visibleDrafts = filterCatalogingDrafts(catalogingDrafts, filters)
+  const visibleCount = visible.length + visibleDrafts.length
   const sequence = useRef<string[]>([]), listScroll = useRef(0), dirty = useRef(false), busy = useRef(false)
   const [notice, setNotice] = useState('')
   const [toolsOpen, setToolsOpen] = useState(false)
@@ -44,11 +49,15 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
   reportWork.current = onWorkingState
   const guard = useCallback((unsaved: boolean, saving = false) => { dirty.current = unsaved; busy.current = saving; reportWork.current(unsaved, saving) }, [])
   const refreshCataloging = useCallback(async () => {
+    setCatalogingStatus('loading')
+    setCatalogingLoadError('')
     try {
       const drafts = await loadCataloging('', 'ALL', '')
       setCatalogingDrafts(drafts)
+      setCatalogingStatus('ready')
     } catch (err) {
-      setNotice(catalogingError(err))
+      setCatalogingStatus('error')
+      setCatalogingLoadError(catalogingError(err))
     }
   }, [])
   useEffect(() => {
@@ -73,9 +82,25 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
   const open = (id: string, view?: string) => {
     if (!selected) { listScroll.current = window.scrollY; sequence.current = visible.map(p => p.id) }
     const next = new URLSearchParams(params); next.set('plant', id)
+    next.delete('cataloging'); next.delete('new')
     if (view) next.set('view', view); else next.delete('view')
     setParams(next)
     window.scrollTo({ top: 0 })
+  }
+  const openDraft = (id: string, isNew = false) => {
+    listScroll.current = window.scrollY
+    const next = new URLSearchParams(params)
+    next.delete('plant'); next.delete('view')
+    next.set('cataloging', id)
+    if (isNew) next.set('new', '1'); else next.delete('new')
+    setParams(next)
+    window.scrollTo({ top: 0 })
+  }
+  const showPending = () => {
+    const next = new URLSearchParams(params)
+    for (const key of ['q', 'category', 'low', 'plant', 'view', 'cataloging', 'new']) next.delete(key)
+    next.set('pending', '1')
+    setParams(next)
   }
   const back = () => { const next = new URLSearchParams(params); next.delete('plant'); next.delete('view'); setParams(next) }
   const next = () => {
@@ -94,9 +119,7 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
         fields: emptyCatalogingFields(),
       })
       await refreshCataloging()
-      const nextP = new URLSearchParams(params)
-      nextP.set('cataloging', draft.id)
-      setParams(nextP)
+      openDraft(draft.id, true)
     } catch (err) {
       setNotice(catalogingError(err))
     } finally {
@@ -104,8 +127,8 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
     }
   }
 
-  const pendingDrafts = catalogingDrafts.filter(d => ['DRAFT', 'REVIEW'].includes(d.status))
-  const pendingProducts = data.products.filter(p => !data.preparations[p.id]?.ready && data.preparations[p.id]?.commercialState !== 'DISABLED')
+  const pendingDrafts = filterCatalogingDrafts(catalogingDrafts, { search: '', category: '', pending: true, low: false })
+  const pendingProducts = filterPlants(data.products, data.preparations, data.balances, { search: '', category: '', pending: true, low: false })
   const pendingDraftCount = pendingDrafts.length + pendingProducts.length
   const pendingOperation = pendingCataloging()
   const handleRecover = async () => {
@@ -116,9 +139,7 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
       await refreshCataloging()
       data.refresh()
       setNotice('Guardado comprobado. Puedes continuar con la ficha.')
-      const nextP = new URLSearchParams(params)
-      nextP.set('cataloging',result.id)
-      setParams(nextP)
+      openDraft(result.id)
     } catch (err) { setNotice(catalogingError(err)) }
     finally { setCreatingPlant(false) }
   }
@@ -133,7 +154,7 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
     <header className="plants-header">
       <div>
         <p className="plants-eyebrow">Vivero Dulcinea · Tu colección</p>
-        <h3 ref={heading} tabIndex={-1}>{selected ? (countView ? 'Registrar conteo' : 'Ficha de planta') : catalogingParam ? 'Completar planta pendiente' : 'Plantas'}</h3>
+        <h3 ref={heading} tabIndex={-1}>{selected ? (countView ? 'Registrar conteo' : 'Ficha de planta') : catalogingParam ? (newPlant ? 'Nueva planta' : 'Completar planta pendiente') : 'Plantas'}</h3>
         <p>{selected ? 'Un paso a la vez, entre tus plantas.' : catalogingParam ? 'Asistente de catalogación rápida.' : 'Busca, completa y cuida tu catálogo.'}</p>
       </div>
       <div className="plants-header-side">
@@ -161,20 +182,18 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
       {catalogingParam ? (
         <CatalogingWizard
           draftId={catalogingParam}
+          isNew={newPlant}
           pendingDrafts={pendingDrafts}
           categories={data.categories}
           products={data.products}
           onCompleted={() => {
             void Promise.all([data.refresh(), refreshCataloging()])
           }}
-          onNext={(nextId) => {
-            const nextP = new URLSearchParams(params)
-            nextP.set('cataloging', nextId)
-            setParams(nextP)
-          }}
+          onNext={(nextId) => openDraft(nextId)}
           onClose={() => {
             const nextP = new URLSearchParams(params)
             nextP.delete('cataloging')
+            nextP.delete('new')
             setParams(nextP)
             void refreshCataloging()
           }}
@@ -193,59 +212,42 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
         )
       ) : (
         <>
-          {pendingDraftCount > 0 ? (
+          {catalogingStatus === 'ready' && pendingDraftCount > 0 && (
             <div className="plants-pending-wizard-card">
               <div className="pending-wizard-info">
                 <span className="pending-wizard-badge" aria-hidden="true">🌱</span>
                 <div>
                   <h4>Completar plantas pendientes ({pendingDraftCount})</h4>
-                  <p>Hay {pendingDraftCount === 1 ? '1 planta lista' : `${pendingDraftCount} plantas listas`} para verificar nombre, fotografía, precio o inventario inicial.</p>
+                  <p>Elige del listado qué planta completar. Puedes buscarla por nombre o código.</p>
                 </div>
               </div>
               <div className="pending-wizard-actions">
                 <button
                   type="button"
                   className="plants-primary pending-wizard-btn"
-                  onClick={() => {
-                    const first = pendingDrafts[0]
-                    if (first) {
-                      const nextP = new URLSearchParams(params)
-                      nextP.set('cataloging', first.id)
-                      setParams(nextP)
-                    } else if (pendingProducts[0]) open(pendingProducts[0].id)
-                  }}
+                  onClick={showPending}
                 >
                   Completar plantas pendientes ({pendingDraftCount}) →
                 </button>
-                <button
-                  type="button"
-                  className="plants-btn-secondary"
-                  disabled={creatingPlant}
-                  onClick={() => void handleCreateNewPlant()}
-                >
-                  {creatingPlant ? 'Creando…' : '+ Nueva planta'}
-                </button>
               </div>
-            </div>
-          ) : (
-            <div className="plants-add-new-bar">
-              <button
-                type="button"
-                className="plants-primary plants-add-new-btn"
-                disabled={creatingPlant}
-                onClick={() => void handleCreateNewPlant()}
-              >
-                {creatingPlant ? 'Creando…' : '+ Nueva planta'}
-              </button>
             </div>
           )}
 
           <div className="plants-filters"><label className="plants-search"><span>Buscar una planta</span><input type="search" placeholder="Nombre o código…" value={filters.search} onChange={e => filter('q', e.target.value)} /></label>
             <label><span>Categoría</span><select aria-label="Categoría" value={filters.category} onChange={e => filter('category', e.target.value)}><option value="">Todas las plantas</option>{data.categories.map(c => <option key={c.id} value={c.id}>{c.name}{!c.isActive ? ' · Inactiva' : ''}</option>)}</select></label>
             <div className="plants-filter-chips"><button type="button" aria-pressed={filters.pending} onClick={() => filter('pending', filters.pending ? '' : '1')}>Por completar</button>{canInventory && <button type="button" disabled={!!data.inventoryError} aria-pressed={filters.low} onClick={() => filter('low', filters.low ? '' : '1')}>Existencias bajas</button>}</div></div>
-          <div className="plants-list-heading"><p><strong>{visible.length}</strong> plantas en esta selección</p><button className="plants-text-button" onClick={data.refresh}>Actualizar</button></div>
-          {visible.length === 0 && <div className="plants-empty"><h4>No hay plantas en esta selección</h4><p>Prueba otro nombre o ajusta los filtros.</p></div>}
-          <div className="plants-grid">{visible.map(p => {
+          {catalogingStatus === 'loading' && <p role="status">Cargando plantas pendientes…</p>}
+          {catalogingStatus === 'error' && <div className="plants-warning" role="alert"><p>No pudimos cargar todas las plantas pendientes. {catalogingLoadError}</p><button onClick={() => void refreshCataloging()}>Reintentar pendientes</button></div>}
+          <div className="plants-list-heading"><p>{catalogingStatus === 'ready' ? <><strong>{visibleCount}</strong> plantas en esta selección</> : 'Listado pendiente de actualizar'}</p><button className="plants-text-button" onClick={() => { data.refresh(); void refreshCataloging() }}>Actualizar</button></div>
+          {catalogingStatus === 'ready' && visibleCount === 0 && <div className="plants-empty"><h4>No hay plantas en esta selección</h4><p>Prueba otro nombre o ajusta los filtros.</p></div>}
+          <div className="plants-grid">{visibleDrafts.map(d => {
+            const name = d.fields.approved_name || d.original_name
+            const category = data.categories.find(c => c.id === String(d.fields.category_id))?.name ?? 'Categoría pendiente'
+            return <article className="plant-card plant-card-pending" key={`draft-${d.id}`}><button type="button" className="plant-card-open" onClick={() => openDraft(d.id)} aria-label={`Completar planta ${name}`}>
+              <div className="plant-photo"><div className="plant-photo-placeholder"><span>{d.has_image ? 'Fotografía guardada · abrir para verla' : 'Fotografía pendiente'}</span></div></div>
+              <div className="plant-card-content"><span className="plant-state">Por completar</span><h4>{name}</h4><p className="plant-card-code">{d.fields.presentation || 'Presentación pendiente'} · {category}</p><div className="plant-card-values"><strong>{d.fields.suggested_price_cents ? money(d.fields.suggested_price_cents) : 'Precio pendiente'}</strong></div><span className="plant-card-link">Completar planta <span aria-hidden="true">↗</span></span></div>
+            </button></article>
+          })}{visible.map(p => {
             const prep = data.preparations[p.id], balance = data.balances.find(b => b.productId === p.id)
             return <article className={`plant-card ${!prep.ready && prep.commercialState !== 'DISABLED' ? 'plant-card-pending' : ''}`} key={p.id}><button type="button" className="plant-card-open" onClick={() => open(p.id)} aria-label={`Abrir ficha de ${p.commonName}`}>
               <PlantPhoto imageId={p.image?.id} name={p.commonName} /><div className="plant-card-content"><span className={`plant-state ${prep.ready ? 'ready' : prep.commercialState === 'DISABLED' ? 'inactive' : ''}`}>{stateLabels[prep.commercialState]}</span><h4>{p.commonName}</h4><p className="plant-card-code">{p.internalCode} · {p.categoryName}</p><div className="plant-card-values"><strong>{prep.priceConfirmed ? money(p.priceCents) : 'Precio pendiente'}</strong><span>{balance ? `${balance.totalQuantity} ${p.unit}` : 'Existencia no consultada'}</span></div><span className="plant-card-link">Abrir ficha <span aria-hidden="true">↗</span></span></div>

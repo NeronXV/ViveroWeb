@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { draftFromPlant, filterPlants, nextPendingPlant, plantPatch, preserveEditedDraft } from './plants-model'
+import { draftFromPlant, filterCatalogingDrafts, filterPlants, nextPendingPlant, plantPatch, preserveEditedDraft } from './plants-model'
+import { emptyCatalogingFields, type CatalogingDraft } from './cataloging-service'
 import { fetchPlantPhoto, fetchPlantPreparation, parsePreparation, patchPlant, type PlantPreparation } from './plants-service'
 import type { AdminProduct } from '../admin-catalog-types'
 import { bindBackendSession } from '../../auth/backend-runtime'
@@ -11,6 +12,32 @@ const product: AdminProduct = { id: '1', internalCode: 'FL-001', barcode: '12345
 const rawState = { schema_version: 1, product_id: 1, branch_id: 2, commercial_state: 'IMPORTED_PENDING', preparation_mode: 'PENDING',
   legacy_compatibility: false, ready: false, price_confirmed: true, initial_count_confirmed: false, activated: false, reasons: ['INITIAL_COUNT_PENDING', 'ACTIVATION_PENDING'] }
 const prep = parsePreparation(rawState, '1', '2')
+const catalogingDraft = (id: number, status: CatalogingDraft['status'] = 'DRAFT'): CatalogingDraft => ({
+  id: String(id), original_name: `Planta de ensayo ${id}`, fields: emptyCatalogingFields(), status,
+  revision: 1, product_id: null, has_image: false, updated_by: 1, updated_at: '2026-10-17T12:00:00Z', source_evidence: null,
+})
+it('lists every pending draft together with incomplete products, excluding published drafts and disabled products', () => {
+  const filters = { search: '', category: '', pending: true, low: false }
+  const drafts = Array.from({ length: 177 }, (_, i) => catalogingDraft(i + 1, i % 2 ? 'REVIEW' : 'DRAFT'))
+  drafts.push(catalogingDraft(178, 'PREPARED'), catalogingDraft(179, 'LINKED'))
+  const products = [product, { ...product, id: '2' }, { ...product, id: '3' }]
+  const preparations = { '1': prep, '2': { ...prep, commercialState: 'DISABLED' as const }, '3': { ...prep, commercialState: 'READY' as const, ready: true } }
+  expect(filterCatalogingDrafts(drafts, filters)).toHaveLength(177)
+  expect(filterCatalogingDrafts(drafts, filters).length + filterPlants(products, preparations, [], filters).length).toBe(178)
+  expect(filterCatalogingDrafts(drafts, filters).at(-1)?.id).toBe('177')
+})
+it('searches pending drafts by original or approved name, code and presentation with optional category', () => {
+  const draft = catalogingDraft(1)
+  draft.fields = { ...draft.fields, approved_name: 'Flor de ensayo', presentation: 'Bolsa 2L', internal_code: 'ENS-001', category_id: 2 }
+  const filters = { search: '', category: '', pending: true, low: false }
+  for (const search of ['PLANTA DE ENSAYO', 'flor', 'ens-001', 'bolsa']) {
+    expect(filterCatalogingDrafts([draft], { ...filters, search })).toEqual([draft])
+  }
+  expect(filterCatalogingDrafts([draft], { ...filters, category: '2' })).toEqual([draft])
+  expect(filterCatalogingDrafts([draft], { ...filters, category: '3' })).toEqual([])
+  expect(filterCatalogingDrafts([draft], { ...filters, search: 'inexistente' })).toEqual([])
+  expect(filterCatalogingDrafts([draft], { ...filters, low: true })).toEqual([])
+})
 const request = vi.fn()
 beforeEach(() => {
   request.mockReset(); vi.stubGlobal('fetch', request)

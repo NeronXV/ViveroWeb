@@ -2,8 +2,18 @@ import type { AdminProduct } from '../admin-catalog-types'
 import type { AdminInventoryBalance } from '../admin-types'
 import type { PlantPreparation } from './plants-service'
 import { pesosToCents } from '../admin-catalog-parser'
+import type { CatalogingDraft } from './cataloging-service'
 
 export interface PlantFilters { search: string; category: string; pending: boolean; low: boolean }
+export function filterCatalogingDrafts(drafts: CatalogingDraft[], filters: PlantFilters): CatalogingDraft[] {
+  const query = filters.search.trim().toLocaleLowerCase('es')
+  return drafts.filter(d => ['DRAFT', 'REVIEW'].includes(d.status)
+    && (!query || [d.original_name, d.fields.approved_name, d.fields.scientific_name, d.fields.internal_code, d.fields.barcode, d.fields.presentation]
+      .some(value => value.toLocaleLowerCase('es').includes(query)))
+    && (!filters.category || String(d.fields.category_id) === filters.category)
+    // Draft quantities are not branch inventory balances.
+    && !filters.low)
+}
 export interface PlantDraft {
   common_name: string; scientific_name: string; description: string; category_id: string
   price: string; wholesale: string; minimum: string; watering_advice: string

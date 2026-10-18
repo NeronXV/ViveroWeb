@@ -26,6 +26,7 @@ import {
 
 export interface CatalogingWizardProps {
   draftId: string
+  isNew?: boolean
   pendingDrafts: CatalogingDraft[]
   categories: AdminCategory[]
   products: AdminProduct[]
@@ -37,6 +38,7 @@ export interface CatalogingWizardProps {
 
 export function CatalogingWizard({
   draftId,
+  isNew = false,
   pendingDrafts,
   categories,
   products,
@@ -75,9 +77,6 @@ export function CatalogingWizard({
   const barcodeId = useId()
   const notesId = useId()
   const priceInputId = useId()
-
-  // Track remaining pending plants
-  const remainingCount = pendingDrafts.filter(d => d.id !== draft?.id && ['DRAFT', 'REVIEW'].includes(d.status)).length + (draft ? 1 : 0)
 
   // Load active draft
   useEffect(() => {
@@ -367,7 +366,7 @@ export function CatalogingWizard({
         <div className="wizard-header-top-row">
           <span className="wizard-pending-badge">
             <span className="pending-indicator-dot" aria-hidden="true" />
-            Pendientes: <strong>{remainingCount}</strong>
+            {isNew ? 'Nueva planta' : 'Completar planta pendiente'}
           </span>
           <button
             type="button"
@@ -437,7 +436,7 @@ export function CatalogingWizard({
       {step === 1 && (
         <section className="wizard-step-content" aria-label="Paso 1: Identificar planta">
           <div className="wizard-header-title">
-            <h3>Identificar planta</h3>
+            <h3>{isNew ? 'Registrar una nueva planta' : 'Completar identificación'}</h3>
             {draft.original_name && draft.original_name !== 'Nueva planta' && draft.original_name.trim().toLowerCase() !== form.approved_name.trim().toLowerCase() ? (
               <p className="wizard-subtitle">Referencia importada: <strong>{draft.original_name}</strong> · Completa los datos comerciales.</p>
             ) : (
