@@ -70,7 +70,7 @@ export function PurchasesDashboard({
         <div className="section-header-row" style={{ marginBottom: '1.25rem' }}>
           <div>
             <span className="dashboard-kicker">Recepción y Compras</span>
-            <h3 id="purchases-wizard-heading" style={{ fontSize: '1.4rem', color: '#204e40', margin: 0 }}>
+            <h3 id="purchases-wizard-heading" style={{ fontSize: '1.4rem', color: 'var(--primary-color)', margin: 0 }}>
               {selectedPurchaseId ? 'Revisión y Recepción de Mercancía' : 'Nueva Recepción / Cotización'}
             </h3>
             <p className="demo-copy" style={{ margin: '4px 0 0' }}>
@@ -155,10 +155,10 @@ export function PurchasesDashboard({
 
         <div
           className="stock-kpi-card"
-          style={{ cursor: 'pointer', border: statusFilter === 'ALL' ? '2px solid #204e40' : undefined }}
+          style={{ cursor: 'pointer', border: statusFilter === 'ALL' ? '2px solid var(--primary-color)' : undefined }}
           onClick={() => setStatusFilter('ALL')}
         >
-          <div className="stock-kpi-icon" style={{ background: 'rgba(32, 78, 64, 0.15)', color: '#204e40' }}>
+          <div className="stock-kpi-icon" style={{ background: 'var(--surface-subtle, rgba(32, 78, 64, 0.15))', color: 'var(--primary-color)' }}>
             📑
           </div>
           <div className="stock-kpi-info">
@@ -171,7 +171,7 @@ export function PurchasesDashboard({
       {/* Filter Tabs */}
       <div className="dashboard-filters-card" style={{ marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 650, marginRight: '0.5rem', color: '#204e40' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 650, marginRight: '0.5rem', color: 'var(--primary-color)' }}>
             Vista:
           </span>
           <button

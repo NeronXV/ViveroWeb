@@ -99,10 +99,10 @@ export function ProductQrLabelDialog({ products, onClose }: { products: AdminPro
             </div>
           ))}
         </div>
-        <p role="status">{includedProducts.length} productos · {canPrint ? total : 0} etiquetas listas para imprimir.</p>
-        {!codesValid && <p role="alert">Quita los productos cuyo código interno ya no sea válido antes de imprimir.</p>}
-        {!canPrint && <p role="alert">Selecciona al menos un producto e indica de 1 a 100 copias por producto, hasta 1000 etiquetas por impresión.</p>}
-        <p>Hojas A4, escala 100 %, sin encabezados ni pies de página. Las etiquetas se acomodan en varias hojas automáticamente.</p>
+        <p role="status" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{includedProducts.length} productos · {canPrint ? total : 0} etiquetas listas para imprimir.</p>
+        {!codesValid && <p className="admin-dialog-error" role="alert">Quita los productos cuyo código interno ya no sea válido antes de imprimir.</p>}
+        {!canPrint && <p className="admin-dialog-error" role="alert">Selecciona al menos un producto e indica de 1 a 100 copias por producto, hasta 1000 etiquetas por impresión.</p>}
+        <p className="demo-copy" style={{ margin: '4px 0 12px', fontSize: '0.85rem' }}>Hojas A4, escala 100 %, sin encabezados ni pies de página. Las etiquetas se acomodan en varias hojas automáticamente.</p>
 
         <div className="product-label-print-root" aria-label={`Vista previa de ${labels.length} etiquetas`}>
           {labels.map((label, index) => (
@@ -112,7 +112,7 @@ export function ProductQrLabelDialog({ products, onClose }: { products: AdminPro
 
         <div className="admin-modal-footer product-label-controls">
           <button type="button" className="secondary-auth-btn" onClick={onClose}>Cancelar</button>
-          <button type="button" className="catalog-action" onClick={printLabels} disabled={!canPrint}>Imprimir {labels.length} etiquetas en A4</button>
+          <button type="button" className="submit-db-btn" onClick={printLabels} disabled={!canPrint}>Imprimir {labels.length} etiquetas en A4</button>
         </div>
       </div>
     </div>,

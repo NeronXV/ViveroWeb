@@ -97,7 +97,7 @@ export function CounterSaleComposer({ userId, branchId, onCreated, onClose, work
       {patioNote && <p><strong>Referencia de patio:</strong> {patioNote}</p>}<p>El folio se asigna al registrar la venta.</p>
       <p>El carrito no se puede modificar hasta conocer el resultado. Este paso todavía no cobra al cliente.</p>
       <button className="catalog-action" disabled={busy || Boolean(boot.error)} onClick={submit}>{busy ? 'Consultando…' : workerMode ? pending ? 'Recuperar pedido' : 'Enviar a Caja' : pending ? 'Recuperar venta y abrir cobro' : 'Confirmar venta y abrir cobro'}</button>
-      <button type="button" disabled={busy} onClick={() => { if (!pending) { setQuoted(null); return } void act(async () => { const result = await retireCounterSale(pending); if (!active.current) return; if (result) onCreated(String(result.id), result.folio); else { setPending(null); setNotice('El intento quedó retirado. Puedes modificar el carrito y cotizar de nuevo.') } }) }}>{pending ? 'Resolver intento para volver al carrito' : 'Editar carrito'}</button></div> :
+      <button type="button" className="retry-btn-secondary" disabled={busy} onClick={() => { if (!pending) { setQuoted(null); return } void act(async () => { const result = await retireCounterSale(pending); if (!active.current) return; if (result) onCreated(String(result.id), result.folio); else { setPending(null); setNotice('El intento quedó retirado. Puedes modificar el carrito y cotizar de nuevo.') } }) }}>{pending ? 'Resolver intento para volver al carrito' : 'Editar carrito'}</button></div> :
     <div className="counter-grid">
       <div className="counter-search">
         <form className="dashboard-form" onSubmit={find}><fieldset disabled={busy || Boolean(boot.error)}>

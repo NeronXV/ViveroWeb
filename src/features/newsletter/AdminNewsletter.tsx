@@ -59,17 +59,17 @@ export function AdminNewsletter() {
   }
   return <section className="db-tab-content active"><h3>Boletín Verde</h3>
     <p>Solo se envía a suscriptores que confirmaron su correo. Cada envío incluye un enlace de baja.</p>
-    {error && <p role="alert">{error}</p>}{notice && <p className="form-notice" role="status">{notice}</p>}
+    {error && <p className="admin-page-error" role="alert">{error}</p>}{notice && <p className="form-notice" role="status">{notice}</p>}
     <button type="button" className="retry-btn-secondary" disabled={busy} onClick={() => { setError(''); setRevision((value) => value + 1) }}>Actualizar</button>
     <form className="dashboard-form dashboard-operation-form" onSubmit={create}><fieldset disabled={busy}><legend>Preparar campaña</legend>
       <label>Asunto<input name="subject" value={subject} readOnly={restored} onChange={event => setSubject(event.target.value)} required minLength={3} maxLength={150} /></label>
       <label>Mensaje<textarea name="body" value={body} readOnly={restored} onChange={event => setBody(event.target.value)} required minLength={10} maxLength={10000} rows={6} /></label>
-      <button className="catalog-action">{restored ? 'Recuperar campaña pendiente' : 'Guardar campaña'}</button>
+      <button className="submit-db-btn" style={{ width: 'fit-content' }}>{restored ? 'Recuperar campaña pendiente' : 'Guardar campaña'}</button>
     </fieldset></form>
     {rows.map((row) => <article className="botanical-section-card dashboard-campaign-card" key={row.id}><h4>{row.subject}</h4><p style={{ whiteSpace: 'pre-wrap' }}>{row.body}</p>
       <p>{row.recipients} destinatarios · {row.sent} enviados · {row.skipped} bajas omitidas</p>
-      {row.review > 0 && <p role="alert">Hay envíos antiguos sin confirmar. Revisa su estado en el proveedor antes de continuar.</p>}
-      <button className="catalog-action" disabled={busy || row.review > 0 || row.sent + row.skipped >= row.recipients} onClick={() => send(row)}>Enviar siguiente lote (hasta 20 correos)</button>
+      {row.review > 0 && <p className="admin-page-error" role="alert">Hay envíos antiguos sin confirmar. Revisa su estado en el proveedor antes de continuar.</p>}
+      <button className="admin-action-btn primary" disabled={busy || row.review > 0 || row.sent + row.skipped >= row.recipients} onClick={() => send(row)}>Enviar siguiente lote (hasta 20 correos)</button>
     </article>)}
   </section>
 }

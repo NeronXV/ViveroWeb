@@ -35,7 +35,7 @@ export function CareQuiz() {
         </select>
       </div>
       {catalog.status === 'loading' && <p role="status">Consultando plantas…</p>}
-      {catalog.status === 'error' && <p role="alert">No pudimos consultar el catálogo. <button onClick={catalog.retry}>Reintentar</button></p>}
+      {catalog.status === 'error' && <p role="alert">No pudimos consultar el catálogo. <button type="button" className="retry-btn-secondary" onClick={catalog.retry}>Reintentar</button></p>}
       <button className="quiz-btn quiz-btn-primary" disabled={catalog.status !== 'ready'} onClick={() => setDone(true)}>Ver recomendaciones</button>
     </div>
     {done && <div className="care-results"><h3>Tus recomendaciones</h3><div className="catalog-grid">{matches.length ? matches.map((product) =>

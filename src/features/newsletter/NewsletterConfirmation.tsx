@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import logo from '../../assets/isotipo-flor.svg'
 import { newsletterLink, publicNewsletter } from './newsletter-service'
+
 export function NewsletterConfirmation() {
   const [link] = useState(() => newsletterLink(window.location.hash))
   const unsubscribe = link?.action === 'unsubscribe', valid = Boolean(link)
@@ -18,9 +20,15 @@ export function NewsletterConfirmation() {
     } catch { if (!controller.signal.aborted) setMessage('El enlace no es válido, ya se utilizó o el servicio no está disponible.') }
     finally { if (!controller.signal.aborted) setBusy(false) }
   }
-  return <main className="internal-page"><section className="login-card"><h1>{unsubscribe ? 'Cancelar suscripción' : 'Confirmar suscripción'}</h1>
-    {!valid && <p role="alert">El enlace no es válido.</p>}<p role="status">{message}</p>
-    {!done && <button className="catalog-action" disabled={!valid || busy} onClick={confirm}>Confirmar</button>}
-    <Link to="/">Volver al vivero</Link>
+  return <main className="internal-page auth-page"><section className="login-card" aria-labelledby="newsletter-confirm-title">
+    <Link to="/" className="logo"><img src={logo} alt="" className="logo-icon" />Vivero<span>Dulcinea</span></Link>
+    <p className="eyebrow">Boletín Informativo</p>
+    <h1 id="newsletter-confirm-title">{unsubscribe ? 'Cancelar suscripción' : 'Confirmar suscripción'}</h1>
+    {!valid && <p className="auth-error" role="alert">El enlace no es válido o ha expirado.</p>}
+    {message && <p className="form-notice" role="status">{message}</p>}
+    {!done && valid && <button type="button" className="submit-db-btn" style={{ marginTop: '1rem' }} disabled={busy} onClick={confirm}>
+      {busy ? 'Confirmando…' : 'Confirmar'}
+    </button>}
+    <Link className="back-link" to="/">← Volver al sitio público</Link>
   </section></main>
 }

@@ -37,20 +37,24 @@ export function InventoryCountReview({ canApprove, revision, onChanged, products
     <h4>Conteos por revisar</h4>
     <p>Registrar un conteo no cambia las existencias. Un propietario debe revisar las diferencias.</p>
     {hasPending && <button type="button" className="catalog-action secondary" disabled={busy} onClick={recover}>Comprobar resultado pendiente</button>}
-    {error && <p role="alert">{error}</p>}
+    {error && <p className="admin-page-error" role="alert">{error}</p>}
     {items.length === 0 && <p>No hay conteos pendientes.</p>}
     <ul className="count-review-cards">{items.map(item => <li key={item.id} className="count-review-card"><div className="count-review-heading"><strong>{plantName(item.productId)}</strong><span>Pendiente de revisión</span></div>
       <dl><div><dt>Registrada al contar</dt><dd>{item.baselineQuantity}</dd></div><div><dt>Observada</dt><dd>{item.observedQuantity}</dd></div><div><dt>Diferencia</dt><dd>{item.observedQuantity - item.baselineQuantity > 0 ? '+' : ''}{item.observedQuantity - item.baselineQuantity}</dd></div></dl>
       <p className="count-review-reason">{item.reason}</p>
       {canApprove && <button type="button" className="catalog-action count-review-action" disabled={busy} onClick={() => setSelected(item)}>Revisar conteo<span className="sr-only"> de {plantName(item.productId)}</span></button>}
     </li>)}</ul>
-    {selected && canApprove && <form onSubmit={decide}>
-      <p>{plantName(selected.productId)} · Diferencia: {selected.observedQuantity - selected.baselineQuantity}. Se comprobarán los movimientos antes de aplicar.</p>
-      <label htmlFor="count-decision-reason">Motivo de la decisión</label>
-      <input id="count-decision-reason" name="reason" required minLength={3} maxLength={240} disabled={busy} />
-      <button className="catalog-action" type="submit" value="APPROVE" disabled={busy}>Confirmar aprobación</button>
-      <button className="catalog-action secondary" type="submit" value="REJECT" disabled={busy}>Rechazar conteo</button>
-      <button type="button" disabled={busy} onClick={() => setSelected(null)}>Volver</button>
+    {selected && canApprove && <form className="dashboard-form" style={{ marginTop: '1rem' }} onSubmit={decide}>
+      <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>{plantName(selected.productId)} · Diferencia: {selected.observedQuantity - selected.baselineQuantity > 0 ? '+' : ''}{selected.observedQuantity - selected.baselineQuantity}. Se comprobarán los movimientos antes de aplicar.</p>
+      <div className="admin-form-group">
+        <label htmlFor="count-decision-reason">Motivo de la decisión</label>
+        <input id="count-decision-reason" name="reason" required minLength={3} maxLength={240} disabled={busy} placeholder="Explica la aprobación o rechazo…" />
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+        <button className="catalog-action" type="submit" value="APPROVE" disabled={busy}>Confirmar aprobación</button>
+        <button className="catalog-action secondary" type="submit" value="REJECT" disabled={busy}>Rechazar conteo</button>
+        <button type="button" className="retry-btn-secondary" disabled={busy} onClick={() => setSelected(null)}>Volver</button>
+      </div>
     </form>}
   </section>
 }

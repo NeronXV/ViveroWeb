@@ -26,7 +26,7 @@ export function CareChat() {
       <p>Escribe el nombre de una planta para consultar su luz, riego y clima. Las respuestas provienen de nuestras fichas actuales.</p><div className="care-topics"><span>☀ Luz adecuada</span><span>◉ Consejos de riego</span><span>❧ Clima recomendado</span></div></div>
     <div className="chat-box">
       {catalog.status === 'loading' && <p role="status">Consultando fichas…</p>}
-      {catalog.status === 'error' && <p role="alert">No pudimos consultar el catálogo. <button onClick={catalog.retry}>Reintentar</button></p>}
+      {catalog.status === 'error' && <p role="alert">No pudimos consultar el catálogo. <button type="button" className="retry-btn-secondary" onClick={catalog.retry}>Reintentar</button></p>}
       <div className="chat-messages" ref={messagesRef} role="log" aria-label="Conversación de cuidados" aria-live="polite">
         {messages.length === 0 && <div className="care-welcome">
           <span className="care-welcome-icon" aria-hidden="true">❧</span>

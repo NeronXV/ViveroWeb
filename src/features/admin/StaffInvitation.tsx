@@ -21,7 +21,7 @@ export function StaffInvitation() {
   return <details className="botanical-section-card dashboard-operation-card"><summary>Invitar nuevo trabajador</summary>
     <p>Recibirá un enlace para crear su contraseña. La invitación no concede permisos ni sucursal.</p>
     <form className="dashboard-form dashboard-operation-form" onSubmit={submit}><fieldset disabled={busy}><label>Nombre<input name="name" minLength={2} maxLength={160} required /></label>
-      <label>Correo<input name="email" type="email" maxLength={254} required /></label><button className="catalog-action">Enviar invitación</button>
-    </fieldset></form>{notice && <p className="form-notice" role="status">{notice}</p>}{error && <p role="alert">{error}</p>}
+      <label>Correo<input name="email" type="email" maxLength={254} required /></label><button className="submit-db-btn" style={{ width: 'fit-content', marginTop: '0.5rem' }}>Enviar invitación</button>
+    </fieldset></form>{notice && <p className="form-notice" role="status">{notice}</p>}{error && <p className="admin-page-error" role="alert">{error}</p>}
   </details>
 }

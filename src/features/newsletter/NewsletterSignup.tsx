@@ -18,9 +18,15 @@ export function NewsletterSignup() {
     finally { if (!controller.signal.aborted) setBusy(false) }
   }
   return <div className="footer-newsletter"><h5>Boletín Verde</h5><p>Recibe novedades y consejos del vivero.</p>
-    <form onSubmit={subscribe}><label>Correo electrónico<input name="email" type="email" maxLength={254} required /></label>
-      <label><input name="consent" type="checkbox" required /> Acepto recibir el boletín; puedo darme de baja en cada correo.</label>
-      <button disabled={busy}>{busy ? 'Enviando…' : 'Solicitar suscripción'}</button>
-    </form><p role="status">{notice}</p>{error && <p role="alert">{error}</p>}
+    <form onSubmit={subscribe}>
+      <div className="newsletter-form">
+        <label className="sr-only" htmlFor="newsletter-email">Correo electrónico</label>
+        <input id="newsletter-email" name="email" type="email" placeholder="Tu correo electrónico" maxLength={254} disabled={busy} required />
+        <button disabled={busy}>{busy ? 'Enviando…' : 'Suscribirme'}</button>
+      </div>
+      <label className="newsletter-consent"><input name="consent" type="checkbox" disabled={busy} required /> Acepto recibir el boletín; puedo darme de baja en cada correo.</label>
+    </form>
+    {notice && <p className="newsletter-feedback notice" role="status">{notice}</p>}
+    {error && <p className="newsletter-feedback error" role="alert">{error}</p>}
   </div>
 }

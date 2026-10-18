@@ -53,11 +53,11 @@ export function CashierReceiptHistory({ userId, branchId, attempt, locked, compa
   const content = <>
     <h2 id="receipt-history-title">Reimprimir una venta</h2>
     <p>Últimos 100 comprobantes registrados aquí para tu usuario y sucursal. Se consultan en línea; reimprimir no realiza otro cobro.</p>
-    {!rows.length && <p>Aún no hay comprobantes guardados en este navegador.</p>}
-    <div>{rows.map(row => <button key={row.saleId} type="button" className="retry-btn-secondary"
+    {!rows.length && <p className="no-records-copy">Aún no hay comprobantes guardados en este navegador.</p>}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', margin: '0.75rem 0' }}>{rows.map(row => <button key={row.saleId} type="button" className="retry-btn-secondary"
       disabled={locked || busy} onClick={() => void retrieve(row)}>Ver ticket {row.folio}</button>)}</div>
-    {busy && <p role="status">Consultando pago confirmado…</p>}
-    {error && <p role="alert">{error}</p>}
+    {busy && <p className="loading-copy" role="status">Consultando pago confirmado…</p>}
+    {error && <p className="desk-warning" role="alert">{error}</p>}
     {!locked && result && <>
       <CashierPrintableTicket result={result} reprint />
       <button type="button" className="retry-btn-secondary" onClick={() => setResult(null)}>Cerrar comprobante</button>

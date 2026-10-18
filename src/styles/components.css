@@ -425,6 +425,34 @@ footer {
   background-color: var(--accent-hover);
 }
 
+.newsletter-consent {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+.newsletter-consent input[type="checkbox"] {
+  accent-color: var(--accent-color);
+}
+
+.newsletter-feedback {
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.newsletter-feedback.error {
+  color: #fca5a5;
+}
+
+.newsletter-feedback.notice {
+  color: #86efac;
+}
+
 .footer-bottom {
   max-width: 1200px;
   margin: 0 auto;

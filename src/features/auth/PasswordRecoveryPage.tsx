@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import logo from '../../assets/isotipo-flor.svg'
 import { accountRecovery, recoveryToken } from './account-links-service'
 import { useAuth } from './useAuth'
+
 export function PasswordRecoveryPage() {
   const { signOut, status } = useAuth()
   const [token, setToken] = useState(() => recoveryToken(window.location.hash))
@@ -36,14 +38,32 @@ export function PasswordRecoveryPage() {
     } catch (reason) { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'No se completó la solicitud.') }
     finally { if (!controller.signal.aborted) setBusy(false) }
   }
-  return <main className="internal-page auth-page"><section className="login-card"><h1>{ready ? 'Establecer contraseña' : 'Recuperar acceso'}</h1>
-    <form onSubmit={submit}><fieldset disabled={busy}>
-      {ready ? <><label>Nueva contraseña<input name="password" type="password" autoComplete="new-password" minLength={15} required /></label>
-        <label>Confirmar contraseña<input name="confirm" type="password" autoComplete="new-password" minLength={15} required /></label></> :
-        <label>Correo electrónico<input name="email" type="email" autoComplete="email" required /></label>}
-      <button className="catalog-action">{ready ? 'Guardar contraseña' : 'Enviar enlace'}</button>
+  return <main className="internal-page auth-page"><section className="login-card" aria-labelledby="recovery-title">
+    <Link to="/" className="logo"><img src={logo} alt="" className="logo-icon" />Vivero<span>Dulcinea</span></Link>
+    <p className="eyebrow">Acceso interno</p>
+    <h1 id="recovery-title">{ready ? 'Establecer contraseña' : 'Recuperar acceso'}</h1>
+    <p>{ready ? 'Ingresa tu nueva contraseña para acceder al sistema.' : 'Introduce tu correo para recibir un enlace de recuperación seguro.'}</p>
+    <form className="auth-form" onSubmit={submit}><fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: '1.25rem' }}>
+      {ready ? <>
+        <div className="form-group">
+          <label htmlFor="recovery-password">Nueva contraseña</label>
+          <input id="recovery-password" name="password" type="password" autoComplete="new-password" minLength={15} required />
+        </div>
+        <div className="form-group">
+          <label htmlFor="recovery-confirm">Confirmar contraseña</label>
+          <input id="recovery-confirm" name="confirm" type="password" autoComplete="new-password" minLength={15} required />
+        </div>
+      </> : (
+        <div className="form-group">
+          <label htmlFor="recovery-email">Correo electrónico</label>
+          <input id="recovery-email" name="email" type="email" autoComplete="email" required />
+        </div>
+      )}
+      {error && <p className="auth-error" role="alert" aria-live="assertive">{error}</p>}
+      {notice && <p className="form-notice" role="status" aria-live="polite">{notice}</p>}
+      <button type="submit" className="submit-db-btn" disabled={busy}>{busy ? 'Enviando…' : ready ? 'Guardar contraseña' : 'Enviar enlace'}</button>
     </fieldset></form>
-    {token && <button type="button" disabled={busy} onClick={() => { setToken(null); setError(''); setNotice('') }}>Solicitar otro enlace</button>}
-    <p role="status">{notice}</p>{error && <p role="alert">{error}</p>}<Link to="/login">Volver al acceso</Link>
+    {token && <button type="button" className="secondary-auth-btn" style={{ marginTop: '0.75rem', width: '100%' }} disabled={busy} onClick={() => { setToken(null); setError(''); setNotice('') }}>Solicitar otro enlace</button>}
+    <Link className="back-link" to="/login">← Volver al inicio de sesión</Link>
   </section></main>
 }

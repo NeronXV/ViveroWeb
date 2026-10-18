@@ -29,12 +29,12 @@ export function InventoryActivation({ canActivate = false }: { canActivate?: boo
   }
   return <div className="botanical-section-card dashboard-operation-card">
     <h4>Descuento de existencias al cobrar</h4>
-    {error && <p role="alert">{error}</p>}
+    {error && <p className="admin-page-error" role="alert">{error}</p>}
     {!state && <button className="retry-btn-secondary" onClick={() => { setError(''); setRevision((value) => value + 1) }}>Consultar estado</button>}
     {state?.enabled ? <p role="status">Activo: Web y Android descuentan existencias al confirmar nuevos cobros. Un saldo insuficiente impide registrar el pago.</p> : state && <>
       <p>Tu sucursal está en carga inicial: los cobros todavía no descuentan existencias. Completa y revisa el conteo físico antes de activar. No se descontarán ventas anteriores.</p>
       {canActivate && <><label className="dashboard-confirmation"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Confirmo que el inventario inicial de esta sucursal está revisado.</label>
-      <button type="button" className="catalog-action" disabled={!confirmed || busy} onClick={activate}>Activar descuento al cobrar</button></>}
+      <button type="button" className="submit-db-btn" style={{ marginTop: '0.75rem', width: 'fit-content' }} disabled={!confirmed || busy} onClick={activate}>Activar descuento al cobrar</button></>}
     </>}
   </div>
 }
