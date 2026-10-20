@@ -1,7 +1,7 @@
 import { apiId, backendHttp, BackendHttpError, decimal, list, object } from '../../lib/backend-http'
 import { backendId, requireBackendAccess } from '../auth/backend-runtime'
 
-export interface InventoryPermissions { canRecordCount: boolean; canReceive: boolean; canApproveCounts: boolean }
+export interface InventoryPermissions { canRecordCount: boolean; canReceive: boolean; canApproveCounts: boolean; canApplyCount?: boolean }
 export interface CountBaseline { productId: string; branchId: string; quantity: string; movementId: number }
 export interface CountObservation {
   id: string; productId: string; branchId: string; observedQuantity: number; baselineQuantity: number
@@ -9,8 +9,9 @@ export interface CountObservation {
 }
 function permissions(value: unknown): InventoryPermissions {
   const p = object(value)
+  if (p.can_apply_count !== undefined && typeof p.can_apply_count !== 'boolean') throw new BackendHttpError(502, 'INCOMPATIBLE_RESPONSE')
   if (['can_record_count', 'can_receive', 'can_approve_counts'].some(k => typeof p[k] !== 'boolean')) throw new BackendHttpError(502, 'INCOMPATIBLE_RESPONSE')
-  return { canRecordCount: p.can_record_count as boolean, canReceive: p.can_receive as boolean, canApproveCounts: p.can_approve_counts as boolean }
+  return { canApplyCount: p.can_apply_count === true, canRecordCount: p.can_record_count as boolean, canReceive: p.can_receive as boolean, canApproveCounts: p.can_approve_counts as boolean }
 }
 export function parseObservation(value: unknown): CountObservation {
   const r = object(value)
@@ -22,7 +23,7 @@ export function parseObservation(value: unknown): CountObservation {
 }
 function message(error: unknown): never {
   if (error instanceof BackendHttpError) {
-    if (error.code === 'INVENTORY_COUNT_STALE') throw new Error('Hubo movimientos después del conteo. Registra un nuevo conteo antes de aprobar.')
+    if (error.code === 'INVENTORY_COUNT_STALE') throw new Error('Hubo movimientos después del conteo. Actualiza las existencias y registra un nuevo conteo.')
     if (error.code === 'INVENTORY_OWNER_REQUIRED') throw new Error('Esta operación requiere la autorización de un propietario.')
     if (error.code === 'INVENTORY_DECISION_CONFLICT') throw new Error('Este conteo ya fue resuelto. Actualiza la lista para consultar el resultado.')
   }
@@ -62,7 +63,7 @@ export function pendingInventoryPreparation(): Attempt | null {
   if (!raw) return null
   try {
     const r = object(JSON.parse(raw))
-    if (typeof r.path !== 'string' || !/^inventory\/count-observations(?:\/[1-9][0-9]*)?$/.test(r.path)
+    if (typeof r.path !== 'string' || !/^inventory\/(?:count-observations(?:\/[1-9][0-9]*)?|direct-counts)$/.test(r.path)
       || typeof r.key !== 'string' || !/^[a-f0-9-]{36}$/.test(r.key)) throw new Error()
     return { path: r.path, body: object(r.body), key: r.key }
   } catch { throw new Error('No pudimos leer el intento guardado. Conserva los datos y solicita revisión.') }
@@ -78,7 +79,7 @@ async function sendAttempt(path: string, body: Record<string, unknown>): Promise
   localStorage.setItem(storageKey, JSON.stringify(attempt))
   try {
     let r: Record<string, unknown>
-    if (previous && path === 'inventory/count-observations') {
+    if (previous && ['inventory/count-observations','inventory/direct-counts'].includes(path)) {
       try { r = await backendHttp(path + '/result', 'POST', body, undefined, attempt.key) }
       catch (error) {
         if (!(error instanceof BackendHttpError) || error.status !== 404) throw error
@@ -88,7 +89,7 @@ async function sendAttempt(path: string, body: Record<string, unknown>): Promise
     const result = parseObservation(r)
     if (result.branchId !== String(requireBackendAccess().context.branch?.id)
       || (body.product_id !== undefined && result.productId !== String(body.product_id))
-      || (path !== 'inventory/count-observations' && result.id !== path.split('/').at(-1))) throw new BackendHttpError(502, 'INCOMPATIBLE_RESPONSE')
+      || (!['inventory/count-observations','inventory/direct-counts'].includes(path) && result.id !== path.split('/').at(-1))) throw new BackendHttpError(502, 'INCOMPATIBLE_RESPONSE')
     if (journalKey() !== storageKey) throw new Error('Cambió la cuenta o sucursal. El intento original se conserva.')
     localStorage.removeItem(storageKey)
     return result
@@ -98,10 +99,10 @@ async function sendAttempt(path: string, body: Record<string, unknown>): Promise
     return message(error)
   }
 }
-export function recordInventoryCountObservation(input: { productId: string; countedQuantity: number; reason: string; baseline: CountBaseline }): Promise<CountObservation> {
+export function recordInventoryCountObservation(input: { productId: string; countedQuantity: number; reason: string; baseline: CountBaseline; direct?: boolean }): Promise<CountObservation> {
   if (!Number.isInteger(input.countedQuantity) || input.countedQuantity < 0 || input.countedQuantity > 99999999999 || input.reason.trim().length < 3 || input.reason.trim().length > 240) throw new Error('Revisa la cantidad y el motivo del conteo.')
   if (!input.baseline || input.baseline.productId !== input.productId || input.baseline.branchId !== String(requireBackendAccess().context.branch?.id)) throw new Error('Consulta las existencias de esta planta antes de contar.')
-  return sendAttempt('inventory/count-observations', { product_id: backendId(input.productId), counted_quantity: String(input.countedQuantity), reason: input.reason.trim(),
+  return sendAttempt(input.direct ? 'inventory/direct-counts' : 'inventory/count-observations', { product_id: backendId(input.productId), counted_quantity: String(input.countedQuantity), reason: input.reason.trim(),
     baseline_quantity: input.baseline.quantity, baseline_movement_id: input.baseline.movementId })
 }
 export function decideCountObservation(id: string, decision: 'APPROVE' | 'REJECT', reason: string): Promise<CountObservation> {

@@ -1,3 +1,4 @@
+import { PlantHistory } from './PlantHistory'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useBlocker, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
@@ -7,7 +8,7 @@ import { AdminCatalog } from '../AdminCatalog'
 import { useInventoryPermissions } from '../useInventoryPermissions'
 import { usePlants } from './usePlants'
 import { filterCatalogingDrafts, filterPlants, nextPendingPlant, type PlantFilters } from './plants-model'
-import { stateLabels } from './plants-service'
+import { stateLabels, preparationLabels } from './plants-service'
 import { PlantPhoto } from './PlantPhoto'
 import { PlantDetail } from './PlantDetail'
 import { PlantCount } from './PlantCount'
@@ -203,8 +204,8 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
         !product ? (
           <div role="alert"><p>No encontramos esta planta en tu catálogo autorizado.</p><button onClick={back}>Volver a Plantas</button></div>
         ) : (
-          data.preparations[product.id] && (countView ? <PlantCount key={`count-${product.id}`} product={product} branchName={branchName} canRecord={permissions.canRecordCount} guard={guard}
-            onBack={() => open(product.id)} onSubmitted={() => { setNotice('Conteo enviado. Quedó pendiente de aprobación; las existencias no cambiaron.'); open(product.id) }} />
+          data.preparations[product.id] && (countView ? <PlantCount key={`count-${product.id}`} product={product} branchName={branchName} canRecord={permissions.canRecordCount} canApply={permissions.canApplyCount} guard={guard}
+            onBack={() => open(product.id)} onSubmitted={applied => { setNotice(applied?'Conteo aplicado y registrado en el historial.':'Conteo enviado para revisión.'); data.refresh(); open(product.id) }} />
             : <PlantDetail key={product.id} product={product} preparation={data.preparations[product.id]} categories={data.categories}
               balance={data.balances.find(b => b.productId === product.id)} branchName={branchName} canPrice={canPrice} permissions={permissions} guard={guard}
               onSaved={data.update} onStockUpdated={data.updateStock} onNext={next} onBack={back} onCount={() => { setNotice(''); open(product.id, 'count') }} onInventory={onInventory ? () => onInventory(product.id) : undefined}
@@ -251,9 +252,11 @@ function PlantsWorkspace({ branchId, branchName, canInventory, canPrice, onInven
             const prep = data.preparations[p.id], balance = data.balances.find(b => b.productId === p.id)
             return <article className={`plant-card ${!prep.ready && prep.commercialState !== 'DISABLED' ? 'plant-card-pending' : ''}`} key={p.id}><button type="button" className="plant-card-open" onClick={() => open(p.id)} aria-label={`Abrir ficha de ${p.commonName}`}>
               <PlantPhoto imageId={p.image?.id} name={p.commonName} /><div className="plant-card-content"><span className={`plant-state ${prep.ready ? 'ready' : prep.commercialState === 'DISABLED' ? 'inactive' : ''}`}>{stateLabels[prep.commercialState]}</span><h4>{p.commonName}</h4><p className="plant-card-code">{p.internalCode} · {p.categoryName}</p><div className="plant-card-values"><strong>{prep.priceConfirmed ? money(p.priceCents) : 'Precio pendiente'}</strong><span>{balance ? `${balance.totalQuantity} ${p.unit}` : 'Existencia no consultada'}</span></div><span className="plant-card-link">Abrir ficha <span aria-hidden="true">↗</span></span></div>
+              {!prep.ready&&<p className="plants-helper">Pendiente: {prep.reasons.map(reason=>preparationLabels[reason]).join(' · ')}</p>}
             </button></article>
           })}</div>
 
+          <details><summary>Historial de cambios de la sucursal</summary><PlantHistory /></details>
           <details className="plants-advanced" open={toolsOpen} onToggle={e => setToolsOpen(e.currentTarget.open)}><summary>Herramientas del catálogo</summary>{toolsOpen && <><p>Creación de plantas, categorías, etiquetas en lote y opciones avanzadas existentes.</p><AdminCatalog active onContinueToInventory={onInventory} /></>}</details>
         </>
       )}

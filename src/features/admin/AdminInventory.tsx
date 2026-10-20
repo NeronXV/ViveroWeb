@@ -37,6 +37,7 @@ export function AdminInventory({
   const [isCountModalOpen, setIsCountModalOpen] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string>('')
   const [countBaseline, setCountBaseline] = useState<CountBaseline | null>(null)
+  const [countQuantity,setCountQuantity] = useState('')
 
   // Filtros de búsqueda
   const [searchQuery, setSearchQuery] = useState('')
@@ -59,6 +60,7 @@ export function AdminInventory({
     if (!isCountModalOpen || !selectedProductId) return
     const controller = new AbortController()
     setCountBaseline(null)
+    setCountQuantity('')
     fetchCountBaseline(selectedProductId, controller.signal).then(value => {
       if (!controller.signal.aborted) setCountBaseline(value)
     }).catch(error => { if (!controller.signal.aborted) setMutationError(error instanceof Error ? error.message : 'No se pudieron consultar las existencias.') })
@@ -112,14 +114,15 @@ export function AdminInventory({
     setNotice(null)
     setMutationError(null)
     try {
-      await recordInventoryCountObservation({
+      const result = await recordInventoryCountObservation({
+        direct: permissions.canApplyCount,
         productId,
         countedQuantity,
         reason,
         baseline: countBaseline,
       })
       setIsCountModalOpen(false)
-      setNotice('Conteo guardado para revisión. Las existencias no han cambiado.')
+      setNotice(result.status==='PENDING'?'Conteo guardado para revisión.':'Ajuste aplicado y registrado en el historial.')
       setCountRevision(value => value + 1)
       inventory.refresh()
     } catch (error) {
@@ -521,12 +524,13 @@ export function AdminInventory({
             </div>
 
             <p className="real-data-copy" style={{ margin: '0.5rem 0 1rem' }}>
-              Guardaremos la cantidad observada. Las existencias cambiarán únicamente después de la aprobación de un propietario.
+              {permissions.canApplyCount?'El ajuste se aplica directamente y queda registrado con su motivo en el historial.':'Guardaremos la cantidad observada para revisión de un propietario.'}
             </p>
 
             {mutationError && <div className="admin-dialog-error" role="alert">{mutationError}</div>}
 
             {!countBaseline && <p role="status">Consultando las existencias antes de registrar el conteo…</p>}
+            {countBaseline&&<p>Existencia registrada: {Number(countBaseline.quantity)} · Diferencia: {/^\d+$/.test(countQuantity)?Number(countQuantity)-Number(countBaseline.quantity):'—'}</p>}
             <form onSubmit={submitCount} key={selectedProductId}>
               <div className="admin-form-group form-group">
                 <label htmlFor="modal-count-product">Planta o Producto *</label>
@@ -551,6 +555,8 @@ export function AdminInventory({
                 <input
                   id="modal-count-qty"
                   name="countedQuantity"
+                  value={countQuantity}
+                  onChange={e=>setCountQuantity(e.target.value)}
                   type="number"
                   min="0"
                   max="100000"
@@ -586,7 +592,7 @@ export function AdminInventory({
                   Cancelar
                 </button>
                 <button type="submit" className="catalog-action" disabled={saving || !permissions.canRecordCount || !countBaseline || countBaseline.productId !== selectedProductId}>
-                  {saving ? 'Guardando…' : 'Guardar conteo para revisión'}
+                  {saving ? 'Guardando…' : permissions.canApplyCount ? 'Aplicar ajuste' : 'Guardar conteo para revisión'}
                 </button>
               </div>
             </form>

@@ -19,7 +19,22 @@ beforeEach(() => {
 afterEach(() => { unbind(); vi.unstubAllGlobals() })
 it('uses permissions authorized by the server, even for a manager account', async () => {
   fetcher.mockResolvedValue(Response.json({ schema_version: 1, branch_id: 2, permissions: { can_record_count: true, can_receive: false, can_approve_counts: false } }))
-  expect(await fetchInventoryPermissions()).toEqual({ canRecordCount: true, canReceive: false, canApproveCounts: false })
+  expect(await fetchInventoryPermissions()).toEqual({ canApplyCount:false, canRecordCount: true, canReceive: false, canApproveCounts: false })
+})
+it('enables direct counts only with explicit server permission',async()=>{
+  fetcher.mockResolvedValue(Response.json({schema_version:1,branch_id:2,permissions:{can_record_count:true,can_receive:true,can_approve_counts:false,can_apply_count:true}}))
+  expect((await fetchInventoryPermissions()).canApplyCount).toBe(true)
+})
+it('recovers a direct adjustment through its own result endpoint with the original key',async()=>{
+  fetcher.mockRejectedValueOnce(new TypeError('network'))
+  await expect(recordInventoryCountObservation({...input,direct:true})).rejects.toThrow()
+  const pending=pendingInventoryPreparation()!
+  expect(pending.path).toBe('inventory/direct-counts')
+  fetcher.mockResolvedValueOnce(Response.json({...receipt,status:'APPLIED'}))
+  expect((await recoverInventoryPreparation()).status).toBe('APPLIED')
+  expect(fetcher.mock.calls[1][0]).toBe('/api/v1/inventory/direct-counts/result')
+  expect(fetcher.mock.calls[1][1]?.headers).toMatchObject({'Idempotency-Key':pending.key})
+  expect(pendingInventoryPreparation()).toBeNull()
 })
 it('rejects malformed contracts and quantities before making a request', () => {
   expect(() => parseObservation({ ...receipt, status: 'PAID' })).toThrow()

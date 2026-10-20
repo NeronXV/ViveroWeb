@@ -116,7 +116,7 @@ export async function publishCataloging(id: string, payload: PublishCatalogingPa
   localStorage.setItem(storageKey,raw)
   return sendAttempt(scope,storageKey,raw)
 }
-export async function confirmCataloging(id: string, payload: { revision: number; fields: Partial<CatalogingFields>; price_cents: number; product_id?: number }): Promise<CatalogingDraft> {
+export async function confirmCataloging(id: string, payload: { revision: number; fields: Partial<CatalogingFields>; price_cents: number; product_id?: number; initial_quantity?: number }): Promise<CatalogingDraft> {
   const scope=journalScope(), storageKey=journalKey(scope)
   if(localStorage.getItem(storageKey)) throw new Error('Comprueba el guardado pendiente antes de continuar.')
   const attempt={path:'plants/confirm',method:'POST',body:{target:'draft',id:Number(backendId(id)),...payload},key:crypto.randomUUID()}
@@ -156,6 +156,7 @@ async function sendProductConfirmation(scope:JournalScope,storageKey:string,raw:
   }
 }
 export async function confirmProduct(id:string,payload:{revision:number;fields:Record<string,unknown>;price_cents:number}) {
+  if(!Number.isInteger(payload.revision)||payload.revision<1)throw new Error('Consulta la versión guardada de la ficha antes de confirmar.')
   const scope=journalScope(),storageKey=productJournalKey(scope)
   if(localStorage.getItem(storageKey))throw new Error('Comprueba la publicación pendiente antes de continuar.')
   const raw=JSON.stringify({path:'plants/confirm',method:'POST',body:{target:'product',id:Number(backendId(id)),...payload},key:crypto.randomUUID()})
@@ -194,6 +195,7 @@ export async function saveCatalogingProgress(draft: CatalogingDraft, fields: Cat
   return saved
 }
 export function catalogingError(error: unknown) {
+  if(error instanceof BackendHttpError && error.code==='CATALOGING_INPUT_INVALID')return 'No se pudo confirmar la ficha. Vuelve a abrirla para consultar su versión guardada y revisa los datos antes de confirmar.'
   if(error instanceof BackendHttpError && error.code==='CATALOGING_SESSION_CHANGED')return 'La sesión o sucursal cambió durante el guardado. El intento original se conserva; vuelve a la cuenta y sucursal originales para comprobarlo.'
   if(error instanceof BackendHttpError && error.code==='CATALOGING_EDIT_CONFLICT')return 'Otra persona guardó cambios. Consulta la ficha actual y compara antes de guardar; tu formulario se conserva.'
   if(error instanceof BackendHttpError && ['CATALOGING_PRODUCT_EXISTS','DUPLICATE'].includes(error.code))return 'Ya existe un producto con ese código. Revisa la coincidencia y vincula el existente si corresponde.'

@@ -35,7 +35,7 @@ export function InventoryCountReview({ canApprove, revision, onChanged, products
   }
   return <section className="inventory-count-review" aria-label="Conteos pendientes" aria-busy={busy}>
     <h4>Conteos por revisar</h4>
-    <p>Registrar un conteo no cambia las existencias. Un propietario debe revisar las diferencias.</p>
+    <p>Aquí aparecen los conteos enviados para revisión. Los ajustes directos autorizados ya aplicados se consultan en el historial.</p>
     {hasPending && <button type="button" className="catalog-action secondary" disabled={busy} onClick={recover}>Comprobar resultado pendiente</button>}
     {error && <p className="admin-page-error" role="alert">{error}</p>}
     {items.length === 0 && <p>No hay conteos pendientes.</p>}

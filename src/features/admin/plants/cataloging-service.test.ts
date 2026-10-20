@@ -22,6 +22,11 @@ beforeEach(()=>{
   session()
 })
 afterEach(()=>{unbindSession();vi.unstubAllGlobals()})
+it.each([undefined,0,-1,1.5])('does not send or journal a confirmation without a valid revision (%s)',async revision=>{
+  await expect(confirmProduct('9',{revision:revision as number,fields:{},price_cents:15000})).rejects.toThrow('versión guardada')
+  expect(request).not.toHaveBeenCalled()
+  expect(pendingProductConfirmation()).toBe(false)
+})
 it.each([401,403,408,429,503])('retains uncertain operation after HTTP %s and recovers the original key',async(status)=>{
   request.mockRejectedValueOnce(new Error('Connection lost'))
   await expect(publishCataloging('1',{revision:1,price_cents:12500,initial_quantity:7})).rejects.toThrow()

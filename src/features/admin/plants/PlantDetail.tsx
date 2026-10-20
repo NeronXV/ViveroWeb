@@ -1,3 +1,4 @@
+import { PlantHistory } from './PlantHistory'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AdminCategory, AdminProduct } from '../admin-catalog-types'
 import type { AdminInventoryBalance, InventoryMovement } from '../admin-types'
@@ -21,10 +22,25 @@ type PlantDetailProps = {
 }
 export function PlantDetail(props: PlantDetailProps) {
   const [completionFlow] = useState(() => !props.preparation.ready && props.preparation.commercialState !== 'DISABLED')
-  if (completionFlow) return <ProductCompletionWizard {...props} />
-  return <PlantDetailLegacy {...props} />
+  return <>{completionFlow?<ProductCompletionWizard {...props} />:<PlantDetailLegacy {...props} />}<details><summary>Historial de esta planta</summary><PlantHistory productId={props.product.id} /></details></>
 }
-function ProductCompletionWizard({ product, preparation, categories, canPrice, permissions, guard, onSaved, onBack, onCount, onInventory, onReception }: PlantDetailProps) {
+function ProductCompletionWizard(props: PlantDetailProps) {
+  const [saved,setSaved]=useState<AdminProduct|null>(null)
+  const [error,setError]=useState(''),[retry,setRetry]=useState(0)
+  useEffect(()=>{
+    let active=true
+    setError('');setSaved(null)
+    fetchEditablePlant(props.product.id).then(value=>{if(active)setSaved(value)})
+      .catch(e=>{if(active)setError(catalogingError(e))})
+    return()=>{active=false}
+  },[props.product.id,retry])
+  if(!saved)return <div className="cataloging-wizard">
+    <button type="button" className="plants-back" onClick={props.onBack}>← Volver a Plantas</button>
+    {error?<><p role="alert">{error}</p><button type="button" onClick={()=>setRetry(n=>n+1)}>Reintentar carga de ficha</button></>:<p role="status">Consultando la ficha guardada…</p>}
+  </div>
+  return <LoadedProductCompletionWizard {...props} product={saved} />
+}
+function LoadedProductCompletionWizard({ product, preparation, categories, canPrice, permissions, guard, onSaved, onBack, onCount, onInventory, onReception }: PlantDetailProps) {
   const split=product.commonName.lastIndexOf(' · ')
   const [step,setStep]=useState(1),[name,setName]=useState(split<0?product.commonName:product.commonName.slice(0,split))
   const [presentation,setPresentation]=useState(split<0?'':product.commonName.slice(split+3))
@@ -38,26 +54,26 @@ function ProductCompletionWizard({ product, preparation, categories, canPrice, p
   const [preview,setPreview]=useState<string|null>(null)
   useEffect(()=>{if(!file){setPreview(null);return}const url=URL.createObjectURL(file);setPreview(url);return()=>URL.revokeObjectURL(url)},[file])
   useEffect(()=>{const cut=base.commonName.lastIndexOf(' · ')
-    guard(Boolean(file)||name!==(cut<0?base.commonName:base.commonName.slice(0,cut))||presentation!==(cut<0?'':base.commonName.slice(cut+3))
+    guard(!done&&(Boolean(file)||name!==(cut<0?base.commonName:base.commonName.slice(0,cut))||presentation!==(cut<0?'':base.commonName.slice(cut+3))
       ||category!==base.categoryId||description!==base.description||scientific!==(base.scientificName??'')
       ||light!==base.lightType||watering!==base.wateringAdvice
-      ||price!==(base.priceCents>0?(base.priceCents/100).toFixed(2):''),busy)
-  },[file,name,presentation,category,description,scientific,light,watering,price,base,busy,guard])
+      ||price!==(base.priceCents>0?(base.priceCents/100).toFixed(2):'')),busy)
+  },[file,name,presentation,category,description,scientific,light,watering,price,base,busy,guard,done])
   const upload=async()=>{
-    if(!file)return true
+    if(!file)return base
     if(!base.editRevision)throw new Error('Consulta la versión guardada antes de continuar.')
     await catalogingBinary(`products/${product.id}/catalog-photo`,file,base.editRevision,true)
     const saved=await fetchEditablePlant(product.id);setBase(saved);setFile(null)
-    return true
+    return saved
   }
   const confirm=async()=>{
     if(busy||pendingProductConfirmation())return
     setBusy(true);setError('')
     try{
-      await upload()
       const cents=price.trim()?pesosToCents(price):0
       if(!Number.isSafeInteger(cents)||cents<0)throw new Error('Revisa el precio.')
-      await confirmProduct(product.id,{revision:base.editRevision!,fields:{common_name:`${name.trim()} · ${presentation.trim()}`,category_id:Number(category),
+      const current=await upload()
+      await confirmProduct(product.id,{revision:current.editRevision!,fields:{common_name:`${name.trim()} · ${presentation.trim()}`,category_id:Number(category),
         description:description.trim(),scientific_name:scientific.trim()||null,light_type:light.trim(),watering_advice:watering.trim()},price_cents:cents})
       const [saved,prep]=await Promise.all([fetchEditablePlant(product.id),fetchPlantPreparation(product.id,preparation.branchId)])
       setBase(saved);setCurrentPrep(prep);setDone(true);onSaved(saved,prep);guard(false,false)
@@ -75,8 +91,9 @@ function ProductCompletionWizard({ product, preparation, categories, canPrice, p
     <h3>Paso {step} de 3 · {['Identificar','Fotografía','Precio y confirmar'][step-1]}</h3>
     {error&&<p className="plants-warning" role="alert">{error}</p>}
     {notice&&<p className="plants-notice" role="status">{notice}</p>}
+    {!currentPrep.ready&&<div className="plant-preparation"><strong>Pendiente para vender en esta sucursal</strong><ul>{currentPrep.reasons.map(reason=><li key={reason}>{preparationLabels[reason]}</li>)}</ul><p>Guardar la ficha y aprobar un conteo son pasos distintos. Tener existencias no sustituye la habilitación de venta.</p></div>}
     {pendingProductConfirmation()&&<div className="plants-warning"><p>Hay una publicación sin comprobar.</p><button type="button" disabled={busy} onClick={()=>void recover()}>Comprobar publicación</button></div>}
-    {done?<div role="status" className="wizard-feedback-banner"><strong>{currentPrep.ready?'Planta lista para vender':'Ficha publicada'}</strong>
+    {done?<div role="status" className="wizard-feedback-banner"><strong>{currentPrep.ready?'Planta lista para vender':'Ficha guardada; preparación de venta pendiente'}</strong>
       {!currentPrep.initialCountConfirmed&&<p>{currentPrep.priceConfirmed?'Solo falta confirmar el conteo inicial de esta sucursal.':'Faltan el precio y el conteo inicial para venderla.'}</p>}
       {currentPrep.initialCountConfirmed&&!currentPrep.ready&&<p>Revisa el precio o la preparación comercial para venderla.</p>}
       {!currentPrep.initialCountConfirmed&&permissions.canRecordCount&&<button type="button" className="plants-primary" onClick={onCount}>Confirmar conteo inicial</button>}

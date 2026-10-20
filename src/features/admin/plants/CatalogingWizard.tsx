@@ -1,4 +1,5 @@
 import { useEffect, useState, useId } from 'react'
+import { useInventoryPermissions } from '../useInventoryPermissions'
 import { useAuth } from '../../auth/useAuth'
 import { canPublishCataloging } from '../../access/access-rules'
 import type { AdminCategory, AdminProduct } from '../admin-catalog-types'
@@ -49,6 +50,8 @@ export function CatalogingWizard({
 }: CatalogingWizardProps) {
   const { accessContext } = useAuth()
   const canPublish = canPublishCataloging(accessContext)
+  const permissions = useInventoryPermissions()
+  const [initialQuantity,setInitialQuantity] = useState('')
   const [step, setStep] = useState<WizardStep>(1)
   const [draft, setDraft] = useState<CatalogingDraft | null>(null)
   const [form, setForm] = useState<WizardDraftForm | null>(null)
@@ -59,6 +62,8 @@ export function CatalogingWizard({
 
   // Step 1: Link existing product modal/toggle
   const [selectedProductId, setSelectedProductId] = useState('')
+  const fromReceipt = !!draft?.source_evidence && typeof draft.source_evidence === 'object' && 'purchase_id' in draft.source_evidence
+  const directNew = permissions.canApplyCount && !selectedProductId && !fromReceipt
 
   // Step 2: Photo state (no separate save button)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
@@ -89,7 +94,7 @@ export function CatalogingWizard({
     setStep(1)
     setPhotoFile(null)
     setPhotoPreview(null)
-    setPriceInput('')
+    setPriceInput('');setInitialQuantity('')
     setSelectedProductId('')
 
     loadCatalogingDraft(draftId)
@@ -97,6 +102,7 @@ export function CatalogingWizard({
         if (!active) return
         setDraft(d)
         setForm(initialWizardForm(d.fields, d.original_name))
+        setInitialQuantity(d.fields.initial_quantity == null ? '' : String(d.fields.initial_quantity))
         if (d.fields.suggested_price_cents != null && d.fields.suggested_price_cents > 0) {
           setPriceInput((d.fields.suggested_price_cents / 100).toFixed(2))
         }
@@ -148,7 +154,7 @@ export function CatalogingWizard({
   const closed = draft?.status === 'LINKED' || draft?.status === 'PREPARED'
   const readOnly = closed || (draft?.status === 'REVIEW' && !canPublish)
   const pending = pendingCataloging()
-  const isDirty = !readOnly && Boolean(photoFile || (form && draft && (
+  const isDirty = !readOnly && Boolean(initialQuantity !== (draft?.fields.initial_quantity == null ? '' : String(draft.fields.initial_quantity)) || photoFile || (form && draft && (
     JSON.stringify(form) !== JSON.stringify(initialWizardForm(draft.fields, draft.original_name))
     || priceInput !== (draft.fields.suggested_price_cents ? (draft.fields.suggested_price_cents / 100).toFixed(2) : '')
   )))
@@ -277,6 +283,7 @@ export function CatalogingWizard({
     let priceCents: number | null = null
     try {
       priceCents = parseWizardPrice(priceInput)
+      if(directNew && (!priceCents || !/^\d+$/.test(initialQuantity) || Number(initialQuantity)>1000000))throw new Error('Indica un precio mayor a cero y la cantidad inicial; escribe 0 si no hay unidades.')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Precio inválido')
       return
@@ -296,6 +303,7 @@ export function CatalogingWizard({
           description: form.description.trim(),
         },
         price_cents: priceCents ?? 0,
+        ...(directNew ? {initial_quantity:Number(initialQuantity)} : {}),
         ...(selectedProductId && suggestions.some(p=>p.id===selectedProductId) ? { product_id:Number(selectedProductId) } : {}),
       })
 
@@ -322,6 +330,7 @@ export function CatalogingWizard({
     setError('')
     try {
       if (isDirty && !readOnly) {
+        if (!fromReceipt && initialQuantity && (!/^\d+$/.test(initialQuantity) || Number(initialQuantity)>1000000)) throw new Error('Indica una cantidad inicial entera entre 0 y 1000000.')
         await saveCatalogingProgress(draft, {
             approved_name: form.approved_name.trim(),
             presentation: form.presentation.trim(),
@@ -331,6 +340,7 @@ export function CatalogingWizard({
             barcode: form.barcode.trim(),
             description: form.description.trim(),
             suggested_price_cents: parseWizardPrice(priceInput),
+            ...(!fromReceipt ? {initial_quantity:initialQuantity===''?null:Number(initialQuantity)} : {}),
         }, photoFile, setDraft)
         setPhotoFile(null)
       }
@@ -652,12 +662,12 @@ export function CatalogingWizard({
         </section>
       )}
 
-      {/* Step 3: Precio y confirmación; nunca cambia inventario */}
+      {/* Alta directa para perfiles autorizados; recepción y vinculaciones conservan su inventario. */}
       {step === 3 && (
         <section className="wizard-step-content" aria-label="Paso 3: Precio, Existencia y Publicar">
           <div className="wizard-header-title">
             <h3>Precio y confirmar</h3>
-            <p className="wizard-subtitle">La existencia se conserva. Si falta el conteo inicial, te lo indicaremos al terminar.</p>
+            <p className="wizard-subtitle">Completa los datos para habilitar la planta. Las cantidades de compras recibidas se conservan.</p>
           </div>
 
           {/* Plant summary card */}
@@ -679,18 +689,19 @@ export function CatalogingWizard({
           </div>
 
           <div className="wizard-commercial-fields">
+            {directNew&&<label>Cantidad inicial en esta sucursal<input inputMode="numeric" value={initialQuantity} onChange={e=>setInitialQuantity(e.target.value)} placeholder="Incluye 0 si no hay unidades" /><small>Se registra una sola vez al crear la planta, sin aprobación adicional.</small></label>}
             <div className="form-group">
               <label htmlFor={priceInputId}>Precio de venta ($ MXN)</label>
               <input
                 id={priceInputId}
                 type="text"
                 inputMode="decimal"
-                placeholder="Ej. 120.00 (Opcional)"
+                placeholder={directNew?'Ej. 120.00':'Ej. 120.00 (Opcional)'}
                 value={priceInput}
                 onChange={e => setPriceInput(e.target.value)}
               />
               <small className="field-hint">
-                Si no lo tienes ahora, déjalo vacío y confírmalo después en la ficha.
+                {directNew?'Necesario para habilitar la planta. Puedes guardar un borrador si aún no lo tienes.':'Si no lo tienes ahora, déjalo vacío y confírmalo después en la ficha.'}
               </small>
             </div>
 
@@ -711,7 +722,7 @@ export function CatalogingWizard({
               disabled={busy}
               onClick={() => void (canPublish ? handlePublish() : handleSaveAndExit())}
             >
-              {busy ? 'Guardando…' : canPublish ? 'Confirmar y publicar' : 'Guardar y salir'}
+              {busy ? 'Guardando…' : canPublish ? directNew ? 'Guardar y habilitar' : 'Confirmar y publicar' : 'Guardar y salir'}
             </button>
           </div>
         </section>

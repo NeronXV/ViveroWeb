@@ -1,5 +1,11 @@
 # Estado actual del proyecto
 
+Actualización del 19 de octubre de 2026: Web de registro directo de plantas,
+conteos e historial publicada en el VPS 2030059, después de la migración
+MariaDB 040 y la API correspondiente. Salud HTTPS y 27 archivos públicos
+verificados; la aceptación con cuentas reales y cámara Android queda pendiente.
+Detalle: [registro directo y despliegue](../../ViveroApp/docs/plants-direct-registration.md).
+
 Checkpoint vigente, 9 de octubre de 2026: 479 pruebas aprobadas y una HTTP opcional
 omitida sin fixture; lint/build correctos. Recorrido HTTP real de servicios Web
 contra MariaDB/API locales aprobado: venta/pago con respuestas perdidas y reintentos,
