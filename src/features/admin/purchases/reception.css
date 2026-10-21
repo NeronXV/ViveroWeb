@@ -1,5 +1,5 @@
 /* Reception Wizard & Purchases Modern Styling */
-.reception-simple { max-width: 780px; }
+.reception-simple { max-width: 1600px; }
 .reception-simple fieldset > div { display: grid; gap: 16px; }
 .reception-simple label { display: grid; gap: 8px; margin-block: 12px; font-weight: 600; }
 .reception-simple input:not([type="checkbox"]),
@@ -9,6 +9,36 @@
   background: #fff; color: #204e40; font: inherit;
 }
 .reception-simple textarea { min-height: 120px; }
+.reception-simple .reception-notice, .reception-total-review { padding: 16px; background: var(--plant-paper, #f7f9f5); border: 1px solid var(--plant-border, #dde3d9); border-radius: 12px; }
+.reception-review-layout { display: grid; gap: 16px; min-width: 0; }
+.reception-table-scroll { min-width: 0; overflow-x: auto; }
+.reception-review-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.reception-review-table caption { text-align: left; font-weight: 700; margin-bottom: 12px; }
+.reception-review-table th, .reception-review-table td { vertical-align: top; text-align: left; padding: 12px; border-bottom: 1px solid var(--plant-border, #dde3d9); overflow-wrap: anywhere; }
+.reception-review-table th:nth-child(1) { width: 26%; }
+.reception-review-table th:nth-child(2) { width: 32%; }
+.reception-review-table th { background: #edf3e9; }
+.reception-simple .reception-review-table label { margin-block: 8px; font-size: 0.85rem; gap: 4px; }
+.reception-simple .reception-review-table input, .reception-simple .reception-review-table select { padding: 8px; min-height: 44px; }
+.reception-review-table small { display: block; color: #55685a; }
+.reception-review-table button { white-space: normal; max-width: 100%; margin-top: 8px; }
+.reception-suggestions { display: grid; gap: 4px; font-size: 0.85rem; }
+.reception-document-preview { min-width: 0; }
+.reception-document-preview summary { font-weight: 700; cursor: pointer; margin-bottom: 8px; }
+.reception-preview-scroll { overflow: auto; max-height: 480px; border: 1px solid var(--plant-border, #dde3d9); margin-top: 12px; }
+@media (min-width: 1500px) {
+  .reception-review-layout:has(.reception-document-preview) { grid-template-columns: minmax(260px, 0.7fr) minmax(0, 2fr); align-items: start; }
+  .reception-document-preview { position: sticky; top: 16px; }
+  .reception-preview-scroll { max-height: 70vh; }
+}
+@media (max-width: 900px) {
+  .reception-review-table, .reception-review-table tbody, .reception-review-table tr, .reception-review-table td { display: block; width: auto; }
+  .reception-review-table caption { display: block; width: auto; }
+  .reception-review-table thead { display: none; }
+  .reception-review-table tr { border: 1px solid var(--plant-border, #dde3d9); border-radius: 12px; margin-bottom: 16px; padding: 4px; }
+  .reception-review-table td { padding: 8px; border: 0; }
+  .reception-review-table td:nth-child(3) { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+}
 .reception-simple label:has(input[type="checkbox"]) { display: flex; align-items: flex-start; font-weight: 400; }
 .reception-simple input[type="checkbox"] { margin-top: 6px; flex-shrink: 0; }
 .reception-simple button {
@@ -610,3 +640,6 @@
     width: 100%;
   }
 }
+
+.reception-preview-scroll canvas { display: block; width: 100%; height: auto; }
+.reception-preview-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }

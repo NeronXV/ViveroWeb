@@ -1,12 +1,16 @@
 import type { PurchaseSourceItem } from './purchases-types'
 import { pesosToCents } from './purchases-parser'
+import { isPlantDescription, readMoney } from './reception-review'
+import { parseReceiptPages, pdfRows, type PdfTextCell } from './purchases-pdf-layout'
 
 export interface ExtractorResult {
   items: PurchaseSourceItem[]
+  documentTotalCents?: number
   warning?: string | null
 }
 
 const COMMON_CONTAINERS = new Set([
+  'B2', 'B3', 'B4', 'B6', 'B10', 'B20', 'G5',
   'M4', 'M5', 'M6', 'M7', 'M8', 'M10', 'M12', 'M14', 'M16', 'M18', 'M20',
   'BOLSA', 'B3L', 'B5L', 'B10L', 'CHAROLA', 'COLGANTE', 'CANASTA', 'C10', 'C12',
   'CH72', 'CH128', 'CH200', 'TUBO', 'POTE', 'GAL', 'GEN',
@@ -37,9 +41,9 @@ export function parseLineTokens(cells: string[]): {
       // Check if cell 2 is container
       if (cleanCells.length >= 4 && COMMON_CONTAINERS.has(cleanCells[2].toUpperCase())) {
         containerCode = cleanCells[2].toUpperCase()
-        unitCostCents = pesosToCents(cleanCells[3])
+        unitCostCents = (readMoney(cleanCells[3]) ?? 0)
       } else {
-        unitCostCents = pesosToCents(cleanCells[cleanCells.length - 1])
+        unitCostCents = (readMoney(cleanCells[cleanCells.length - 1]) ?? 0)
       }
     } else {
       // Attempt 2: First is description, then container/quantity, then price
@@ -52,12 +56,12 @@ export function parseLineTokens(cells: string[]): {
           if (qty > 0) quantity = qty
         }
         if (cleanCells[3]) {
-          unitCostCents = pesosToCents(cleanCells[3])
+          unitCostCents = (readMoney(cleanCells[3]) ?? 0)
         }
       } else {
         const maybeQty = /^\d+$/.test(cleanCells[1]) ? Number(cleanCells[1]) : NaN
         if (maybeQty > 0) quantity = maybeQty
-        if (cleanCells[2]) unitCostCents = pesosToCents(cleanCells[2])
+        if (cleanCells[2]) unitCostCents = (readMoney(cleanCells[2]) ?? 0)
       }
     }
   } else if (cleanCells.length === 2) {
@@ -69,11 +73,11 @@ export function parseLineTokens(cells: string[]): {
       rawDescription = cleanCells[0]
       const secondIsQty = /^\d+$/.test(cleanCells[1])
       if (secondIsQty) quantity = Number(cleanCells[1])
-      else unitCostCents = pesosToCents(cleanCells[1])
+      else unitCostCents = (readMoney(cleanCells[1]) ?? 0)
     }
   }
 
-  if (!rawDescription.trim()) return null
+  if (!isPlantDescription(rawDescription)) return null
 
   // Extract container from description if still GEN
   if (containerCode === 'GEN') {
@@ -130,7 +134,7 @@ export function parseSingleLineText(line: string): {
       container = 'GEN'
     }
 
-    if (desc && qty > 0) {
+    if (isPlantDescription(desc) && qty > 0) {
       return {
         rawDescription: desc,
         containerCode: container,
@@ -149,7 +153,7 @@ export function parseSingleLineText(line: string): {
     const qty = parseInt(m2[2], 10)
     const costPesos = m2[3]
 
-    if (desc && qty > 0) {
+    if (isPlantDescription(desc) && qty > 0) {
       return {
         rawDescription: desc,
         containerCode: 'GEN',
@@ -317,9 +321,9 @@ export function parseCsv(csvText: string): ExtractorResult {
   )
 
   const dataLines = hasHeader ? lines.slice(1) : lines
-  const descIndex = headerCells.findIndex((h) => h.includes('desc') || h.includes('prod') || h.includes('articulo') || h.includes('concepto'))
+  const descIndex = headerCells.findIndex((h) => h.includes('desc') || h === 'nombre' || h.includes('prod') || h.includes('articulo') || h.includes('concepto'))
   const qtyIndex = headerCells.findIndex((h) => h.includes('cant') || h.includes('qty') || h.includes('unidades'))
-  const costIndex = headerCells.findIndex((h) => h.includes('cost') || h.includes('unit') || h.includes('precio') || h.includes('importe'))
+  const costIndex = headerCells.findIndex((h) => h.includes('cost') || h.includes('unitario') || h.includes('precio') || h.includes('price'))
   const codeIndex = headerCells.findIndex((h) => h.includes('codigo') || h.includes('code') || h.includes('cont') || h.includes('medida'))
 
   const items: PurchaseSourceItem[] = []
@@ -336,10 +340,13 @@ export function parseCsv(csvText: string): ExtractorResult {
     if (hasHeader && descIndex !== -1) {
       rawDescription = cells[descIndex] || ''
       if (qtyIndex !== -1 && cells[qtyIndex]) {
-        quantity = Math.max(1, Math.round(Number(cells[qtyIndex].replace(/[^0-9.-]+/g, '')) || 1))
+        if (!/^\d+$/.test(cells[qtyIndex])) throw new Error('Revisa las cantidades del CSV: deben ser enteros sin texto adicional.')
+        quantity = Number(cells[qtyIndex])
       }
       if (costIndex !== -1 && cells[costIndex]) {
-        unitCostCents = pesosToCents(cells[costIndex])
+        const cost = readMoney(cells[costIndex])
+        if (cost === null) throw new Error('Revisa los costos del CSV: usa importes con máximo dos decimales.')
+        unitCostCents = cost
       }
       if (codeIndex !== -1 && cells[codeIndex]) {
         containerCode = cells[codeIndex].toUpperCase()
@@ -495,82 +502,35 @@ export async function extractFromLocalDocx(file: File): Promise<ExtractorResult>
 }
 
 export async function extractFromLocalPdf(file: File): Promise<ExtractorResult> {
+  const pdfjsLib = await import('pdfjs-dist')
+  if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).toString()
+  }
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) })
   try {
-    const pdfjsLib = await import('pdfjs-dist')
-    if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      try {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.mjs',
-          import.meta.url
-        ).toString()
-      } catch {
-        // fallback
-      }
-    }
-
-    const arrayBuffer = await file.arrayBuffer()
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(arrayBuffer),
-    })
-
     const pdf = await loadingTask.promise
     if (pdf.numPages > 30) throw new Error('Divide el documento en archivos de hasta 30 páginas; no se omitieron páginas automáticamente.')
-    const maxPages = pdf.numPages
-    const textLines: string[] = []
-
-    for (let pageNum = 1; pageNum <= maxPages; pageNum += 1) {
+    const pages: PdfTextCell[][] = []
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
       const page = await pdf.getPage(pageNum)
-      const textContent = await page.getTextContent()
-      const items = textContent.items as Array<{ str?: string; hasEOL?: boolean; transform?: number[] }>
-      let currentLine = '', previousY: number | undefined
-      for (const item of items) {
-        if (typeof item.str !== 'string') continue
-        const y = item.transform?.[5]
-        if (currentLine && y !== undefined && previousY !== undefined && Math.abs(y-previousY)>3) { textLines.push(currentLine); currentLine='' }
-        currentLine += '  ' + item.str
-        previousY=y
-        if(item.hasEOL) { textLines.push(currentLine); currentLine='' }
-      }
-      textLines.push(currentLine)
+      const content = await page.getTextContent()
+      pages.push(content.items.filter((item): item is typeof item & PdfTextCell => 'str' in item))
     }
-
-    const fullText = textLines.join('\n')
-    if (!fullText.trim()) {
-      return {
-        items: [],
-        warning: 'No pudimos extraer los renglones automáticamente. Puedes capturarlos o pegarlos manualmente.',
-      }
-    }
-
-    const candidateLines = fullText
-      .split(/\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 5)
-
+    const receipt = parseReceiptPages(pages)
+    if (receipt) return receipt
     const items: PurchaseSourceItem[] = []
-
-    for (const line of candidateLines) {
-      const parsed = parseSingleLineText(line)
-      if (parsed) {
-        items.push({
-          lineNumber: items.length + 1,
-          ...parsed,
-        })
+    for (const page of pages) {
+      for (const row of pdfRows(page)) {
+        const parsed = parseSingleLineText(row.map(c => c.text).join('  '))
+        if (parsed) items.push({ lineNumber: items.length + 1, ...parsed })
       }
     }
-
-    if (items.length === 0) {
-      return {
-        items: [],
-        warning: 'No pudimos extraer los renglones automáticamente del PDF. Puedes capturarlos o pegarlos manualmente.',
-      }
-    }
-
-    return { items, warning:'Compara todas las páginas del documento: el lector puede omitir partidas o confundir columnas.' }
-  } catch (err) {
-    return {
-      items: [],
-      warning: err instanceof Error ? err.message : 'No pudimos extraer los renglones automáticamente del PDF. Puedes capturarlos o pegarlos manualmente.',
-    }
+    return { items, warning: items.length
+      ? 'Compara todas las páginas del documento: el lector puede omitir partidas o confundir columnas.'
+      : 'No pudimos extraer los renglones del PDF. Usa un PDF con texto o captura las plantas manualmente; las fotos y escaneos necesitan transcripción.' }
+  } catch {
+    return { items: [], warning: 'No se pudo leer el PDF. Comprueba que tenga texto, no esté protegido y no exceda 30 páginas, o captura las plantas manualmente.' }
+  } finally {
+    await loadingTask.destroy()
   }
 }
