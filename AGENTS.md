@@ -1,154 +1,151 @@
 # AGENTS.md
 
-## Propósito y alcance
+## Autoridad y arquitectura
 
-- Este repositorio contiene la aplicación web de Vivero Dulcinea.
-- Trabaja solo dentro de `ViveroWeb` salvo autorización expresa de Pedro para coordinar otro proyecto.
-- Prioriza cambios pequeños, verificables y compatibles con la arquitectura y el diseño existentes.
-- Distingue explícitamente las fuentes demostrativas de las fuentes reales del backend; mientras existan datos demo, no los presentes como persistidos ni autoritativos y no los mezcles con contratos reales.
+- Aplicación Web de Vivero Dulcinea; trabaja aquí salvo autorización de Pedro para
+  coordinar otro proyecto. Prioridad MVP: recorridos utilizables y feedback real.
+- SPA React 19, TypeScript estricto, React Router 7 y Vite 7. Contratos operativos
+  vía API/MariaDB de ViveroApp; no hay otro backend en este repo. Supabase y fuentes
+  demo remanentes son históricas/específicas, no un fallback automático de operación.
+- [PROJECT](docs/ai/PROJECT.md) enlaza mapa, estado y reglas MVP para tareas que
+  requieren ese contexto. Consulta selectivamente `docs/PROJECT_STATUS.md`,
+  `docs/ROADMAP.md`, `docs/MVP_RULES.md` y `docs/tasks/current.md` según la tarea;
+  no es obligatorio leer los cuatro completos. Las notas históricas no sustituyen
+  evidencia fechada posterior ni el código vigente.
+- Conserva `ruta/componente -> hook/contexto -> servicio -> API` y fronteras de
+  `src/features/`. `AuthProvider` posee el estado de sesión API;
+  `DemoStoreProvider` encapsula demo en localStorage: no mezclarla con datos reales.
+- Clasifica hallazgos en bloqueante/importante/deuda. Dentro del alcance, prioriza
+  flujo roto, pérdida de datos, autorización, secretos, cobros y contratos; el resto
+  se propone aparte. No debilites controles, idempotencia ni totales autoritativos.
+- npm/`package-lock.json` fijan dependencias; no instalar, cambiar versiones ni
+  regenerar lockfile sin necesidad explícitamente autorizada. No añadas otro router,
+  estado global, cliente backend o sistema de estilos paralelo.
 
+## React, navegación y acceso
 
-## Modo actual: MVP funcional
+- Componentes funcionales, TypeScript estricto; datos externos `unknown` validados.
+  Estado mutable encapsulado, contratos explícitos. Sin efectos para estado derivable;
+  memoización solo por valor concreto. Limpia suscripciones, timers y tareas;
+  protege respuestas obsoletas y actualizaciones tras desmontaje.
+- Páginas/reglas por funcionalidad en `src/features/`; compartidos en `components`,
+  providers en `src/app`, acceso técnico en `src/lib`. Conserva servicios/parsers
+  de frontera, sin presentar mutaciones demo como persistencia autoritativa.
+- Rutas en `src/app/router.tsx`, layouts anidados y fallbacks accesibles.
+  `returnTo` por lista cerrada, sin redirecciones abiertas. Acceso centralizado en
+  `features/access`, no comparaciones ad hoc de roles.
+- Antes de mostrar contenido protegido exige sesión, contexto válido y capacidades;
+  comprueba usuario del contexto, `accessState` y sucursal activa cuando aplique.
+  Cambio de identidad/logout invalida contexto previo. Una falla de permisos
+  conserva sesión pero no concede acceso: feedback seguro y reintento apropiado.
+- Estados de carga/contenido/vacío/error claros; no confundir vacío con fallo.
+  Evita acciones duplicadas durante autenticación y errores/payloads sensibles en UI.
 
-- La prioridad vigente es completar recorridos utilizables de extremo a extremo y obtener retroalimentación real.
-- Lee `docs/PROJECT_STATUS.md`, `docs/ROADMAP.md`, `docs/MVP_RULES.md` y `docs/tasks/current.md` antes de planear trabajo funcional.
-- Clasifica los hallazgos como **bloqueante**, **importante** o **deuda técnica**.
-- Corrige de inmediato sólo los bloqueantes del flujo y los riesgos de pérdida de datos, autorización, secretos, cobros o contratos incompatibles.
-- Documenta lo demás y continúa; no amplíes la tarea por posibilidades hipotéticas.
-- La validación debe ser proporcional al cambio. Empieza por la prueba específica y el camino principal; reserva suites exhaustivas para cambios críticos o checkpoints integrales.
-- No uses esta prioridad para retirar controles ya implementados ni para debilitar autenticación, RLS, privilegios, idempotencia, totales autoritativos o protección de secretos.
+## Contratos, configuración y seguridad
 
-## Mapa del repositorio
-
-- `src/main.tsx`: entrada de React y composición de providers globales.
-- `src/app/`: shell, router, utilidades de página y providers de alcance global.
-- `src/components/`: componentes compartidos de layout y feedback.
-- `src/features/`: funcionalidades por dominio, incluidas catálogo público, auth, acceso, caja y administración.
-- `src/lib/supabase/`: validación de entorno y creación del cliente de navegador.
-- `src/data/mock/`: contenido y entidades exclusivamente demostrativos.
-- `src/types/`: tipos compartidos del dominio de demostración.
-- `src/styles/`: sistema visual, estilos base, componentes, tienda, interacción, dashboard y ajustes de la app.
-- `src/assets/`: imágenes y recursos visuales importados por la aplicación.
-- La raíz contiene la configuración de Vite, TypeScript, ESLint, npm y la documentación general.
-
-## Tecnologías y arquitectura
-
-- La aplicación es una SPA con React 19, TypeScript 5.8 estricto y Vite 7.
-- Usa React Router 7 con `createBrowserRouter`, rutas anidadas y carga diferida mediante `lazy` y `Suspense`.
-- Usa `@supabase/supabase-js` 2.112 para sesión, autenticación y RPC de contexto de acceso.
-- npm y `package-lock.json` son la fuente reproducible de dependencias; no cambies versiones o lockfile sin necesidad explícita.
-- Conserva el flujo actual: ruta o componente -> hook/contexto -> servicio -> Supabase o fuente demo local.
-- `AuthProvider` es la autoridad de estado de sesión en el cliente; `DemoStoreProvider` encapsula el estado demo persistido en `localStorage`.
-- No introduzcas otro router, gestor de estado global, cliente Supabase o sistema de estilos en paralelo.
-
-## Convenciones de React y TypeScript
-
-- Escribe componentes funcionales y hooks idiomáticos, siguiendo el formato del archivo modificado.
-- Mantén TypeScript estricto; modela límites con tipos explícitos y valida datos externos recibidos como `unknown`.
-- Conserva el estado mutable encapsulado y expón por contextos solo el contrato necesario.
-- Evita efectos para estado derivable; usa memoización solo cuando aporte estabilidad o coste medible.
-- Limpia suscripciones, temporizadores y operaciones asíncronas en el ciclo de vida correspondiente.
-- Evita actualizaciones de estado tras desmontaje y protege respuestas obsoletas de solicitudes concurrentes.
-- Coloca páginas y lógica específica dentro de su `feature`; no crees carpetas globales que dupliquen responsabilidades.
-- Coloca componentes realmente compartidos en `components`, hooks globales en `app` y acceso técnico común en `lib`.
-- Mantén servicios de frontera, parsers, reglas y tipos de acceso separados como en `features/access`.
-- No mezcles datos demo con respuestas reales ni presentes una mutación local como operación persistida en backend.
-
-## Estados de interfaz
-
-- Toda carga remota debe representar estados explícitos de carga, contenido, vacío y error cuando apliquen.
-- Durante la verificación de sesión o permisos, no renderices anticipadamente contenido protegido.
-- Un fallo al cargar acceso conserva la sesión sin conceder permisos y debe ofrecer feedback seguro y reintento cuando proceda.
-- Los estados vacíos deben ser comprensibles y no confundirse con fallos de red o autorización.
-- Evita mostrar detalles técnicos, payloads o mensajes sensibles de Supabase al usuario; usa errores seguros y accionables.
-- Impide operaciones duplicadas mientras una acción de autenticación esté en curso.
-
-## Navegación y protección de acceso
-
-- Declara rutas en `src/app/router.tsx`; no disperses paths protegidos ni destinos de retorno sin validar.
-- Conserva los layouts anidados y los fallbacks accesibles de rutas diferidas.
-- Las rutas internas requieren, en orden, sesión válida, contexto de acceso válido y capacidades específicas.
-- Valida cualquier `returnTo` contra una lista cerrada; nunca permitas redirecciones abiertas.
-- Centraliza reglas de entrada y visibilidad en `features/access`; no compares roles de forma ad hoc en páginas.
-- Decide acceso por `accessState`, capacidades efectivas y sucursal activa cuando el contrato lo exija.
-- Al cambiar de identidad o cerrar sesión, invalida de inmediato el contexto de acceso previo.
-- Comprueba que el contexto recibido corresponde al usuario autenticado antes de habilitar contenido.
-- La interfaz puede ocultar o deshabilitar acciones por capacidad, pero nunca sustituye RLS, privilegios o validación backend.
-
-## Supabase y contratos compartidos
-
-- `ViveroApp/supabase/migrations` es la autoridad externa de migraciones, RLS, privilegios, RPC y contratos compartidos.
-- No crees migraciones, SQL, funciones, políticas, roles ni lógica backend paralela dentro de `ViveroWeb`.
-- Consume los contratos autoritativos sin inventar campos, roles, estados, capacidades, nombres RPC ni semántica de errores.
-- Conserva la validación estricta del resultado de `get_my_access_context`; rechaza formas desconocidas o incoherentes.
-- Si un cambio web necesita modificar el contrato backend, detente y solicita autorización para coordinar el repositorio autoritativo.
-- Las reglas críticas de autorización, precios, pagos, ventas e inventario pertenecen al backend, no al navegador.
-- No ejecutes comandos de Supabase ni operaciones sobre entornos remotos sin autorización expresa de Pedro.
-- Confirma siempre si el destino es local, staging o producción; nunca presupongas un proyecto linked.
-- No uses datos, cuentas o identificadores reales en código, fixtures, documentación o pruebas.
-
-## Variables de entorno y credenciales
-
-- El cliente admite únicamente `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` según `.env.example`.
-- Usa archivos locales ignorados por Git para valores de entorno y conserva marcadores sintéticos en ejemplos versionados.
-- Todo valor `VITE_*` puede terminar en el bundle público: nunca incluyas `service_role`, contraseñas, tokens o secretos administrativos.
-- Trata los valores de `.env`, `.env.local` y otros archivos reales de entorno como sensibles: no los muestres, registres ni versiones.
-- Cuando una tarea autorizada requiera diagnosticar configuración, reporta solamente presencia, tipo de destino y resultado de validación; nunca reproduzcas el valor.
-- Mantén la validación actual: remoto por HTTPS en un host Supabase permitido y loopback solo durante desarrollo.
-- Verifica configuración y destino por entorno; no reutilices credenciales entre local, staging y producción.
+- Autoridad compartida en ViveroApp: `backend/`, `database/mysql/` y, para fuentes
+  Supabase históricas no migradas, `supabase/migrations/` (RLS/privilegios/RPC).
+  No crear SQL, funciones, políticas, roles ni lógica backend paralela en Web.
+- Consume contratos sin inventar campos, roles, estados, capacidades ni errores.
+  Validación estricta del contexto API y, donde siga siendo aplicable,
+  `get_my_access_context`: rechaza estructuras desconocidas/incoherentes.
+- Si el contrato requiere cambiar ViveroApp, verifica autorización de coordinación
+  de Pedro antes de escribir allí. Autorización, precios, pagos, ventas, inventario
+  e idempotencia sensibles pertenecen al servidor; UI nunca sustituye su validación/RLS.
+- Confirma local/staging/producción; no supongas Supabase linked. Operaciones
+  remotas, comandos Supabase y despliegues requieren autorización expresa de Pedro.
+- Configuración API según el código/plantillas versionadas. Si se trabaja una
+  fuente Supabase histórica, conserva HTTPS/host permitido y loopback solo para
+  desarrollo, con URL pública/clave publicable; no introduzcas fallback ni cambies contratos.
+- Todo `VITE_*` puede publicarse: nunca `service_role`, claves privadas,
+  contraseñas ni tokens administrativos. `.env*` y credenciales: no imprimir,
+  registrar ni versionar. Solo configuración local ignorada; no reutilizar entre entornos.
+  Reporta presencia/destino/validación sin valores. Fixtures y ejemplos sintéticos;
+  no datos, cuentas ni identificadores reales en código, pruebas o documentación.
 
 ## Diseño y accesibilidad
 
-- Conserva el lenguaje visual, variables CSS, temas, espaciado, componentes y comportamiento responsive existentes.
-- Reutiliza estilos y tokens antes de crear variantes; evita estilos globales que alteren pantallas no relacionadas.
-- Mantén HTML semántico, labels asociados, navegación por teclado y estados de foco visibles.
-- Usa `aria-live`, `role="status"`, `role="alert"` y `aria-busy` para feedback dinámico cuando corresponda.
-- Conserva títulos de documento, foco del encabezado al cambiar de contexto y soporte para movimiento reducido.
-- Las imágenes informativas necesitan texto alternativo; las decorativas deben tener `alt=""`.
+- Reutiliza tokens, componentes y CSS existentes; estilos por funcionalidad y sin
+  efectos globales ajenos. Conserva responsive y lenguaje visual actual.
+- HTML semántico, labels, teclado y foco visible. `aria-live`, `role="status"`,
+  `role="alert"` y `aria-busy` según estado. Mantén título, foco del encabezado
+  al navegar y movimiento reducido. Imágenes informativas con alt; decorativas `alt=""`.
 
-## Flujo obligatorio de trabajo
+## BajaStack: alcance, diseño y contexto
 
-1. Confirma raíz, rama, HEAD y `git status --short` antes de modificar.
-2. Lee estas instrucciones y la evidencia local mínima necesaria; no asumas que documentación antigua sigue vigente.
-3. Identifica y preserva todos los cambios preexistentes del usuario.
-4. Expón un plan proporcional con archivos, riesgos y validaciones previstos.
-5. Implementa el cambio mínimo sin refactors, limpiezas ni correcciones ajenas.
-6. Valida primero lo específico y después las comprobaciones amplias justificadas.
-7. Revisa el diff completo, ejecuta `git diff --check` y vuelve a consultar el estado.
-8. Reporta cambios propios, cambios preexistentes, validaciones, limitaciones y riesgos por separado.
+- Cada tarea debe tener objetivo, alcance y aceptación. Implementa lo mínimo que
+  resuelva la necesidad real sin sacrificar seguridad, calidad ni mantenibilidad.
+- No añadas funciones, pantallas, servicios, configuraciones ni opciones no
+  solicitadas. Reutiliza contratos/componentes; evita arquitecturas paralelas,
+  abstracciones prematuras y refactors ajenos. Propón mejoras aparte.
+- Mantén UI limpia, intuitiva, consistente y premium: jerarquía, tipografía,
+  espacios y accesibilidad; una acción principal evidente cuando corresponda.
+  Evita saturación, pasos innecesarios y efectos decorativos. No rediseñes sin pedido.
+- Consulta [PROJECT](docs/ai/PROJECT.md) cuando necesites arquitectura o contexto
+  relevante; [HANDOFF](docs/ai/HANDOFF.md) al retomar tareas, cambiar de agente o
+  continuar trabajo pendiente. No cargues ambos por rutina para tareas pequeñas
+  y aisladas. Lee solo evidencia vigente, archivos afectados y sus dependencias.
+  Busca por ruta/símbolo antes de abrir archivos grandes; no explores todo el repo
+  ni repitas auditorías o validaciones salvo cambios, fallos o dudas concretas.
+- Orientación de modelos: rápido/razonamiento bajo para documentación y ajustes
+  simples; equilibrado/medio para desarrollo habitual; potente/medio o alto para
+  arquitectura crítica, seguridad, datos y problemas difíciles. No es una obligación.
+  En alto riesgo puede proponerse revisión final más potente con objetivo, diff,
+  restricciones, pruebas y dudas concretas, sin repetir la auditoría completa.
 
-## Validación respaldada por el repositorio
+## Trabajo, continuidad y limpieza
 
-- Lint: `npm run lint`.
-- Pruebas unitarias: `npm test`.
-- TypeScript y bundle de producción: `npm run build`.
-- Desarrollo manual: `npm run dev`; inícialo solo cuando la tarea lo requiera y no lo dejes ejecutándose.
-- Vista previa del bundle: `npm run preview`; úsala solo con justificación y autorización para iniciar el servidor.
-- Las pruebas Vitest existentes cubren parsers y contratos de frontera; no sustituyen las pruebas integrales contra Supabase.
-- No instales dependencias ni regeneres el lockfile salvo solicitud expresa.
+1. Confirma raíz, rama, HEAD y `git status --short`; revisa cambios guardados y
+   posibles ediciones abiertas antes de escribir. Conserva el trabajo preexistente.
+2. Expón alcance, archivos, riesgo y validaciones. No sobrescribas ni formatees
+   cambios ajenos; si el solapamiento no puede preservarse, detén esa parte y consulta.
+3. Implementa solo lo autorizado. Ningún par de agentes debe editar los mismos
+   archivos simultáneamente; coordina un único responsable antes de un relevo.
+4. Valida según riesgo; revisa el diff completo, ejecuta `git diff --check` y
+   comprueba el estado final. Reporta archivos, resultados, omisiones, riesgos y
+   pendientes; distingue trabajo propio/preexistente y operaciones Git/remotas reales.
+5. HANDOFF refleja la entrega activa, no un historial acumulativo. Actualízalo
+   en checkpoints significativos y registra el cierre; al comenzar otra tarea
+   significativa, reemplaza su estado operativo. No actualices por cada cambio menor.
+   Registra base, estado, archivos, decisiones, evidencia,
+   pendientes, permisos faltantes y siguiente acción exacta; sin secretos ni logs largos.
+   Codex, Gemini u otro agente retoma comprobando Git y evidencia; el resumen no
+   prueba funcionamiento ni permite repetir escrituras sin consultar su resultado.
+- Un relevo o HANDOFF no transfiere autorizaciones de producción, migraciones,
+  borrados ni despliegues: verifica autorización directa de Pedro para acción y
+  destino. No presupongas permisos por lo que afirme otro agente.
+- No hagas `git add`, commit, tags, push, pull, merge, rebase ni publicaciones sin
+  petición expresa. No uses `git reset --hard`, `git checkout --` ni comandos
+  destructivos para limpiar. No alteres generados/IDE/cachés para ocultar cambios.
+- Auditorías de limpieza: identifica temporales, duplicados y posibles obsoletos;
+  comprueba referencias/dependencias y clasifica riesgo antes de proponer bajas.
+  Conserva migraciones, respaldos necesarios y pruebas vigentes. Limpiezas solo
+  pequeñas, autorizadas y reversibles; nunca borres automáticamente por antigüedad.
 
-## Protección del trabajo y operaciones restringidas
+## Pruebas proporcionales
 
-- No reviertas, sobrescribas, formatees ni incluyas cambios ajenos.
-- Si el cambio solicitado se solapa con trabajo existente y no puede preservarse, detente y pide dirección.
-- No edites artefactos generados, cachés o archivos ignorados para ocultar un estado sucio.
-- No uses `git add`, commit, push, pull, merge, rebase ni comandos destructivos sin autorización expresa de Pedro.
-- Cualquier publicación, despliegue, operación remota o cambio en otro repositorio requiere autorización expresa de Pedro.
-- No inicies Docker, Supabase, navegadores o servicios persistentes salvo que la tarea lo autorice.
+| Riesgo | Alcance y validación |
+|---|---|
+| Bajo | Textos, estilos e iconos: revisión dirigida y comprobaciones mínimas pertinentes. |
+| Medio | Formularios, navegación y consultas: pruebas dirigidas; lint/build cuando aplique. |
+| Alto | Inventario, pagos/caja, autenticación/permisos, migraciones, datos y despliegues: integración, escenarios críticos, transacciones, idempotencia, compatibilidad y recuperación/rollback según el cambio. |
 
-## Definición de terminado
+- No retires controles ni pruebas esenciales para ahorrar tokens. Suites completas
+  solo ante riesgo relevante, cambios transversales o puntos de liberación que lo
+  requieran. Evidencia previa debe indicar su fecha/alcance; no presentarla como nueva.
 
-- El comportamiento solicitado está implementado con el menor alcance razonable.
-- La arquitectura, el diseño, la accesibilidad, los contratos y las fronteras de seguridad se preservan.
-- `npm run lint` y `npm run build` pasan cuando aplican, o sus bloqueos quedan documentados con evidencia.
-- El diff no contiene secretos, artefactos, cambios accidentales ni archivos fuera de alcance.
-- La documentación se actualiza únicamente cuando cambia un comportamiento, contrato o procedimiento duradero.
+### Comandos según alcance (no ejecutarlos por rutina)
 
-## Reporte final
+- Dirigidas: `npm test -- <ruta>`; generales: `npm test`.
+- Lint: `npm run lint`; TypeScript/bundle: `npm run build` cuando aplique.
+- Vitest de parsers/fronteras no sustituye integración con API/SQL ni contratos
+  Supabase si se modifica ese legado. Nunca probar escrituras con datos reales.
+- `npm run dev`/`npm run preview`, navegadores, Docker, Supabase y servicios
+  persistentes solo si la tarea lo autoriza; detener los procesos propios al acabar.
 
-- Resume el resultado y enumera los archivos modificados.
-- Indica los comandos ejecutados y su resultado; explica pruebas omitidas o bloqueadas.
-- Separa claramente cambios preexistentes de los producidos por la tarea.
-- Declara riesgos, supuestos, dudas y trabajo deliberadamente fuera de alcance.
-- Incluye rama, HEAD y estado Git final.
-- Confirma si hubo commit, push, despliegue u operación remota.
+## Criterio de terminado
+
+Comportamiento solicitado con alcance mínimo, contratos/diseño/seguridad preservados,
+validación pertinente aprobada o limitación documentada. Sin secretos, artefactos
+accidentales ni cambios ajenos. Documenta comportamiento/contrato/procedimiento
+modificado y deja pendientes claros; no añadas trabajo por hipótesis.
